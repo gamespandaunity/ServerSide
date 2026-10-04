@@ -1,0 +1,99 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &6092239402592488940
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1752040499635331225}
+  - component: {fileID: 7641157709845571291}
+  - component: {fileID: 4364844250215818262}
+  - component: {fileID: 500086911413680030}
+  m_Layer: 0
+  m_Name: NetworkManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1752040499635331225
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6092239402592488940}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &7641157709845571291
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6092239402592488940}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 90caf6a8028770a46816e58fc1693f50, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  loadingDuration: 1
+  UserName: Guest
+  AvatarId: 0
+  playMatchingAnim: 0
+  OpponentName: 
+  OpponentAvatarId: 0
+  currentGameMode: 2
+--- !u!114 &4364844250215818262
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6092239402592488940}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5863a64430d445b4b50d859be955a14b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  RoomPlayerUI: {fileID: 6938499613834232539, guid: 70c7ff93e10e2b14e863ab83f8250407,
+    type: 3}
+  GameplayPlayerUI: {fileID: 6938499613834232539, guid: 70c7ff93e10e2b14e863ab83f8250407,
+    type: 3}
+  GP_AvatarPrefab: {fileID: 2738809490117472449, guid: 5930a5c4f93cb8040b72ea22ed829e7a,
+    type: 3}
+  beads1: {fileID: 5623530545819627593, guid: 65be3de77bf84ac89b9504089b953faf, type: 3}
+  beads2: {fileID: 5245630241906313271, guid: 796312228daa4017a4fa8a806db49e24, type: 3}
+  emptyNodes: {fileID: 5623530545819627593, guid: e647d43c4ee947c39f910e51d73483eb,
+    type: 3}
+  beadsParent: {fileID: 0}
+  RoomCode: 
+--- !u!114 &500086911413680030
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6092239402592488940}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9b91ecbcc199f4492b9a91e820070131, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Mirror::Mirror.NetworkIdentity
+  sceneId: 0
+  _assetId: 3772262718
+  serverOnly: 0
+  visibility: 0
+  hasSpawned: 0

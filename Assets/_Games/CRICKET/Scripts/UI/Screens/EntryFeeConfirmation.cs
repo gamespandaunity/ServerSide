@@ -1,0 +1,85 @@
+using CodeStage.AntiCheat.ObscuredTypes;
+using UnityEngine;
+using UnityEngine.UI;
+using Cricket;
+
+public class EntryFeeConfirmation : Singleton<EntryFeeConfirmation>
+{
+	public GameObject holder;
+
+	public Image cupImg;
+
+	public Text subText;
+
+	public Sprite[] cupSprites;
+
+	public Text modeDetails;
+
+	public Text matchDetails;
+
+	private string[] modeTitle = new string[8]
+	{
+		"183",
+		"17",
+		"14",
+		"13",
+		"11",
+		"12",
+		string.Empty,
+		"462"
+	};
+
+	private string ticketAmount;
+
+	public void ShowMe()
+	{
+		Singleton<NavigationBack>.instance.deviceBack = HideMe;
+		CONTROLLER.pageName = "EFPopup";
+		holder.SetActive(value: true);
+		if (CONTROLLER.PlayModeSelected < 4)
+		{
+			modeDetails.text = CONTROLLER.Overs[CONTROLLER.oversSelectedIndex] + " " + LocalizationData.localizationInstance.getText(532);
+			string key = CONTROLLER.PlayModeSelected.ToString() + CONTROLLER.oversSelectedIndex;
+			
+		}
+		else
+		{
+			modeDetails.text = LocalizationData.localizationInstance.getText(int.Parse(modeTitle[CONTROLLER.PlayModeSelected])) + " " + LocalizationData.localizationInstance.getText(277);
+			ticketAmount = "1";
+		}
+		if (CONTROLLER.PlayModeSelected != 2)
+		{
+			subText.text = LocalizationData.localizationInstance.getText(int.Parse(modeTitle[CONTROLLER.PlayModeSelected]));
+			cupImg.sprite = cupSprites[CONTROLLER.PlayModeSelected];
+		}
+		//else if (CONTROLLER.tournamentType == "NPL")
+		//{
+		//	cupImg.sprite = cupSprites[CONTROLLER.PlayModeSelected];
+		//	subText.text = LocalizationData.instance.getText(int.Parse(modeTitle[CONTROLLER.PlayModeSelected]));
+		//}
+		//else if (CONTROLLER.tournamentType == "PAK")
+		//{
+		//	cupImg.sprite = cupSprites[6];
+		//	subText.text = LocalizationData.instance.getText(15);
+		//}
+		//else if (CONTROLLER.tournamentType == "AUS")
+		//{
+		//	cupImg.sprite = cupSprites[7];
+		//	subText.text = LocalizationData.instance.getText(16);
+		//}
+		if (ticketAmount == "1")
+		{
+			matchDetails.text = LocalizationData.localizationInstance.getText(406) + ": " + ticketAmount + " " + LocalizationData.localizationInstance.getText(533);
+		}
+		else
+		{
+			matchDetails.text = LocalizationData.localizationInstance.getText(406) + ": " + ticketAmount + " " + LocalizationData.localizationInstance.getText(172);
+		}
+	}
+
+	public void HideMe()
+	{
+		holder.SetActive(value: false);
+		Singleton<SquadPageTWO>.instance.showMe(1);
+	}
+}

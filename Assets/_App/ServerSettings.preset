@@ -1,0 +1,624 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!181963792 &2655988077585873504
+Preset:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: ServerSettings
+  m_TargetType:
+    m_NativeTypeID: 114
+    m_ManagedTypePPtr: {fileID: 11500000, guid: 9f3758f8f58fdef43803eb9be1df0608,
+      type: 3}
+    m_ManagedTypeFallback: 
+  m_Properties:
+  - target: {fileID: 0}
+    propertyPath: m_Enabled
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: m_EditorHideFlags
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: m_EditorClassIdentifier
+    value: 
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: AppSettings.AppIdRealtime
+    value: 5cb3efaa-0c45-48da-ac2b-f007fbf73df7
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: AppSettings.AppIdFusion
+    value: 
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: AppSettings.AppIdChat
+    value: 56ca20fc-0e94-4307-a06f-063ceff19c26
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: AppSettings.AppIdVoice
+    value: 
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: AppSettings.AppVersion
+    value: 
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: AppSettings.UseNameServer
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: AppSettings.FixedRegion
+    value: au
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: AppSettings.Server
+    value: 
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: AppSettings.Port
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: AppSettings.ProxyServer
+    value: 
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: AppSettings.Protocol
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: AppSettings.EnableProtocolFallback
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: AppSettings.AuthMode
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: AppSettings.EnableLobbyStatistics
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: AppSettings.NetworkLogging
+    value: 5
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: DevRegion
+    value: in
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: PunLogging
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: EnableSupportLogger
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RunInBackground
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: StartInOfflineMode
+    value: 0
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.size
+    value: 125
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[0]
+    value: ClickRpc
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[1]
+    value: DestroyRpc
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[2]
+    value: DestroySpaceship
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[3]
+    value: EndSimulate
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[4]
+    value: Fire
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[5]
+    value: OnForceSendCueControl
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[6]
+    value: OnMoveBall
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[7]
+    value: OnOpponenInGameScene
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[8]
+    value: OnOpponenReadToPlay
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[9]
+    value: OnOpponenStartToPlay
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[10]
+    value: OnOpponentForceGoHome
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[11]
+    value: OnOpponenWaitingForYourTurn
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[12]
+    value: OnSendCueControl
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[13]
+    value: OnSendTime
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[14]
+    value: RespawnSpaceship
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[15]
+    value: SelectBallPosition
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[16]
+    value: SendOpponentCueURL
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[17]
+    value: SendOpponentTableURLs
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[18]
+    value: SetBallPosition
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[19]
+    value: SetMechanicalStatesFromNetwork
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[20]
+    value: StartSimulate
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[21]
+    value: WaitAndStopMoveFromNetwork
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[22]
+    value: AllStopped
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[23]
+    value: AnimatePuck
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[24]
+    value: AnimateQueenPuck
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[25]
+    value: BeginGame
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[26]
+    value: BeginNewRound
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[27]
+    value: ChangeStrikerColor
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[28]
+    value: DestroyQueen
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[29]
+    value: DisableBallTrigger
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[30]
+    value: DragStriker
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[31]
+    value: EnableBallTrigger
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[32]
+    value: EnableOrDisableCollider
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[33]
+    value: EnableOrDisableDots
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[34]
+    value: GameOver
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[35]
+    value: HandleOwnerShip
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[36]
+    value: HideWaitingMessage
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[37]
+    value: MakeChangesToGameBeginner
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[38]
+    value: MakeChangesToOtherPlayer
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[39]
+    value: MoveBackStriker
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[40]
+    value: MoveStriker
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[41]
+    value: MoveStrikerIn
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[42]
+    value: MoveStrikerOut
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[43]
+    value: OpponentScoredPoint
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[44]
+    value: PlayerLostPoint
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[45]
+    value: PlayerScoredPoint
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[46]
+    value: PlayerTurn
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[47]
+    value: QueenAcquired
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[48]
+    value: QueenNotAcquired
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[49]
+    value: ReEnableStriker
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[50]
+    value: ShowFoulMessage
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[51]
+    value: ShowMessage
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[52]
+    value: StopAudio
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[53]
+    value: StopPuck
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[54]
+    value: StrikerCanStrike
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[55]
+    value: StrikerCantStrike
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[56]
+    value: SyncPuck
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[57]
+    value: UpdateLoader
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[58]
+    value: AddBot
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[59]
+    value: CreateGame
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[60]
+    value: GiveCardsToPlayers
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[61]
+    value: InitBots
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[62]
+    value: LoadGameScene
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[63]
+    value: OnPlayerReady
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[64]
+    value: OnPlayerReadyToStartGame
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[65]
+    value: SentPlayerChoose
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[66]
+    value: SetCardsOnTable
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[67]
+    value: ShwoCards
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[68]
+    value: DisplayPlayerList
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[69]
+    value: EndGame
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[70]
+    value: GameFinished
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[71]
+    value: GameStarted
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[72]
+    value: GetPlayerTransforms
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[73]
+    value: MoveChessman
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[74]
+    value: SelectChessman
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[75]
+    value: SetCamera
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[76]
+    value: CheckBlueWonOrNot
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[77]
+    value: CheckYellowWonOrNot
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[78]
+    value: PlayRollDiceAudio
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[79]
+    value: RPCBlue1Play
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[80]
+    value: RPCBlue2Play
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[81]
+    value: RPCBlue3Play
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[82]
+    value: RPCBlue4Play
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[83]
+    value: RPCBlueCanNotPlay
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[84]
+    value: RPCBlueChance
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[85]
+    value: RPCCheckGreenWonOrNot
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[86]
+    value: RPCCheckRedWonOrNot
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[87]
+    value: RPCGameCompleted
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[88]
+    value: RPCGreen1Play
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[89]
+    value: RPCGreen2Play
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[90]
+    value: RPCGreen3Play
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[91]
+    value: RPCGreen4Play
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[92]
+    value: RPCGreenCanNotPlay
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[93]
+    value: RPCGreenChance
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[94]
+    value: RPCRed1Play
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[95]
+    value: RPCRed2Play
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[96]
+    value: RPCRed3Play
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[97]
+    value: RPCRed4Play
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[98]
+    value: RPCRedCanNotPlay
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[99]
+    value: RPCRedChance
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[100]
+    value: RPCYellow1Play
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[101]
+    value: RPCYellow2Play
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[102]
+    value: RPCYellow3Play
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[103]
+    value: RPCYellow4Play
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[104]
+    value: RPCYellowCanNotPlay
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[105]
+    value: RPCYellowChance
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[106]
+    value: ShowDiceAnimation
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[107]
+    value: UpdatePlayer1Name
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[108]
+    value: UpdatePlayer2Name
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[109]
+    value: UpdatePlayer3Name
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[110]
+    value: UpdatePlayer4Name
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[111]
+    value: BackToLobbyBtn
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[112]
+    value: SendString
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[113]
+    value: SetPlayerCustomValueA
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[114]
+    value: NotifyPlayerReconnected
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[115]
+    value: ResumeOpponent
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[116]
+    value: SetIsPause
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[117]
+    value: CheckOpponentConnectivity
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[118]
+    value: startGame
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[119]
+    value: WaitingPanel_Toggle
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[120]
+    value: IsGameOver
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[121]
+    value: TurnMessege
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[122]
+    value: DeleteRoom
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[123]
+    value: DeletemRoom
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: RpcList.Array.data[124]
+    value: SelectTable
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: DisableAutoOpenWizard
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: ShowSettings
+    value: 1
+    objectReference: {fileID: 0}
+  - target: {fileID: 0}
+    propertyPath: DevRegionSetOnce
+    value: 1
+    objectReference: {fileID: 0}
+  m_ExcludedProperties: []

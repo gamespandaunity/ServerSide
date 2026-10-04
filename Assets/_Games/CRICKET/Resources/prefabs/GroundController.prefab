@@ -1,0 +1,538 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &2452101198468064768
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 8317649789771493270}
+  - component: {fileID: 2566975691685549855}
+  - component: {fileID: 812074140220460481}
+  m_Layer: 0
+  m_Name: GroundController
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &8317649789771493270
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2452101198468064768}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2566975691685549855
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2452101198468064768}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 37595056f0752cc4591aed5c5e71c1d6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  sixDistanceCamera: {fileID: 0}
+  BG: {fileID: 0}
+  BallHitEffect: {fileID: 4710054557317310, guid: 6fe330f189252264ebcdcb1dd4ff1f8c,
+    type: 3}
+  canShowDRS: 0
+  canShowHotspot: 0
+  impactOffSideWithAttemptedShot: 0
+  drsCount: 0
+  bDRSPitchingOutsideLeg: 0
+  drsCalledByBattingTeam: -1
+  drsCalledByUser: -1
+  ball: {fileID: 0}
+  ballAngle: 0
+  pauseTheBall: 0
+  currentBallNoOfRuns: 0
+  ballReleased: 0
+  canShowFCLPowers: 0
+  edgeCatch: 0
+  batsman: {fileID: 0}
+  batsmanAnimationComponent: {fileID: 0}
+  Stump1AnimationComponent: {fileID: 0}
+  Stump2AnimationComponent: {fileID: 0}
+  BatsmanSkinRendererComponent: {fileID: 0}
+  MainUmpireSkinRendererComponent: {fileID: 0}
+  SideUmpireSkinRendererComponent: {fileID: 0}
+  BatColliderComponent: {fileID: 0}
+  batsmanSkin: {fileID: 0}
+  shotPlayed: 
+  batsmanAnimation: 
+  currentBatsmanHand: right
+  wicketKeeperSkin: {fileID: 0}
+  bowlerSkin: {fileID: 0}
+  fielder10: {fileID: 0}
+  currentBowlerType: fast
+  currentBowlerHand: right
+  fielder:
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  fielderSkin:
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  fieldRestriction1FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction2FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction3FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction4FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction5FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction6FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction7FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction8FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction9FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction10FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction11FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction12FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction13FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction14FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction15FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction16FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction17FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction18FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction19FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction20FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction21FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction22FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction23FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction24FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  fieldRestriction25FielderPosition:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  delayMakeFieldersAppeal: 0.15
+  runner: {fileID: 0}
+  runnerSkin: {fileID: 0}
+  mainUmpire: {fileID: 0}
+  sideUmpire: {fileID: 0}
+  mainUmpireSkin: {fileID: 0}
+  sideUmpireSkin: {fileID: 0}
+  action: -10
+  ballOnboundaryLine: 0
+  speedThresholdDuringBoundary: 0.5
+  controlFactor: 0
+  sideUmpireCameraSpot: {fileID: 0}
+  mainCamera: {fileID: 0}
+  groundCenterPoint: {fileID: 0}
+  digitalScreen: {fileID: 0}
+  rightSideCamera: {fileID: 0}
+  leftSideCamera: {fileID: 0}
+  previewCamera: {fileID: 0}
+  umpireCamera: {fileID: 0}
+  introCamera: {fileID: 0}
+  ultraMotionCamera: {fileID: 0}
+  closeUpCamera: {fileID: 0}
+  replayCamera: {fileID: 0}
+  rightSideBoundaryCamera: {fileID: 0}
+  leftSideBoundaryCamera: {fileID: 0}
+  limitReplayCameraHeight: 0
+  veteranCamera: {fileID: 0}
+  zombieCamera: {fileID: 0}
+  fireCamera: {fileID: 0}
+  googlyCamera: {fileID: 0}
+  showShadows: 1
+  bowlerSide: right
+  slipShot: 0
+  replayMode: 0
+  CanShowCountDown: 0
+  tutorialArrow: {fileID: 0}
+  lineFreeHit: 0
+  lastBowledBall: lineball
+  previewPanel: {fileID: 0}
+  isnextball: 0
+  ballTextureRed: {fileID: 2800000, guid: dee8c3bfb585d0542b102318cd0ffa13, type: 3}
+  ballTextureWhite: {fileID: 2800000, guid: 4a39cd170fbcb7644aed463ff738b720, type: 3}
+  ballTextureRenderer: {fileID: 0}
+  dummyBallTextureRenderer:
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  bowlerBallTexture: {fileID: 0}
+  digitalBoardContent:
+  - {fileID: 2800000, guid: c804ac197b7a5a84a9e9f5b64ad3207e, type: 3}
+  - {fileID: 2800000, guid: 9cfa8965b234d0d41bd55aa587382f4a, type: 3}
+  - {fileID: 2800000, guid: 79ee71cd7f4394c4dba83f2e8d4aa863, type: 3}
+  - {fileID: 2800000, guid: 7a059cea39022574a913d76abd82d8bf, type: 3}
+  umpireTexture:
+  - {fileID: 2800000, guid: 5775b2b6ea294884ba9ef2fca58bbea1, type: 3}
+  - {fileID: 2800000, guid: 67991c6ece58b1a4f849c4f8c3fcdd21, type: 3}
+  - {fileID: 2800000, guid: 7aba8352fa159c44f9c95005dc593c04, type: 3}
+  umpireMaterial:
+  - {fileID: 2100000, guid: a7623592487a3cd4e9ac3bfb81c58623, type: 2}
+  - {fileID: 2100000, guid: 72f73544f150c874eb49d9db80f538f9, type: 2}
+  resumeGO: {fileID: 0}
+  three: {fileID: 0}
+  two: {fileID: 0}
+  one: {fileID: 0}
+  shotAngle: 0
+  mainCameraOnTopDownView: 0
+  shotNameText: {fileID: 0}
+  hotspotReference:
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  noLight: {fileID: 4800000, guid: 0c76be2e5d777794ca882ea959adb5f9, type: 3}
+  oneLight: {fileID: 4800000, guid: 8813ccfb4cc98434298e329a15a9da1d, type: 3}
+  lights:
+  - {fileID: 0}
+  - {fileID: 0}
+  edgeRefs: {fileID: 0}
+  broadCastCamera: {fileID: 0}
+  gamePaused: 0
+  fieldRestriction: 1
+  UmpireInitialDecision: 
+  IrCam: {fileID: 0}
+  impactImg: {fileID: 0}
+  waveImg: {fileID: 0}
+  SideCam: {fileID: 0}
+  bat: {fileID: 0}
+  ultraEdgeImpact: {fileID: 0}
+  UltraEdgeCam: {fileID: 0}
+  ShowNotOutAnim: 0
+  ballTimeSaved: 0
+  customBallMovement: 0
+  changedBallMovement: 0
+  ShadowsToDisable:
+  - {fileID: 0}
+  - {fileID: 0}
+  elapsedTime: 0
+  UltraEdgeCutscenePlaying: 0
+  umpireAnimationPlayed: 0
+  UserCanAskReview: 0
+  AiCanAskReview: 0
+  validBall: 0
+  canCountBall: 0
+  runsScored: 0
+  extraRun: 0
+  batsmanID: 0
+  isWicket: 0
+  wicketType: 0
+  bowlerID: 0
+  catcherID: 0
+  batsmanOut: 0
+  isBoundary: 0
+  animStarted: 0
+  ballPath1:
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  ballSpeed: 1
+  travelTime: 0.08
+  SnickoMeter: {fileID: 0}
+  referencePath: {fileID: 0}
+  startingPoint: {fileID: 0}
+  endingPoint: {fileID: 0}
+  StartingFrame: 0.45
+  EndingFrame: 0.5
+  midFrame: 0
+  snickoStatus: {fileID: 0}
+  snickoEdged: {fileID: 21300000, guid: 363cc36c3ad4af149b6c68d0d62b2dda, type: 3}
+  snickoNotEdged: {fileID: 21300000, guid: 0c7f1cb31aa094441856cd75593bf84a, type: 3}
+--- !u!114 &812074140220460481
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2452101198468064768}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c3f68a6bb2f911b4c8335afa426f28ec, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  enabled: 1
+  strikerHittingDirection: 000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+  priorityList: 0000000000000000000000000000000000000000
+  checkFieldList: 
+  needFieldingChange: 0
+  previousFieldSet: 0
+  currentFieldSet: 0
+  lastHittedAngle: 0
