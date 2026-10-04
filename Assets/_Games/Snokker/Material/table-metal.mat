@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 6
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_Name: table-metal
+  m_Shader: {fileID: 4800000, guid: f97c4f2c773965447bb5ff6890c2f7cb, type: 3}
+  m_ShaderKeywords:
+  m_LightmapFlags: 5
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: 2000
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _Cube:
+        m_Texture: {fileID: 8900000, guid: a3a323b77368855468e4d58c4b649a46, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MainTex:
+        m_Texture: {fileID: 2800000, guid: 00a619a02e719e3439c1246f8472f213, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Floats:
+    - _RimPower: 8
+    - _Shininess: 0.89656717
+    m_Colors:
+    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _ReflColor: {r: 0.16176468, g: 0.16176468, b: 0.16176468, a: 1}
+    - _RimColor: {r: 0.2647059, g: 0.2647059, b: 0.2647059, a: 1}
+    - _RimDirection: {r: 2.5, g: 2.5, b: 2.5, a: 0}
+    - _SpecColor: {r: 0.85882354, g: 0.85882354, b: 0.85882354, a: 1}
