@@ -1,0 +1,1 @@
+Please read the documentation named "Highway Racer Photon Integration For Multiplayer" in the documentation folder.
