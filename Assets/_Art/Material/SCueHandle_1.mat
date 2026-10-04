@@ -1,0 +1,68 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: SCueHandle
+  m_Shader: {fileID: 4800000, guid: 15ae7f06d08c568429e7de5620a9e8e4, type: 3}
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 5
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: 2000
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _ColorTex:
+        m_Texture: {fileID: 2800000, guid: 46e807c11a3b4b741b0d22d60aa91a35, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Cube:
+        m_Texture: {fileID: 8900000, guid: c293239c6b0dc524ab1571ebb5865c21, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _IntegrateBRDF:
+        m_Texture: {fileID: 2800000, guid: 43aee3b803b697346bfb2e01341c227d, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MainTex:
+        m_Texture: {fileID: 2800000, guid: 7d79615eb1e3ed24d95af21a307f24c5, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: {}
+    m_Floats:
+    - _AmbientHeight: 1.1
+    - _AmbientLightness: 0.22
+    - _AmbientLow: 0.22
+    - _Amount: 1
+    - _BumpScale: 1
+    - _Cutoff: 0.5
+    - _DetailNormalMapScale: 1
+    - _DiffuseAmount: 1
+    - _DstBlend: 0
+    - _FresnelAmount: 0.43
+    - _FresnelFocus: 0.22
+    - _Glossiness: 0.5
+    - _MainAmount: 1
+    - _Metallic: 0
+    - _Mode: 0
+    - _OcclusionStrength: 1
+    - _Parallax: 0.02
+    - _Roughness: 0
+    - _SrcBlend: 1
+    - _UVSec: 0
+    - _ZWrite: 1
+    m_Colors:
+    - _BBoxMax: {r: 10.424, g: 11.124001, b: 8.436501, a: 0}
+    - _BBoxMin: {r: -9.496, g: 7.1240005, b: -8.379501, a: 0}
+    - _Color: {r: 0.09803922, g: 0.13333334, b: 0.8392157, a: 1}
+    - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
+    - _EnviCubeMapPos: {r: 0.464, g: 9.124001, b: 0.02850008, a: 0}
+  m_BuildTextureStacks: []

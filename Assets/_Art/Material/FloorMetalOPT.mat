@@ -1,0 +1,46 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: FloorMetalOPT
+  m_Shader: {fileID: 4800000, guid: 8a0a93965f6e7214196cb750e908778c, type: 3}
+  m_ValidKeywords: []
+  m_InvalidKeywords:
+  - _EMISSION
+  m_LightmapFlags: 1
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _Cube:
+        m_Texture: {fileID: 8900000, guid: ed70a219170413c46928efac43204e04, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MainTex:
+        m_Texture: {fileID: 2800000, guid: 03577529c9ddcdb48ba3d0214ecaaef9, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: {}
+    m_Floats:
+    - '<noninit>': 8.74
+    - _Amount: 2.51
+    - _FresnelAmount: 0.89
+    - _FresnelFocus: 0.08
+    - _MainAmount: 1
+    m_Colors:
+    - '<noninit>': {r: 0, g: 0, b: 0, a: 1}
+    - _BBoxMax: {r: 4.820505, g: 9.93155, b: 3.308378, a: 0}
+    - _BBoxMin: {r: -4.788043, g: 7.117259, b: -3.4138129, a: 0}
+    - _EnviCubeMapPos: {r: 0.005398006, g: 7.9915237, b: -0.0074069784, a: 0}
+    - _FresnelColor: {r: 0.2352941, g: 0.29533464, b: 0.4705882, a: 1}
+    - _ReflectionColor: {r: 0.52184254, g: 0.5343396, b: 0.5588235, a: 1}
+  m_BuildTextureStacks: []

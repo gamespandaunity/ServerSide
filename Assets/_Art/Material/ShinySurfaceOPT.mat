@@ -1,0 +1,44 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: ShinySurfaceOPT
+  m_Shader: {fileID: 4800000, guid: b9f085b83055b9b48bc51265063136bf, type: 3}
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 5
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: 2000
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _Cube:
+        m_Texture: {fileID: 8900000, guid: ed70a219170413c46928efac43204e04, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MainTex:
+        m_Texture: {fileID: 2800000, guid: 3d9354a1c598bf74bbc68eb52931b0ed, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: {}
+    m_Floats:
+    - '<noninit>': 0.11
+    - _Amount: 0.43
+    - _FresnelAmount: 0.99
+    - _FresnelFocus: 0.04
+    - _MainAmount: 0.86
+    m_Colors:
+    - '<noninit>': {r: 0, g: 0, b: 0, a: 1}
+    - _BBoxMax: {r: 4.820505, g: 9.93155, b: 3.308378, a: 0}
+    - _BBoxMin: {r: -4.788043, g: 7.117259, b: -3.4138129, a: 0}
+    - _EnviCubeMapPos: {r: 0.005398006, g: 7.9915237, b: -0.0074069784, a: 0}
+    - _ReflectionColor: {r: 0.1875, g: 0.2353448, b: 0.375, a: 1}
+  m_BuildTextureStacks: []
