@@ -1,0 +1,331 @@
+using Photon.Pun;
+using Photon.Pun.UtilityScripts;
+using Photon.Realtime;
+using System;
+using System.Collections;
+using UnityEngine;
+
+namespace com.nss.teenpatti.dream
+{
+    public class PlayerTurnManager :  MonoBehaviourPunCallbacks, IPunTurnManagerCallbacks
+    {
+        PunTurnManager turnManager;
+        UIManager uIManager;
+        bool IsShowingResults;
+        private void Awake()
+        {
+            uIManager= UIManager.Instance;
+        }
+        void Start()
+        {
+            this.turnManager = this.gameObject.AddComponent<PunTurnManager>();
+            this.turnManager.TurnManagerListener = this;
+            this.turnManager.TurnDuration = 5f;
+
+        }
+        private ResultType result;
+        public enum ResultType
+        {
+            None = 0,
+            Draw,
+            LocalWin,
+            LocalLoss
+        }
+        // Update is called once per frame
+        void Update()
+        {
+
+            if (Input.GetKeyUp(KeyCode.L))
+            {
+                PhotonNetwork.LeaveRoom();
+            }
+            if (!PhotonNetwork.InRoom)
+            {
+                return;
+            }
+            if (PhotonNetwork.IsConnected && uIManager.DisconnectedPanel.activeSelf == true)
+            {
+                uIManager.DisconnectedPanel.SetActive(false);
+            }
+            if (!PhotonNetwork.IsConnected && !uIManager.DisconnectedPanel.activeSelf != true)
+            {
+                uIManager.DisconnectedPanel.SetActive(true);
+            }
+            if (PhotonNetwork.CurrentRoom.Players.Count > 1)
+            {
+                if (this.turnManager.IsOver)
+                {
+                    return;
+                }
+
+                /*
+                // check if we ran out of time, in which case we loose
+                if (turnEnd<0f && !IsShowingResults)
+                {
+                        Debug.Log("Calling OnTurnCompleted with turnEnd ="+turnEnd);
+                        OnTurnCompleted(-1);
+                        return;
+                }
+            */
+
+                    uIManager.TurnText.text = this.turnManager.Turn.ToString();
+
+                //// ************************************************************************ IMAGER TIMER ******************************************************************
+                if (this.turnManager.Turn > 0  && !IsShowingResults)
+                {
+
+                    uIManager.TimeText.text = this.turnManager.RemainingSecondsInTurn.ToString("F1") + " SECONDS";
+
+                    uIManager.FillerImage.fillAmount = turnManager.RemainingSecondsInTurn / turnManager.TurnDuration;
+                }
+                this.UpdatePlayerTexts();
+
+                if (PhotonNetwork.CurrentRoom.Players.Count < 2)
+                {
+                    //this.remoteSelectionImage.color = new Color(1, 1, 1, 0);
+                    
+                }
+                else if (this.turnManager.Turn > 0 && !this.turnManager.IsCompletedByAll)
+                {
+                    // alpha of the remote hand is used as indicator if the remote player "is active" and "made a turn"
+                    Player remote = PhotonNetwork.LocalPlayer.GetNext();
+                    float alpha = 0.5f;
+                    if (this.turnManager.GetPlayerFinishedTurn(remote))
+                    {
+                        alpha = 1;
+                    }
+                    if (remote != null && remote.IsInactive)
+                    {
+                        alpha = 0.1f;
+                    }
+                }
+                if (Input.GetMouseButton(0))
+                {
+                    Player player = PhotonNetwork.LocalPlayer;
+
+                    Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+                    RaycastHit2D hit = Physics2D.Raycast(ray.origin, Vector2.zero, float.PositiveInfinity);
+                    if (hit.collider != null && turnManager.Turn % 2 == 0 && player.IsLocal)
+                    {
+                        //hit.collider.gameObject.GetComponent<Tile>().clicked = true;
+                        hit.collider.enabled = false;
+                        //hit.collider.gameObject.GetComponent<SpriteRenderer>().sprite = xSprite;
+                        this.UpdateScores();
+                        this.OnEndTurn();
+                    }
+                    else if (hit.collider != null && turnManager.Turn % 2 != 0 && !player.IsLocal)
+                    {
+                        //hit.collider.gameObject.GetComponent<Tile>().clicked = true;
+                        hit.collider.enabled = false;
+                        //hit.collider.gameObject.GetComponent<SpriteRenderer>().sprite = oSprite;
+                        this.UpdateScores();
+                        this.OnEndTurn();
+                    }
+                }
+            }
+        }
+        public void PlayerPressBtn()
+        {
+            Player player = PhotonNetwork.LocalPlayer;
+
+            //Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+            //RaycastHit2D hit = Physics2D.Raycast(ray.origin, Vector2.zero, float.PositiveInfinity);
+            if (turnManager.Turn % 2 == 0 && player.IsLocal)
+            {
+                //hit.collider.gameObject.GetComponent<Tile>().clicked = true;
+               
+                //hit.collider.gameObject.GetComponent<SpriteRenderer>().sprite = xSprite;
+                this.UpdateScores();
+                this.OnEndTurn();
+            }
+            else if (turnManager.Turn % 2 != 0 && !player.IsLocal)
+            {
+                //hit.collider.gameObject.GetComponent<Tile>().clicked = true;
+               
+                //hit.collider.gameObject.GetComponent<SpriteRenderer>().sprite = oSprite;
+                this.UpdateScores();
+                this.OnEndTurn();
+            }
+        }
+        #region TurnManager Callbacks
+        /// <summary>Called when a turn begins (Master Client set a new Turn number).</summary>
+        public void OnTurnBegins(int turn)
+        {
+            Debug.Log("OnTurnBegins() turn: " + turn);
+
+            IsShowingResults = false;
+        }
+
+        public void OnTurnCompleted(int obj)
+        {
+            Debug.Log("OnTurnCompleted: " + obj);
+
+            this.UpdateScores();
+            this.OnEndTurn();
+        }
+
+        // when a player moved (but did not finish the turn)
+        public void OnPlayerMove(Player photonPlayer, int turn, object move)
+        {
+            Debug.Log("OnPlayerMove: " + photonPlayer + " turn: " + turn + " action: " + move);
+            throw new NotImplementedException();
+        }
+
+        // when a player made the last/final move in a turn
+        public void OnPlayerFinished(Player photonPlayer, int turn, object move)
+        {
+            Debug.Log("OnTurnFinished: " + photonPlayer + " turn: " + turn + " action: " + move);
+
+            if (photonPlayer.IsLocal)
+            {
+                //this.localSelection = (Hand)(byte)move;
+            }
+            else
+            {
+                //this.remoteSelection = (Hand)(byte)move;
+            }
+        }
+        public void OnTurnTimeEnds(int obj)
+        {
+            if (!IsShowingResults)
+            {
+                Debug.Log("OnTurnTimeEnds: Calling OnTurnCompleted");
+                OnTurnCompleted(-1);
+            }
+        }
+        private void UpdateScores()
+        {
+            if (this.result == ResultType.LocalWin)
+            {
+                PhotonNetwork.LocalPlayer.AddScore(1);   // this is an extension method for PhotonPlayer. you can see it's implementation
+            }
+        }
+
+        #endregion
+
+        #region Core Gameplay Methods
+
+
+        /// <summary>Call to start the turn (only the Master Client will send this).</summary>
+        public void StartTurn()
+        {
+            if (PhotonNetwork.IsMasterClient)
+            {
+                this.turnManager.BeginTurn();
+            }
+        }
+
+        /*    public void MakeTurn(Hand selection)
+            {
+                this.turnManager.SendMove((byte)selection, true);
+            }*/
+
+        public void OnEndTurn()
+        {
+            this.StartCoroutine("ShowResultsBeginNextTurnCoroutine");
+        }
+        public IEnumerator ShowResultsBeginNextTurnCoroutine()
+        {
+            IsShowingResults = true;
+            // yield return new WaitForSeconds(1.5f);
+
+            if (this.result == ResultType.Draw)
+            {
+
+            }
+            else
+            {
+
+            }
+
+            yield return new WaitForSeconds(2.0f);
+
+            this.StartTurn();
+        }
+        public void EndGame()
+        {
+            Debug.Log("EndGame");
+        }
+
+        private void UpdatePlayerTexts()
+        {
+            Player remote = PhotonNetwork.LocalPlayer.GetNext();
+            Player local = PhotonNetwork.LocalPlayer;
+
+            if (remote != null)
+            {
+                // should be this format: "name        00"
+                //this.RemotePlayerText.text = remote.NickName;
+                //this.RemotePlayerValueText.text = remote.GetScore().ToString("D2");
+            }
+            else
+            {
+
+                //TimerFillImage.anchorMax = new Vector2(0f, 1f);
+                uIManager.TimeText.text = "";
+                //this.RemotePlayerText.text = "A espera de um Oponente...";
+                //this.RemotePlayerValueText.text = "00";
+            }
+
+            if (local != null)
+            {
+                // should be this format: "YOU   00"
+                //this.LocalPlayerText.text = local.GetScore().ToString("D2");
+            }
+        }
+        public void OnClickConnect()
+        {
+            PhotonNetwork.ConnectUsingSettings();
+            // PhotonHandler.StopFallbackSendAckThread();  // this is used in the demo to timeout in background!
+        }
+
+        public void OnClickReConnectAndRejoin()
+        {
+            PhotonNetwork.Disconnect();
+            PhotonNetwork.ReconnectAndRejoin();
+            //PhotonHandler.StopFallbackSendAckThread();  // this is used in the demo to timeout in background!
+        }
+        #endregion
+
+        void RefreshUIViews()
+        {
+            uIManager.FillerImage.fillAmount = 1;
+            //ConnectUiView.gameObject.SetActive(!PhotonNetwork.InRoom);
+            //GameUiView.gameObject.SetActive(PhotonNetwork.InRoom);
+        }
+        public override void OnLeftRoom()
+        {
+            Debug.Log("OnLeftRoom()");
+
+            RefreshUIViews();
+        }
+        public override void OnJoinedRoom()
+        {
+            RefreshUIViews();
+
+            if (PhotonNetwork.CurrentRoom.Players.Count == 2)
+            {
+                if (this.turnManager.Turn == 0)
+                {
+                    // when the room has two players, start the first turn (later on, joining players won't trigger a turn)
+                    this.StartTurn();
+                }
+            }
+            else
+            {
+                Debug.Log("Waiting for another player");
+            }
+        }
+        public override void OnPlayerEnteredRoom(Player newPlayer)
+        {
+            if (PhotonNetwork.CurrentRoom.Players.Count == 2)
+            {
+                if (this.turnManager.Turn == 0)
+                {
+                    // when the room has two players, start the first turn (later on, joining players won't trigger a turn)
+                    this.StartTurn();
+                }
+            }
+        }
+    }
+}
