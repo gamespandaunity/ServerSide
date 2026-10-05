@@ -25,11 +25,11 @@ namespace NetworkManagement
 
     }
 
-#if PHOTON_UNITY_NETWORKING
-    public abstract class NetworkEngine : MonoBehaviourPunCallbacks
-#else
+//#if PHOTON_UNITY_NETWORKING
+   // public abstract class NetworkEngine : MonoBehaviourPunCallbacks
+//#else
 public abstract class NetworkEngine : MonoBehaviour
-#endif
+//#endif
     {
         public event NetworkHandler OnNetwork;
 
