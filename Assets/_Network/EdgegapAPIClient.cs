@@ -149,7 +149,8 @@ public class EdgegapAPIClient : MonoBehaviour
     public string localTestAddress = "localhost:7777";
 
     [Header("Edgegap Configuration")]
-    public string apiToken = "0c86a4d6-5a4a-479e-af1d-d1dcf063352d";
+    // UF-02: no Edgegap credential in the build; the backend owns it.
+    public string apiToken = "";
     public string applicationName = "games-baba";
     public string versionName = "v2.99.17.47.49.28.utc";
 
