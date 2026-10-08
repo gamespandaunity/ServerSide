@@ -187,6 +187,7 @@ public class SnokerNetwork : NetworkBehaviour
         _SnokerGameManager._SnokerCameraManager.cameraSwitchMode(IsMyTurn() ? CAMERA_MODE.NORMAL : CAMERA_MODE.AI);
         StickManager.instance.NetorkedTurn = SnokerGameManager.currentTurn;
         isTossDone = true;
+        SnookerFlow.Log($"{SnookerFlow.Who(SnokerGameManager.currentTurn)} won the toss and will break");
 
     }
 
@@ -227,6 +228,7 @@ public class SnokerNetwork : NetworkBehaviour
         Holestrigger.enabled = true;
         _SnokerGameManager._SnokerCameraManager.cameraSwitchMode(IsMyTurn() ? CAMERA_MODE.NORMAL : CAMERA_MODE.AI);
         isTossDone = true;
+        SnookerFlow.Log($"{SnookerFlow.Who(num)} won the toss and will break");
     }
 
     public IEnumerator ChangeTurn()
@@ -239,6 +241,7 @@ public class SnokerNetwork : NetworkBehaviour
     public void NextTurn(string changeTurn)
     {
         SnokerGameManager.currentTurn = changeTurn;
+        SnookerFlow.Log($"turn → {SnookerFlow.Who(changeTurn)}");
         _SnokerGameManager.isyourturn = IsMyTurn();
         UpdateTimerDisplay();
         this.Delay(1, () => _SnokerUIManager.showNotification(_mainScript.playerNames[IsMyTurn() ? 0 : 1] + " to Play"));
@@ -356,6 +359,7 @@ public class SnokerNetwork : NetworkBehaviour
         {
             CueBallStartingpos = _mainScript.transform.position;
         }
+        SnookerFlow.Log(TurnChanged ? $"turn → {SnookerFlow.Who(turn)}" : $"turn continues — {SnookerFlow.Who(turn)} plays again");
         if (TurnChanged)
             this.Delay(1, () => _SnokerUIManager.showNotification(_mainScript.playerNames[IsMyTurn() ? 0 : 1] + " to Play"));
         _mainScript.switchControls();
@@ -456,6 +460,7 @@ public class SnokerNetwork : NetworkBehaviour
             Debug.Log("[SnokerNetwork] Turn timer expired on a client — waiting for the server's timeout hit (client no longer fires it locally).");
             yield break;
         }
+        SnookerFlow.Log($"turn timer ran out for {SnookerFlow.Who(SnokerGameManager.currentTurn)}");
         StickManager.instance.ExecuteBallHit(0f,
                 _mainScript.cueParentObjTransform.forward, _mainScript.guideDirCueBallTrans.forward, _mainScript.transform.position,
                 _mainScript.lastTargetVector, _SnokerGameManager.GetCurrentTargetAsInt(),
@@ -610,6 +615,7 @@ public class SnokerNetwork : NetworkBehaviour
                 _mainScript.onClickPlaceCueOkBtn();
             }
             _mainScript.strikeCount++;
+            SnookerFlow.Shot(_mainScript.strikeCount, shotPower);
 
             _mainScript.canRePlaceCueBall = false;
             _mainScript.placeCueBtnObj.SetActive(false);
@@ -689,6 +695,7 @@ public class SnokerNetwork : NetworkBehaviour
                 _mainScript.onClickPlaceCueOkBtn();
             }
             _mainScript.strikeCount++;
+            SnookerFlow.Shot(_mainScript.strikeCount, shotPower);
 
             _mainScript.canRePlaceCueBall = false;
             _mainScript.placeCueBtnObj.SetActive(false);
@@ -757,6 +764,7 @@ public class SnokerNetwork : NetworkBehaviour
             NetworkGameManager.Instance.creatorData.Scores += val;
         if (NetworkGameManager.Instance.joinerData.playerId == toPlayer)
             NetworkGameManager.Instance.joinerData.Scores += val;
+        if (val != 0) SnookerFlow.Log($"score updated: {SnookerFlow.Who(toPlayer)} +{val} → {SnookerFlow.Scores()}");
         StickManager.instance.RpcUpdateScoreText(NetworkGameManager.Instance.creatorData.Scores, NetworkGameManager.Instance.joinerData.Scores);
 
     }

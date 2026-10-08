@@ -576,6 +576,7 @@ public class mainScript : MonoBehaviour
 
     private void Start()
     {
+        SnookerFlow.Main = this;
         Debug.Log("snoker" + SnokerNetwork.IsMultiplayer);
         if (!SnokerNetwork.IsMultiplayer)
         {
@@ -1452,6 +1453,7 @@ public class mainScript : MonoBehaviour
         thisRigidbody.constraints |= RigidbodyConstraints.FreezePositionY;
         spinRotationY = 0f;
         Debug.Log("Cue Ball Potted");
+        SnookerFlow.Log("foul — cue ball potted (scratch)");
 
         _SnokerUIManager.showNotification("Scratch!\nCue Ball Pocketed");
     }
@@ -2629,6 +2631,7 @@ public class mainScript : MonoBehaviour
         thisRigidbody.isKinematic = false;
         thisRigidbody.linearVelocity = Vector3.zero;
         strikeCount++;
+        SnookerFlow.Shot(strikeCount, shotPower);
 
         canRePlaceCueBall = false;
         placeCueBtnObj.SetActive(false);
@@ -2975,6 +2978,7 @@ public class mainScript : MonoBehaviour
         {
             2.Show("check first legal ball");
             foulInThisTurn = true;
+            SnookerFlow.Log($"foul — cue ball hit the {SnookerFlow.Ball(snookerFirstTouchedBallNum)} first, target was {SnookerFlow.Target}");
 
             if (SnokerNetwork.IsMultiplayer)
                 StickManager.instance?.RpcShowNotification("Foul!\nIllegal Ball Hit!", foulInThisTurn);
@@ -3062,11 +3066,13 @@ public class mainScript : MonoBehaviour
         {
             ballPottedInThisTurn = true;
             snookerPointsCurShot += num;
+            SnookerFlow.Log($"{SnookerFlow.Who(SnokerGameManager.currentTurn)} potted the {SnookerFlow.Ball(num)} (+{num})");
         }
         else
         {
             foulInThisTurn = true;
             snookerPointsCurShot += num;
+            SnookerFlow.Log($"foul — {SnookerFlow.Ball(num)} potted, target was {SnookerFlow.Ball(snookerTargetBall)}");
             if (SnokerNetwork.IsMultiplayer)
                 _snokerNetwork.RunRPCAfterInternet(() =>
                 {
@@ -3139,14 +3145,20 @@ public class mainScript : MonoBehaviour
         HandleBallRespotting();
         if (strikeCount > 0 || SnokerNetwork.IsMultiplayer)
         {
+            if (!ballPottedInThisTurn && !foulInThisTurn)
+                SnookerFlow.Log($"{SnookerFlow.Who(SnokerGameManager.currentTurn)}: no ball potted, no foul");
             ProcessTurnResults();
             if (HandleGameEndConditions(gameMode))
                 return;
 
             _SnokerGameManager.UpdateTargetBall();
-
+            SnookerFlow.Log($"next target: {SnookerFlow.Target}");
 
         }
+        if (ShouldChangeTurn())
+            SnookerFlow.Log($"{SnookerFlow.Who(SnokerGameManager.currentTurn)}'s turn ends" + (foulInThisTurn ? " (foul)" : ""));
+        else
+            SnookerFlow.Log($"turn continues — {SnookerFlow.Who(SnokerGameManager.currentTurn)} plays again");
         if (ShouldChangeTurn())
         {
             if (gameMode == MODE_TYPE.AI)
@@ -3264,6 +3276,7 @@ public class mainScript : MonoBehaviour
         if (!firstBallTouched && !cueBallPotted)
         {
             alertOptionalTextPrefix = "Missed!\n";
+            SnookerFlow.Log("foul — missed, no ball touched");
             // Only show notification in AI mode
             if (_SnokerUIManager != null)
             {
@@ -3351,6 +3364,7 @@ public class mainScript : MonoBehaviour
     public void NetworkWinner(string winnerId, bool DueToDisconnect = false, bool timerEnd = false)
     {
         _SnokerGameManager.gameWinner = winnerId;
+        SnookerFlow.Log($"result: {SnookerFlow.Who(winnerId)} wins" + (DueToDisconnect ? " — opponent disconnected" : timerEnd ? " — match time over" : "") + $" ({SnookerFlow.Scores()})");
 
         if (winnerId == staticVariables.UserProfiledata.user._id.ToString())
         {
@@ -3440,6 +3454,7 @@ public class mainScript : MonoBehaviour
         }
 
         setAllBallKinematic(true, 99);
+        SnookerFlow.Log($"scores tied ({SnookerFlow.Scores()}) — black re-spotted, {SnookerFlow.Who(SnokerGameManager.currentTurn)} plays with ball in hand");
         _SnokerUIManager.showNotification(
             $"Scores Tied, Re-spotting the Black.\n{playerNames[SnokerGameManager.currentTurn == staticVariables.UserProfiledata.user._id.ToString() ? 0 : 1]} won the toss and will strike first.",
             7f);
@@ -3456,6 +3471,7 @@ public class mainScript : MonoBehaviour
             _SnokerGameManager.gameWinner = snookerScoresVal[0] > snookerScoresVal[1] ? staticVariables.UserProfiledata.user._id.ToString() : "ai";
         }
         Debug.Log("Who is winner " + _SnokerGameManager.gameWinner + "--" + snookerScoresVal[0] + "--" + snookerScoresVal[1]);
+        SnookerFlow.Log($"black potted — game over, {SnookerFlow.Who(_SnokerGameManager.gameWinner)} wins ({SnookerFlow.Scores()})");
     }
 
     public void HandleBallRespotting()
@@ -3494,6 +3510,7 @@ public class mainScript : MonoBehaviour
 
             if (SnokerGameManager.bBallInHand)
             {
+                SnookerFlow.Log($"ball in hand for {SnookerFlow.Who(SnokerGameManager.currentTurn)}");
                 if (gameMode == MODE_TYPE.Multiplayer)
                 {
                     setAllBallKinematic(true, 99);
@@ -3700,6 +3717,7 @@ public class mainScript : MonoBehaviour
             _SnokerGameManager._SnokerAIManager.aiBallsPottedInThisTurn = 0;
         }
 
+        SnookerFlow.Log($"turn → {SnookerFlow.Who(SnokerGameManager.currentTurn)}");
         igSnookerTurnIndicator.SetParent(snookerScoresText[SnokerGameManager.currentTurn == staticVariables.UserProfiledata.user._id.ToString() ? 0 : 1].transform, false);
         if (SnokerGameManager.currentTurn == staticVariables.UserProfiledata.user._id.ToString())
         {
@@ -3756,7 +3774,7 @@ public class mainScript : MonoBehaviour
         if (TimerTurn == SnokerGameManager.currentTurn)
         {
 
-
+            SnookerFlow.Log($"turn timer ran out for {SnookerFlow.Who(TimerTurn)}");
             hitTheBall(0, cueParentObjTransform.forward, guideDirCueBallTrans.forward, true);
 
         }
@@ -3839,6 +3857,7 @@ public class mainScript : MonoBehaviour
                 }
             }
             Debug.Log("Re-spotting ball: " + (i + 1) + " at position: " + vector);
+            SnookerFlow.Log($"{SnookerFlow.Ball(i - 13)} re-spotted");
 
             _SnokerGameManager.ballsArray[i].SetActive(true);
             _SnokerGameManager.ballsArray[i].transform.position = vector;
@@ -3869,6 +3888,7 @@ public class mainScript : MonoBehaviour
         {
             snookerScoresVal[toPlayer == "ai" ? 1 : 0] += val;
             snookerScoresText[toPlayer == "ai" ? 1 : 0].text = string.Empty + snookerScoresVal[toPlayer == "ai" ? 1 : 0];
+            if (val != 0) SnookerFlow.Log($"score updated: {SnookerFlow.Who(toPlayer)} +{val} → {SnookerFlow.Scores()}");
         }
     }
 
@@ -3907,6 +3927,7 @@ public class mainScript : MonoBehaviour
 
             }
         }
+        SnookerFlow.Log($"foul penalty: {Mathf.Clamp(val, 4, 7)} points to {SnookerFlow.Who(PenaltyPointID)}");
         snookerGiveScorePoints(PenaltyPointID, Mathf.Clamp(val, 4, 7));
     }
     Vector3 lastvalidpos = Vector3.zero;
@@ -4147,6 +4168,7 @@ public class mainScript : MonoBehaviour
         cueRotValueX = inputToRotValue.x;
         resetCueAndCamDirection();
         setGuideColorWhite();
+        SnookerFlow.GameStarted($"game started — {(SnokerNetwork.IsMultiplayer ? "multiplayer" : "vs " + playerNames[1])}, {_SnokerGameManager.snookerRedsSelected} reds");
         if (!SnokerNetwork.IsMultiplayer)
         {
             switchScreen("InGame");
@@ -4167,6 +4189,7 @@ public class mainScript : MonoBehaviour
             num = staticVariables.UserProfiledata.user._id.ToString();
         }
         SnokerGameManager.currentTurn = num;
+        SnookerFlow.Log($"{SnookerFlow.Who(num)} won the toss and will break");
         _SnokerUIManager.showNotification((string.Empty) + playerNames[SnokerGameManager.currentTurn == "ai" ? 1 : 0] + " has won the toss\nand will break first.", 5f);
         if (SnokerGameManager.currentTurn == staticVariables.UserProfiledata.user._id.ToString())
         {

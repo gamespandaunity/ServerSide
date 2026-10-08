@@ -616,6 +616,7 @@ public class StickManager : NetworkBehaviour
     [Server]
     public void GameWinnerId(string playerId, bool DueToDisconnect)
     {
+        SnookerFlow.Log($"game over — {SnookerFlow.Who(playerId)} wins" + (DueToDisconnect ? " (opponent disconnected)" : "") + $" ({SnookerFlow.Scores()})");
         NetworkGameManager.Instance.creatorData.Scores = 0;
         NetworkGameManager.Instance.joinerData.Scores = 0;
         ApiAndRoomManager._instance.WinnerLossChallenge(playerId.ToString());
