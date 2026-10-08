@@ -1025,15 +1025,8 @@ public class GameGUIController : NetworkBehaviour
     //    }
     //}
 
-    // Update is called once per frame
-    void Update()
-    {
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            NetworkGameManager.Instance.CmdPlayerFinished(true, staticVariables.UserProfiledata.user._id);
-
-        }
-    }
+    // (A leftover debug Update() sent CmdPlayerFinished(true, me) on the Space key — an instant win for anyone with a
+    // keyboard. Removed 8 Oct 2026.)
 
     public void FinishedGame()
     {
@@ -1827,6 +1820,30 @@ public class GameGUIController : NetworkBehaviour
         if (_flowPos == null || home < 0) return 0;
         for (int t = 0; t < 4; t++) if (_flowPos[(creator ? 0 : 4) + t] == home) n++;
         return n;
+    }
+
+    /// <summary>
+    /// Server: tokens home and total progress (sum of track positions, base = 0) of the creator and the joiner, from
+    /// the last board a player reported (<see cref="reconnectSnapshot"/>, "c0..c3;j0..j3;…"). False when there is no
+    /// report yet or the home square is unknown — the caller then keeps its old count.
+    /// </summary>
+    public static bool TryReportedBoardScore(out int creatorHome, out int joinerHome, out int creatorProgress, out int joinerProgress)
+    {
+        creatorHome = joinerHome = creatorProgress = joinerProgress = 0;
+        string snap = insta != null ? insta.reconnectSnapshot : null;
+        int home = FlowHomeIndex();
+        if (string.IsNullOrEmpty(snap) || home < 0) return false;
+        string[] d = snap.Split(';');
+        if (d.Length < 8) return false;
+        for (int s = 0; s < 8; s++)
+        {
+            int p;
+            if (!int.TryParse(d[s], out p)) return false;
+            bool creator = s < 4;
+            if (p == home) { if (creator) creatorHome++; else joinerHome++; }
+            if (p > 0) { if (creator) creatorProgress += p; else joinerProgress += p; }
+        }
+        return true;
     }
 
     /// <summary>"Ali 2 – 1 Sara tokens home" from the client-reported board.</summary>

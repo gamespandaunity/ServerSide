@@ -55,21 +55,34 @@ public class LudoNetworkManager : NetworkBehaviour
         //    yield return new WaitForSeconds(1f);
         //}
         MatchFlow.Log("Ludo", "match timer ran out (15:00) — winner by tokens home");
-        int creatorFinished = LudoGame.GameManager.Instance.playerObjects[0].finishedPawns;
-        int joinerFinished = LudoGame.GameManager.Instance.playerObjects[1].finishedPawns;
+        // Who is ahead comes from the last board the players reported (SaveBoardState). The dedicated server is not
+        // a player: its own playerObjects[].finishedPawns never count up, so they always said "tie" → creator won.
+        int creatorFinished, joinerFinished, creatorProgress, joinerProgress;
+        bool fromBoard = GameGUIController.TryReportedBoardScore(out creatorFinished, out joinerFinished,
+                                                                 out creatorProgress, out joinerProgress);
+        if (!fromBoard)
+        {
+            var players = LudoGame.GameManager.Instance != null ? LudoGame.GameManager.Instance.playerObjects : null;
+            creatorFinished = players != null && players.Count > 0 ? players[0].finishedPawns : 0;
+            joinerFinished = players != null && players.Count > 1 ? players[1].finishedPawns : 0;
+            creatorProgress = joinerProgress = 0;
+        }
 
         string winnerID;
 
-        if (creatorFinished > joinerFinished)
-            winnerID = NetworkGameManager.Instance.creatorData.playerId;
-        else if (joinerFinished > creatorFinished)
-            winnerID = NetworkGameManager.Instance.joinerData.playerId;
+        // More tokens home wins; level → further along the track wins; still level → the creator (as before).
+        if (creatorFinished != joinerFinished)
+            winnerID = creatorFinished > joinerFinished ? NetworkGameManager.Instance.creatorData.playerId : NetworkGameManager.Instance.joinerData.playerId;
+        else if (creatorProgress != joinerProgress)
+            winnerID = creatorProgress > joinerProgress ? NetworkGameManager.Instance.creatorData.playerId : NetworkGameManager.Instance.joinerData.playerId;
         else
             winnerID = NetworkGameManager.Instance.creatorData.playerId;
 
-        MatchFlow.SendResult(winnerID, creatorFinished == joinerFinished
-            ? $"match time over — tokens home tied {creatorFinished}–{joinerFinished} (server count), creator wins the tie"
-            : $"match time over — tokens home {creatorFinished}–{joinerFinished} (server count)", GameGUIController.FlowHomeCounts());
+        MatchFlow.SendResult(winnerID,
+            $"match time over — tokens home {creatorFinished}–{joinerFinished}, progress {creatorProgress}–{joinerProgress}" +
+            (fromBoard ? " (reported board)" : " (no reported board — server count)") +
+            (creatorFinished == joinerFinished && creatorProgress == joinerProgress ? ", level — creator wins the tie" : ""),
+            GameGUIController.FlowHomeCounts());
         RpcTimerEnded(winnerID);
     }
 

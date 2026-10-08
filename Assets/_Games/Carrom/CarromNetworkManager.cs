@@ -76,8 +76,12 @@ public class CarromNetworkManager : NetworkBehaviour
             yield return new WaitForSeconds(1f);
         }
         if (gameEnded) yield break;
-        BEKStudio.GameController.Instance.gameWinner = NetworkGameManager.Instance.joinerData.Scores > NetworkGameManager.Instance.creatorData.Scores ? NetworkGameManager.Instance.joinerData.playerId : NetworkGameManager.Instance.creatorData.playerId;
-        MatchFlow.Log("Carrom", $"match time over — board {BEKStudio.GameController.FlowScores()}, winner picked from synced scores {MatchFlow.Scores()}");
+        // Winner by the board: the creator plays White (home score), the joiner Black (away score) — see the colour
+        // rule further down. NetworkGameManager's creator/joiner Scores are never updated by Carrom, so they always
+        // said 0–0 and the creator won every timed-out match. Level → the creator, as before.
+        int whiteScore = BEKStudio.GameController.currentHomeScore, blackScore = BEKStudio.GameController.currentAwayScore;
+        BEKStudio.GameController.Instance.gameWinner = blackScore > whiteScore ? NetworkGameManager.Instance.joinerData.playerId : NetworkGameManager.Instance.creatorData.playerId;
+        MatchFlow.Log("Carrom", $"match time over — board {BEKStudio.GameController.FlowScores()}" + (whiteScore == blackScore ? ", level — creator wins the tie" : ""));
         MatchFlow.SendResult(BEKStudio.GameController.Instance.gameWinner, "match time over", BEKStudio.GameController.FlowScores());
         BEKStudio.GameController.currentHomeScore = 0;
         BEKStudio.GameController.currentAwayScore = 0;
