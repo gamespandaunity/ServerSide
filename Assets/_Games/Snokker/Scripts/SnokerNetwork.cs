@@ -105,6 +105,7 @@ public class SnokerNetwork : NetworkBehaviour
         //    yield return new WaitForSeconds(1f);
         //}
         _SnokerGameManager.gameWinner = NetworkGameManager.Instance.joinerData.Scores > NetworkGameManager.Instance.creatorData.Scores ? NetworkGameManager.Instance.joinerData.playerId : NetworkGameManager.Instance.creatorData.playerId;
+        SnookerFlow.SendResult(_SnokerGameManager.gameWinner, "match time over");
         NetworkGameManager.Instance.creatorData.Scores = 0;
         NetworkGameManager.Instance.joinerData.Scores = 0;
         ApiAndRoomManager._instance.WinnerLossChallenge(_SnokerGameManager.gameWinner);

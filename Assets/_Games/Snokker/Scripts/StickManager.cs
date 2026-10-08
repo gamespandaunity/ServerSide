@@ -592,6 +592,7 @@ public class StickManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdAnnounceVictory(int playerId, string reaosn)
     {
+        SnookerFlow.SendResult(playerId.ToString(), "victory announced: " + reaosn);
         ApiAndRoomManager._instance.WinnerLossChallenge(playerId.ToString());
         RpcAnnounceVictory(playerId, reaosn);
         NetworkGameManager.Instance.creatorData.Scores = 0;
@@ -616,7 +617,7 @@ public class StickManager : NetworkBehaviour
     [Server]
     public void GameWinnerId(string playerId, bool DueToDisconnect)
     {
-        SnookerFlow.Log($"game over — {SnookerFlow.Who(playerId)} wins" + (DueToDisconnect ? " (opponent disconnected)" : "") + $" ({SnookerFlow.Scores()})");
+        SnookerFlow.SendResult(playerId, DueToDisconnect ? "opponent disconnected" : "game over");
         NetworkGameManager.Instance.creatorData.Scores = 0;
         NetworkGameManager.Instance.joinerData.Scores = 0;
         ApiAndRoomManager._instance.WinnerLossChallenge(playerId.ToString());
