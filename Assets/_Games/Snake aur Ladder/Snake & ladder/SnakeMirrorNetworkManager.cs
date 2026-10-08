@@ -1126,6 +1126,8 @@ namespace Snake_Ladder
             if (diceNumber < 1 || diceNumber > 6)
             {
                 Debug.LogWarning($"[SnakeServerResult] Invalid dice value rejected: {diceNumber}.");
+                // The real app always sends 1–6 (and the server rolls its own die anyway): anything else is a modified client.
+                MatchFlow.Flag("Snake & Ladder", authoritativePlayerId, "tampered_request", $"sent dice value {diceNumber}");
                 return;
             }
 
