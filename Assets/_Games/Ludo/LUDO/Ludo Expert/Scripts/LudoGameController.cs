@@ -307,28 +307,26 @@ public class LudoGameController : NetworkBehaviour, IMiniGame
     {
         Debug.Log("Received event Ludo: " + eventcode);
 
+        // Server-authoritative Ludo: dice and moves come only from the match server (ApplyDice / ApplyMove via
+        // LudoNetworkManager RPCs); a relayed DiceRoll / PawnMove — which any phone can send — is ignored.
+        if ((eventcode == (int)EnumGame.DiceRoll || eventcode == (int)EnumGame.PawnMove) && LudoNetworkManager.ServerAuthority)
+            return;
+
         if (eventcode == (int)EnumGame.DiceRoll)
         {
-
-            gUIController.PauseTimers();
             string[] data = ((string)CustomData).Split(';');
-            steps = int.Parse(data[0]);
             int pl = int.Parse(data[1]);
-            GameGUIController.FlowDiceRolled(pl, steps);
-
-            LudoGame.GameManager.Instance.playerObjects[pl].dice.GetComponent<GameDiceController>().RollDiceStart(steps);
+            GameGUIController.FlowDiceRolled(pl, int.Parse(data[0]));
+            ApplyDice(pl, int.Parse(data[0]));
         }
         else if (eventcode == (int)EnumGame.PawnMove)
         {
             string[] data = ((string)CustomData).Split(';');
             int index = int.Parse(data[0]);
             int pl = int.Parse(data[1]);
-            steps = int.Parse(data[2]);
-            GameGUIController.FlowPawnMoved(pl, index, steps);
-            LudoGame.GameManager.Instance.playerObjects[pl].pawns[index].GetComponent<LudoPawnController>().MakeMovePC();
-            // ✅ Real player clients report the settled board to the server (client-authoritative
-            //    reconnect snapshot). The dedicated server must not build the snapshot itself.
-            gUIController.ScheduleBoardReport();
+            int moveSteps = int.Parse(data[2]);
+            GameGUIController.FlowPawnMoved(pl, index, moveSteps);
+            ApplyMove(pl, index, moveSteps);
         }
         else if (eventcode == (int)EnumGame.PawnRemove)
         {
@@ -343,6 +341,24 @@ public class LudoGameController : NetworkBehaviour, IMiniGame
             gUIController.ScheduleBoardReport();
         }
 
+    }
+
+    /// <summary>Play a roll on this phone (from the relayed event, or from the match server when it owns the dice).</summary>
+    public void ApplyDice(int pl, int value)
+    {
+        gUIController.PauseTimers();
+        steps = value;
+        LudoGame.GameManager.Instance.playerObjects[pl].dice.GetComponent<GameDiceController>().RollDiceStart(value);
+    }
+
+    /// <summary>Play a move on this phone (from the relayed event, or from the match server when it owns the moves).</summary>
+    public void ApplyMove(int pl, int index, int value)
+    {
+        steps = value;
+        LudoGame.GameManager.Instance.playerObjects[pl].pawns[index].GetComponent<LudoPawnController>().MakeMovePC();
+        // Real player clients report the settled board to the server (reconnect snapshot; ignored by a server that
+        // runs its own board).
+        gUIController.ScheduleBoardReport();
     }
 
     private void HandleDiceRoll(object content)

@@ -219,6 +219,17 @@ public class GameDiceController : MonoBehaviour
         //     Debug.Log("Value: " + steps);
         // }
 
+        if (isMyDice && LudoNetworkManager.ServerAuthority)
+        {
+            // The match server rolls (LudoNetworkManager.CmdRequestRoll → RpcServerDice → ApplyDice).
+            controller.nextShotPossible = false;
+            controller.gUIController.PauseTimers();
+            button.interactable = false;
+            arrowObject.SetActive(false);
+            LudoNetworkManager.instance.CmdRequestRoll();
+            return;
+        }
+
         if (isMyDice)
         {
             steps = Random.Range(1, 7);

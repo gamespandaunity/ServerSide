@@ -412,7 +412,12 @@ public class LudoPawnController : MonoBehaviour
         Debug.Log("Make move button");
 
         string data = index + ";" + ludoController.gUIController.GetCurrentPlayerIndex() + ";" + ludoController.steps;
-        if (NetworkServer.active || NetworkClient.active)
+        if (LudoNetworkManager.ServerAuthority)
+        {
+            // The match server checks the move and sends it to both phones (RpcServerMove → ApplyMove).
+            LudoNetworkManager.instance.CmdRequestMove(index);
+        }
+        else if (NetworkServer.active || NetworkClient.active)
         {
             NetworkGameManager.Instance.CmdRiseEvent((int)EnumGame.PawnMove, data);
         }
@@ -642,7 +647,9 @@ public class LudoPawnController : MonoBehaviour
                             else
                             {
                                 Debug.Log("Win4");
-                                NetworkGameManager.Instance.CmdPlayerFinished(true,staticVariables.UserProfiledata.user._id);
+                                // With the server running the board, the server announces the win (RpcMatchWon).
+                                if (!LudoNetworkManager.ServerAuthority)
+                                    NetworkGameManager.Instance.CmdPlayerFinished(true,staticVariables.UserProfiledata.user._id);
                                 //Wasi    PunNetwork.instance.LudoWinCall();
                             }
 

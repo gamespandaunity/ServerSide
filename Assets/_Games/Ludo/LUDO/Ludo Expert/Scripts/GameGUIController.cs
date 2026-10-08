@@ -1242,7 +1242,9 @@ public class GameGUIController : NetworkBehaviour
                     Debug.Log("Multiplayer");
                     // setCurrentPlayerIndex(myIndex);
                     // SetTurn();
-                    NetworkGameManager.Instance.CmdSetNextTurn(myIndex.ToString());
+                    // With the server running the board it passes the turn itself (RpcServerTurn).
+                    if (!LudoNetworkManager.ServerAuthority)
+                        NetworkGameManager.Instance.CmdSetNextTurn(myIndex.ToString());
                 }
                 else
                 {
@@ -1289,6 +1291,8 @@ public class GameGUIController : NetworkBehaviour
     }
     public void NextPlayerTurn(string index)
     {
+        // Server-authoritative: only the match server passes the turn (ApplyServerTurn); a relayed turn-end is ignored.
+        if (LudoNetworkManager.ServerAuthority) return;
         FlowTurnEnded(index);
         if (playerObjects[(int.Parse(index))].AvatarObject.GetComponent<PlayerAvatarController>().Active && currentPlayerIndex == int.Parse(index))
         {
@@ -1330,7 +1334,8 @@ public class GameGUIController : NetworkBehaviour
                     // Server-only cache of the client-authoritative board snapshot.
                     // Other clients receive this broadcast but ignore it.
                     FlowBoardReported((string)CustomData);
-                    if (NetworkServer.active)
+                    // A server that runs its own board keeps that as the snapshot instead.
+                    if (NetworkServer.active && !LudoNetworkManager.ServerAuthority)
                         reconnectSnapshot = (string)CustomData;
                 }
                 break;
@@ -1423,6 +1428,16 @@ public class GameGUIController : NetworkBehaviour
 
 
 
+
+    /// <summary>The match server says it is now <paramref name="pl"/>'s turn (server-authoritative Ludo).</summary>
+    public void ApplyServerTurn(int pl)
+    {
+        if (FinishWindowActive || playerObjects == null || pl < 0 || pl >= playerObjects.Count) return;
+        currentPlayerIndex = pl;
+        LudoGame.GameManager.Instance.currentPlayer = playerObjects[pl];
+        SetTurn();
+        restartTimer();
+    }
 
     private void SetMyTurn()
     {
@@ -1902,7 +1917,8 @@ public class GameGUIController : NetworkBehaviour
                     var ngm = NetworkGameManager.Instance;
                     string winnerId = ngm == null || ngm.creatorData == null || ngm.joinerData == null ? null
                         : (creator ? ngm.creatorData.playerId : ngm.joinerData.playerId);
-                    MatchFlow.SendResult(winnerId, "all 4 tokens home", FlowHomeCounts());
+                    if (!LudoNetworkManager.ServerAuthority)   // the server board decides it then
+                        MatchFlow.SendResult(winnerId, "all 4 tokens home", FlowHomeCounts());
                 }
             }
         }
