@@ -1,85 +1,35 @@
-using System;
-using System.Collections.Generic;
-using Mirror;
 using UnityEngine;
 
 /// <summary>
 /// One readable line per Snooker game event, all prefixed "[Snooker Flow]" so a match server's log can be filtered
 /// down to the story of a frame: game started → toss → break → pots / fouls → score → turn changes → result.
-/// Written ONLY on the dedicated (Edgegap) server — on phones and in AI games every call is a no-op.
-/// The server also keeps the lines of the current match and, when the result is decided, sends them as one JSON
-/// to the bug reporter's stats panel (<see cref="SendResult"/>).
+/// Snooker's wording on top of <see cref="MatchFlow"/>: written only on the dedicated (Edgegap) server, kept per
+/// match and sent as JSON with the result.
 /// Logging only — nothing here changes the game.
 /// </summary>
 public static class SnookerFlow
 {
-    const string Prefix = "[Snooker Flow] ";
 
     /// <summary>Set by mainScript so names and the current target can be read.</summary>
     public static mainScript Main;
 
     /// <summary>True only in the headless match server build.</summary>
-    public static bool Enabled => NetworkServer.active && !NetworkClient.active;
+    public static bool Enabled => MatchFlow.Enabled;
 
-    [Serializable] class FlowEvent { public float t; public string time; public string msg; }
-
-    [Serializable]
-    class FlowLog
-    {
-        public string transaction_id, game = "Snooker", winner_id, winner_name, reason, scores, started_at, ended_at;
-        public int game_id;
-        public List<FlowEvent> events = new List<FlowEvent>();
-    }
-
-    const int MaxEvents = 3000;
-    static FlowLog _match;
-    static float _matchStart;
-
-    public static void Log(string message)
-    {
-        if (!Enabled) return;
-        Debug.Log(Prefix + message);
-        if (_match == null) BeginMatch();
-        if (_match.events.Count < MaxEvents)
-            _match.events.Add(new FlowEvent { t = Time.realtimeSinceStartup - _matchStart, time = DateTime.UtcNow.ToString("o"), msg = message });
-    }
-
-    static void BeginMatch()
-    {
-        _match = new FlowLog { started_at = DateTime.UtcNow.ToString("o") };
-        _matchStart = Time.realtimeSinceStartup;
-    }
-
-    /// <summary>
-    /// The result was decided on the server: log it, then send this match's lines as one JSON to the stats panel.
-    /// Call it right before the result goes to the backend (scores are still set). Once per match.
-    /// </summary>
-    public static void SendResult(string winnerId, string reason)
-    {
-        if (!Enabled || _match == null) return;
-        string scores = Scores();
-        Log($"result sent — {Who(winnerId)} wins ({reason}), {scores}");
-        var ngm = NetworkGameManager.Instance;
-        _match.transaction_id = ngm != null ? ngm.transactionId : null;
-        _match.game_id = ngm != null ? ngm.currentGameId : 0;
-        _match.winner_id = winnerId;
-        _match.winner_name = Who(winnerId);
-        _match.reason = reason;
-        _match.scores = scores;
-        _match.ended_at = DateTime.UtcNow.ToString("o");
-        if (!string.IsNullOrEmpty(_match.transaction_id))
-            MatchStats.SendMatchLog(JsonUtility.ToJson(_match));
-        else
-            Debug.LogWarning(Prefix + "no transaction id — match log not sent");
-        _match = null;
-    }
+    public static void Log(string message) => MatchFlow.Log("Snooker", message);
 
     /// <summary>Start of a frame (also resets the shot de-duplication).</summary>
     public static void GameStarted(string message)
     {
         _lastShotLogged = -1;
-        if (Enabled) BeginMatch();
-        Log(message);
+        MatchFlow.Begin("Snooker", message);
+    }
+
+    /// <summary>The result was decided: log it and send the match's lines as JSON (see <see cref="MatchFlow.SendResult"/>).</summary>
+    public static void SendResult(string winnerId, string reason)
+    {
+        if (!Enabled) return;
+        MatchFlow.SendResult(winnerId, reason, Scores());
     }
 
     /// <summary>A shot, logged once: the server runs both ExecuteHit and RpcExecuteBallHit for the same shot.</summary>

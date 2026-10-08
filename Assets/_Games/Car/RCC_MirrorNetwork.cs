@@ -89,6 +89,8 @@ namespace CarRace
             // GetComponent on the now-destroyed object throws a NullReferenceException, which aborts that
             // game's SyncVar deserialize (corrupting reconnect state). Unsubscribe so it can't leak.
             NetworkGameManager.StartStopGame -= StartStopGame;
+            if (NetworkServer.active)
+                MatchFlow.Log("Car Race", $"{(string.IsNullOrEmpty(playerName) ? "a player" : playerName)}'s car removed — left or disconnected");
         }
         public override void OnStartServer()
         {
@@ -338,6 +340,7 @@ namespace CarRace
         void CmdSetPlayerName(string name, string id)
         {
             playerName = name;
+            MatchFlow.Log("Car Race", $"{(string.IsNullOrEmpty(name) ? "a player" : name)} joined the race");
         }
 
         void OnPlayerNameChanged(string oldName, string newName)

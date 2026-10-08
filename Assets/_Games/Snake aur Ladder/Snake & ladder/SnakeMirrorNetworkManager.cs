@@ -120,6 +120,7 @@ namespace Snake_Ladder
             // The overall game clock never selects a winner by token position/score.
             // Reaching EndNode is still the only normal win condition.
             Debug.Log("[SnakeServerResult] Timer ended: server declared a draw.");
+            MatchFlow.Log("Snake & Ladder", "match clock ran out — draw");
             RpcTimerDisplayEnded();
             ServerDeclareDraw();
         }
@@ -189,6 +190,7 @@ namespace Snake_Ladder
             if (playerNode == null || playerNode != GameControllerNew.instance.EndNode)
             {
                 Debug.LogWarning($"[SnakeServerResult] Finish rejected for player={playerId}: server board is not at EndNode.");
+                MatchFlow.Log("Snake & Ladder", $"finish claim from {MatchFlow.Who(playerId)} rejected — not on 100 (at {(playerNode != null ? playerNode.name : "?")})");
                 return false;
             }
 
@@ -238,6 +240,7 @@ namespace Snake_Ladder
             }
 
             Debug.Log($"[SnakeServerResult] Server decided winner={winnerId}.");
+            MatchFlow.SendResult(winnerId, FlowWinReason(winnerId));
             ApiAndRoomManager._instance.winLoseChallengeId = NetworkGameManager.Instance.transactionId;
             ApiAndRoomManager._instance.WinnerLossChallenge(winnerId);
             RpcShowServerWinner(winnerId);
@@ -276,6 +279,7 @@ namespace Snake_Ladder
             }
 
             Debug.Log($"[SnakeServerResult] Server decided disconnect winner={winnerId}; enabling late-client delivery.");
+            MatchFlow.SendResult(winnerId, "opponent disconnected");
             ApiAndRoomManager._instance.winLoseChallengeId = networkManager.transactionId;
 
             // Preserve Snake's immediate result UI for the connected player. Then use the
@@ -307,10 +311,35 @@ namespace Snake_Ladder
             gameOver = true;
             gameInProgress = false;
             ServerStopTimerCompletely();
+            MatchFlow.SendResult("draw", "match time over");
             ApiAndRoomManager._instance.winLoseChallengeId = transactionId;
             ApiAndRoomManager._instance.DrawChallenge(transactionId);
             RpcShowServerDraw();
             ScheduleServerCleanup();
+        }
+
+        // ---- MatchFlow (server game-event log) helpers: logging only ----
+
+        /// <summary>Name of player 1 (creator, index 0) or player 2 (joiner, index 1) for the match log.</summary>
+        public static string FlowWho(int playerIndex)
+        {
+            NetworkGameManager ngm = NetworkGameManager.Instance;
+            if (ngm != null)
+            {
+                if (playerIndex == 0 && ngm.creatorData != null) return MatchFlow.Who(ngm.creatorData.playerId);
+                if (playerIndex == 1 && ngm.joinerData != null) return MatchFlow.Who(ngm.joinerData.playerId);
+            }
+            return "Player " + (playerIndex + 1);
+        }
+
+        /// <summary>Why <paramref name="winnerId"/> won: on square 100 → reached 100, otherwise the opponent forfeited.</summary>
+        private string FlowWinReason(string winnerId)
+        {
+            GameControllerNew gc = GameControllerNew.instance;
+            if (gc == null || !TryResolvePlayerIndex(winnerId, out int idx))
+                return "game over";
+            Node node = idx == 0 ? gc.CurrentNodePlayer1 : gc.CurrentNodePlayer2;
+            return node != null && node == gc.EndNode ? "reached 100" : "opponent forfeited";
         }
 
         public bool RequestLocalForfeit()
@@ -329,6 +358,7 @@ namespace Snake_Ladder
                 return;
 
             Debug.Log($"[SnakeServerResult] Player {forfeitingIndex + 1} forfeited.");
+            if (!serverResultDeclared) MatchFlow.Log("Snake & Ladder", $"{FlowWho(forfeitingIndex)} left the game (forfeit)");
             ServerDeclareWinnerByIndex(forfeitingIndex == 0 ? 1 : 0);
         }
 
@@ -355,6 +385,7 @@ namespace Snake_Ladder
             }
 
             Debug.Log($"[SnakeServerResult] Existing disconnect flow verified; Player {remainingPlayerIndex + 1} wins.");
+            if (!serverResultDeclared) MatchFlow.Log("Snake & Ladder", $"{FlowWho(remainingPlayerIndex == 0 ? 1 : 0)} disconnected and did not return — {FlowWho(remainingPlayerIndex)} remains");
             ServerSubmitDisconnectWinner(remainingPlayerIndex);
         }
 
@@ -676,11 +707,13 @@ namespace Snake_Ladder
                 if (currentTimer <= 0)
                 {
                     Debug.Log($"⏰ [Server] Player {currentTurnPlayerNumber + 1}'s time is up!");
+                    MatchFlow.Log("Snake & Ladder", $"turn timer ran out for {FlowWho(currentTurnPlayerNumber)} — turn skipped, no roll");
 
                     // ✅ Switch turn
                     currentTurnPlayerNumber = currentTurnPlayerNumber == 0 ? 1 : 0;
 
                     Debug.Log($"🔄 [Server] Switching to Player {currentTurnPlayerNumber + 1}");
+                    MatchFlow.Log("Snake & Ladder", $"turn → {FlowWho(currentTurnPlayerNumber)}");
 
                     // ✅ Reset timer for next player
                     currentTimer = timerDuration;
@@ -842,6 +875,7 @@ namespace Snake_Ladder
             // Check if already assigned
             if ((NetworkGameManager.Instance.creatorData.playerId == playerID && networkPlayer1) || (NetworkGameManager.Instance.joinerData.playerId == playerID && networkPlayer2))
             {
+                MatchFlow.Log("Snake & Ladder", $"{MatchFlow.Who(playerID)} reconnected");
                 if (hasGameStarted && currentEnvironmentIndex >= 0)
                 {
                     Debug.Log($"🔄 [Server] Game running - syncing environment {currentEnvironmentIndex} to reconnecting player");
@@ -969,6 +1003,7 @@ namespace Snake_Ladder
             if (!hasGameStarted)
             {
                 Debug.Log("🎬 [Server] Both players connected! Starting game...");
+                MatchFlow.Begin("Snake & Ladder", $"game started — {FlowWho(0)} vs {FlowWho(1)}");
                 hasGameStarted = true;
                 StartCoroutine(ServerGameStartSequence());
                 if (countdownCoroutine != null)
@@ -1006,6 +1041,7 @@ namespace Snake_Ladder
             //  int firstPlayer = UnityEngine.Random.Range(0, 2);
             int firstPlayer = 1;
             Debug.Log($"🎲 [Server] Decided: Player {firstPlayer + 1} goes first");
+            MatchFlow.Log("Snake & Ladder", $"board {randomEnvIndex}, {FlowWho(firstPlayer)} starts");
             currentTurnPlayerNumber = firstPlayer;
             gameInProgress = true;
 
@@ -1082,6 +1118,7 @@ namespace Snake_Ladder
             if (playerIndex != currentTurnPlayerNumber)
             {
                 Debug.LogWarning($"[SnakeServerResult] Out-of-turn move rejected from Player {playerIndex + 1}.");
+                MatchFlow.Log("Snake & Ladder", $"roll from {FlowWho(playerIndex)} rejected — not their turn");
                 return;
             }
             if (diceNumber < 1 || diceNumber > 6)
@@ -1128,6 +1165,7 @@ namespace Snake_Ladder
                 return;
 
             Debug.Log("[SnakeServerResult] Client finish request received; validating server board.");
+            if (!serverResultDeclared) MatchFlow.Log("Snake & Ladder", $"{MatchFlow.Who(authoritativePlayerId)} claims to have reached 100 — checking board");
             ServerDeclareBoardWinner(authoritativePlayerId);
         }
 

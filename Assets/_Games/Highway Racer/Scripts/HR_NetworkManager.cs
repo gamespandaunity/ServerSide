@@ -32,6 +32,25 @@ public class HR_NetworkManager : NetworkBehaviour //Photon Removal : MonoBehavio
     private Coroutine initialTurnCoroutine;
     private bool serverResultDeclared;
 
+    /// <summary>MatchFlow name of the player that owns a car / connection (creator or joiner), "car N" when unknown. Logging only.</summary>
+    public static string FlowWho(NetworkIdentity identity)
+    {
+        string who = FlowWho(identity != null ? identity.connectionToClient : null);
+        return who != "?" || identity == null ? who : "car " + identity.netId;
+    }
+
+    /// <summary>MatchFlow name for a connection (creator or joiner), "?" when unknown. Logging only.</summary>
+    public static string FlowWho(NetworkConnectionToClient connection)
+    {
+        NetworkGameManager ngm = NetworkGameManager.Instance;
+        if (ngm == null || connection == null) return "?";
+        if (ngm.CreatorRef != null && ngm.creatorData != null && connection.connectionId == ngm.CreatorRef.connectionId)
+            return MatchFlow.Who(ngm.creatorData.playerId);
+        if (ngm.JoinerRef != null && ngm.joinerData != null && connection.connectionId == ngm.JoinerRef.connectionId)
+            return MatchFlow.Who(ngm.joinerData.playerId);
+        return "player #" + connection.connectionId;
+    }
+
     [Server]
     private bool TryResolveWinner(NetworkIdentity participant, bool participantWon, out string winnerId)
     {
@@ -113,6 +132,7 @@ public class HR_NetworkManager : NetworkBehaviour //Photon Removal : MonoBehavio
                 continue;
 
             Debug.Log($"[HighwayServerResult] Player forfeited from pause menu, connection={sender.connectionId}.");
+            MatchFlow.Log("Highway Racer", $"{FlowWho(sender)} forfeited from the pause menu");
             ServerDeclareLoser(identity);
             return;
         }
@@ -124,7 +144,10 @@ public class HR_NetworkManager : NetworkBehaviour //Photon Removal : MonoBehavio
     private bool ServerDeclareResult(NetworkIdentity participant, bool participantWon)
     {
         if (serverResultDeclared)
+        {
+            MatchFlow.Log("Highway Racer", $"result already declared — ignored {(participantWon ? "finish" : "elimination")} of {FlowWho(participant)}");
             return false;
+        }
         if (ApiAndRoomManager._instance == null)
         {
             Debug.LogError("[HighwayServerResult] ApiAndRoomManager is missing on the server.");
@@ -137,11 +160,16 @@ public class HR_NetworkManager : NetworkBehaviour //Photon Removal : MonoBehavio
         if (string.IsNullOrEmpty(networkManager.transactionId))
         {
             Debug.LogError("[HighwayServerResult] Transaction ID is empty; result was not submitted.");
+            MatchFlow.Log("Highway Racer", $"result not sent — transaction id missing (winner would be {MatchFlow.Who(winnerId)})");
             return false;
         }
 
         serverResultDeclared = true;
         Debug.Log($"[HighwayServerResult] Server decided winner={winnerId}, connection={participant.connectionToClient.connectionId}.");
+        MatchFlow.Log("Highway Racer", participantWon
+            ? $"{FlowWho(participant)} reached the finish line — {MatchFlow.Who(winnerId)} wins"
+            : $"{FlowWho(participant)} is out of the race — {MatchFlow.Who(winnerId)} wins");
+        MatchFlow.SendResult(winnerId, participantWon ? "reached the finish line" : "opponent crashed out or forfeited");
         ApiAndRoomManager._instance.winLoseChallengeId = networkManager.transactionId;
         ApiAndRoomManager._instance.WinnerLossChallenge(winnerId);
         RpcShowServerWinner(winnerId);
@@ -160,6 +188,7 @@ public class HR_NetworkManager : NetworkBehaviour //Photon Removal : MonoBehavio
             return;
 
         serverResultDeclared = true;
+        MatchFlow.SendResult("draw", "match time over");
         ApiAndRoomManager._instance.winLoseChallengeId = transactionId;
         ApiAndRoomManager._instance.DrawChallenge(transactionId);
         RpcShowServerDraw();
@@ -389,6 +418,7 @@ public class HR_NetworkManager : NetworkBehaviour //Photon Removal : MonoBehavio
     [Server]
     private void ScheduleServerCleanup()
     {
+        MatchFlow.Log("Highway Racer", "server cleanup scheduled in 5 s");
         this.Delay(5f, () =>
         {
             if (MirrorNetwork.Instance != null && MirrorNetwork.Instance.edgegapAPIClient != null &&
@@ -405,12 +435,23 @@ public class HR_NetworkManager : NetworkBehaviour //Photon Removal : MonoBehavio
     {
         remainingTime = 600;
         Debug.Log("Server Countdown Started." + remainingTime);
+        MatchFlow.Log("Highway Racer", $"match timer started ({remainingTime / 60:00}:{remainingTime % 60:00})");
+        bool flowWasPaused = false; // logging only: report pause / resume once
         while (remainingTime > 0)
         {
+            bool flowPaused = NetworkGameManager.Instance != null && NetworkGameManager.Instance.IsPaused;
+            if (flowPaused != flowWasPaused)
+            {
+                MatchFlow.Log("Highway Racer", flowPaused
+                    ? $"match paused (player disconnected?) at {remainingTime / 60:00}:{remainingTime % 60:00} left"
+                    : $"match resumed at {remainingTime / 60:00}:{remainingTime % 60:00} left");
+                flowWasPaused = flowPaused;
+            }
             if (!NetworkGameManager.Instance.IsPaused)
                 remainingTime--; // SyncVar updates all clients automatically
             yield return new WaitForSeconds(1f);
         }
+        MatchFlow.Log("Highway Racer", "match timer ran out — nobody finished, draw");
         //ApiAndRoomManager._instance.WinnerLossChallenge(BEKStudio.GameController.Instance.gameWinner);
         ServerDeclareDraw();
     }
@@ -485,6 +526,7 @@ public class HR_NetworkManager : NetworkBehaviour //Photon Removal : MonoBehavio
     {
         base.OnStartServer();
         Debug.Log("✅ OnStartServer called - Server started");
+        MatchFlow.Begin("Highway Racer", "game started — server ready, waiting for 2 players");
 
         if (NetworkServer.active)
         {
@@ -493,6 +535,7 @@ public class HR_NetworkManager : NetworkBehaviour //Photon Removal : MonoBehavio
             {
 
                 Debug.Log($"✅ {NetworkServer.connections.Count} players connected, setting players...");
+                MatchFlow.Log("Highway Racer", $"{NetworkServer.connections.Count} players connected — match timer starts in 4 s");
                 this.Delay(4, () =>
                 {
                    // Rpc_ShowPlayer();
@@ -538,6 +581,9 @@ public class HR_NetworkManager : NetworkBehaviour //Photon Removal : MonoBehavio
 
         Target_AssignCar(sender, car);
         OnPlayerSpawned?.Invoke(car.GetComponent<HR_PlayerHandler>());
+        MatchFlow.Log("Highway Racer", hasHighWayGameStarted
+            ? $"{FlowWho(sender)} rejoined — car respawned, race resumed"
+            : $"{FlowWho(sender)} joined — car spawned in lane {assignedLane + 1}");
 
         // Check if both players ready.
         //	Race pehle se chal rahi ho - yani ye rejoin hai - to countdown dobara nahi chalta,
@@ -560,6 +606,7 @@ public class HR_NetworkManager : NetworkBehaviour //Photon Removal : MonoBehavio
         if (spawnedPlayers >= 2 && !hasHighWayGameStarted)
         {
             Debug.Log("🎬 All players ready - starting countdown");
+            MatchFlow.Log("Highway Racer", "both players ready — countdown started, race starts in 4 s");
             hasHighWayGameStarted = true;
             RpcStartCountdown();
         }

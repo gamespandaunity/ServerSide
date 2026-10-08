@@ -59,12 +59,15 @@ namespace Twelve
                 if (isMultiplayerPaused)
                 {
                     if (pauseStartTime < 0f)
+                        MatchFlow.Log("12 Beads", $"a player dropped — turn timer paused ({Mathf.Max(0f, currentTime):0.0}s left), waiting for reconnect");
+                    if (pauseStartTime < 0f)
                         pauseStartTime = (float)NetworkTime.time;
                     return; // freeze: don't tick currentTime or push to SyncVar
                 }
 
                 if (pauseStartTime >= 0f)
                 {
+                    MatchFlow.Log("12 Beads", $"both players back — turn timer resumed after {((float)NetworkTime.time - pauseStartTime):0.0}s pause");
                     startTime += (float)NetworkTime.time - pauseStartTime;
                     pauseStartTime = -1f;
                 }

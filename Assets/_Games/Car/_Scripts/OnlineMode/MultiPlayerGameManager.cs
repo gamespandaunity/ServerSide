@@ -200,6 +200,7 @@ namespace CarRace
             serverLapProgress[participantId] = progress;
         }
 
+        if (!progress.crossedMiddle) MatchFlow.Log("Car Race", $"{MatchFlow.Who(participantId)} passed the halfway checkpoint (lap {progress.completedLaps + 1})");
         progress.crossedMiddle = true;
         Debug.Log($"[CarServerResult] Middle checkpoint verified for player={participantId}, lap={progress.completedLaps + 1}.");
         return true;
@@ -222,6 +223,9 @@ namespace CarRace
 
         progress.crossedMiddle = false;
         progress.completedLaps++;
+        MatchFlow.Log("Car Race", progress.completedLaps >= ServerRequiredLaps
+            ? $"{MatchFlow.Who(participantId)} crossed the finish line — {FlowClock()} ({FlowPlace(participantId, progress.completedLaps)})"
+            : $"{MatchFlow.Who(participantId)} finished lap {progress.completedLaps}/{ServerRequiredLaps} ({FlowPlace(participantId, progress.completedLaps)}) — {FlowClock()}");
         Debug.Log($"[CarServerResult] Finish checkpoint verified for player={participantId}, completedLaps={progress.completedLaps}.");
 
         return progress.completedLaps < ServerRequiredLaps || ServerDeclareWinner(participant);
@@ -260,6 +264,12 @@ namespace CarRace
         }
 
         serverResultDeclared = true;
+        string flowReason = !participantWon ? "opponent left the race"
+            : serverLapProgress.TryGetValue(winnerId, out ServerLapProgress flowWinnerLaps) && flowWinnerLaps != null &&
+              flowWinnerLaps.completedLaps >= ServerRequiredLaps
+                ? $"finished {ServerRequiredLaps} laps first"
+                : "opponent disconnected";
+        MatchFlow.SendResult(winnerId, flowReason, FlowLaps());
         Debug.Log($"[CarServerResult] Server decided winner={winnerId}, connection={participant.connectionToClient.connectionId}.");
         ApiAndRoomManager._instance.winLoseChallengeId = networkManager.transactionId;
         ApiAndRoomManager._instance.WinnerLossChallenge(winnerId);
@@ -279,6 +289,7 @@ namespace CarRace
             return;
 
         serverResultDeclared = true;
+        MatchFlow.SendResult("draw", "match time over", FlowLaps());
         ApiAndRoomManager._instance.winLoseChallengeId = transactionId;
         ApiAndRoomManager._instance.DrawChallenge(transactionId);
         RpcShowServerDraw();
@@ -300,10 +311,12 @@ namespace CarRace
                 continue;
 
             Debug.Log($"[CarServerResult] Existing disconnect flow verified; remaining connection={connection.connectionId} wins.");
+            MatchFlow.Log("Car Race", $"{FlowWho(connection)} is the only player still connected — awarded the race");
             return ServerDeclareWinner(identity);
         }
 
         Debug.LogWarning("[CarServerResult] No connected Car player was found for the result.");
+        MatchFlow.Log("Car Race", "disconnect result skipped — no connected player found");
         return false;
     }
 
@@ -333,6 +346,7 @@ namespace CarRace
                 continue;
 
             Debug.Log($"[CarServerResult] Player forfeited, connection={sender.connectionId}.");
+            MatchFlow.Log("Car Race", $"{FlowWho(sender)} left the race (forfeit)");
             ServerDeclareLoser(identity);
             return;
         }
@@ -361,6 +375,7 @@ namespace CarRace
             return;
         }
 
+        MatchFlow.Log("Car Race", $"opponent disconnected — {FlowWho(sender)} asked for the result");
         ServerDeclareConnectedPlayerWinner(sender);
     }
 
@@ -575,6 +590,44 @@ namespace CarRace
         second.anchoredPosition = anchoredPosition;
     }
 
+    // MatchFlow helpers (logging only)
+    private string FlowClock()
+    {
+        int elapsed = Mathf.Max(0, 600 - remainingTime);
+        return $"{elapsed / 60}:{elapsed % 60:00}";
+    }
+
+    private string FlowPlace(string participantId, int laps)
+    {
+        int ahead = 0;
+        foreach (KeyValuePair<string, ServerLapProgress> kv in serverLapProgress)
+            if (kv.Key != participantId && kv.Value != null && kv.Value.completedLaps >= laps)
+                ahead++;
+        return ahead == 0 ? "1st" : ahead == 1 ? "2nd" : ahead == 2 ? "3rd" : (ahead + 1) + "th";
+    }
+
+    private string FlowWho(NetworkConnectionToClient conn)
+    {
+        if (conn == null) return "?";
+        NetworkGameManager ngm = NetworkGameManager.Instance;
+        if (ngm != null && ngm.creatorData != null && ngm.CreatorRef != null && ngm.CreatorRef.connectionId == conn.connectionId)
+            return MatchFlow.Who(ngm.creatorData.playerId);
+        if (ngm != null && ngm.joinerData != null && ngm.JoinerRef != null && ngm.JoinerRef.connectionId == conn.connectionId)
+            return MatchFlow.Who(ngm.joinerData.playerId);
+        return "connection " + conn.connectionId;
+    }
+
+    private string FlowLaps()
+    {
+        NetworkGameManager ngm = NetworkGameManager.Instance;
+        if (ngm == null || ngm.creatorData == null || ngm.joinerData == null) return "";
+        string creatorId = ngm.creatorData.playerId ?? "";
+        string joinerId = ngm.joinerData.playerId ?? "";
+        int creatorLaps = serverLapProgress.TryGetValue(creatorId, out ServerLapProgress cp) && cp != null ? cp.completedLaps : 0;
+        int joinerLaps = serverLapProgress.TryGetValue(joinerId, out ServerLapProgress jp) && jp != null ? jp.completedLaps : 0;
+        return $"laps {MatchFlow.Who(creatorId)} {creatorLaps} – {joinerLaps} {MatchFlow.Who(joinerId)}";
+    }
+
     [Server]
     private void ScheduleServerCleanup()
     {
@@ -594,12 +647,14 @@ namespace CarRace
     {
         remainingTime = 600;
         Debug.Log("Server Countdown Started." + remainingTime);
+        MatchFlow.Log("Car Race", $"race started — {ServerRequiredLaps} laps, {remainingTime / 60}:{remainingTime % 60:00} match timer running");
         while (remainingTime > 0)
         {
             if (!NetworkGameManager.Instance.IsPaused)
                 remainingTime--; // SyncVar updates all clients automatically
             yield return new WaitForSeconds(1f);
         }
+        if (!serverResultDeclared) MatchFlow.Log("Car Race", $"match time over — nobody finished {ServerRequiredLaps} laps, draw");
         ServerDeclareDraw();
     }
 
@@ -643,6 +698,7 @@ namespace CarRace
 
         if (NetworkServer.active)
         {
+            MatchFlow.Begin("Car Race", $"game started — race server up, {ServerRequiredLaps} laps, waiting for 2 players");
             if (halfLapTrigger != null) halfLapTrigger.isTrigger = true;
             if (finishLapTrigger != null) finishLapTrigger.isTrigger = true;
 
@@ -651,6 +707,7 @@ namespace CarRace
             {
 
                 serverObservedTwoPlayers = true;
+                MatchFlow.Log("Car Race", $"both players connected ({NetworkServer.connections.Count} connections) — race starts in 4s");
                 Debug.Log($"✅ {NetworkServer.connections.Count} players connected, setting players...");
                 this.Delay(4, () =>
                 {
@@ -750,6 +807,7 @@ namespace CarRace
                         finishTime = 0f
                     });
                 }
+                MatchFlow.Log("Car Race", $"a player is ready ({playersReady.Count} ready)");
             }
         }
 
@@ -814,6 +872,7 @@ namespace CarRace
     Debug.Log("Car Spawned on server side");
 
     NetworkServer.Spawn(vehicleObj, conn);
+    MatchFlow.Log("Car Race", $"car spawned for {FlowWho(conn)} (grid slot {spawnIndex})");
 
     if (NetworkServer.connections.Count >= 2)
         serverObservedTwoPlayers = true;

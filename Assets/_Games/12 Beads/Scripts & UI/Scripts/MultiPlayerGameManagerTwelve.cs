@@ -136,6 +136,7 @@ namespace Twelve
                 serverRulesState.player2Score = (byte)Myplayer2Score;
                 TwelveRulesEngine.ExpireMatch(ref serverRulesState);
             }
+            MatchFlow.Log("12 Beads", $"match clock ran out — {FlowScores()}");
             ServerFinalize(TwelveEndReason.Timeout);
             RpcTimerEnded();
             yield return new WaitForSeconds(1f);
@@ -260,6 +261,21 @@ namespace Twelve
         // finalize from a later capture, the timeout coroutine, or a reconnect replay.
         [SyncVar] public bool matchFinalized = false;
 
+        /// <summary>Match-log name for a seat (PLAYER1 = creator, PLAYER2 = joiner). Logging only.</summary>
+        internal static string FlowSeat(PLAYERS seat)
+        {
+            var ngm = NetworkGameManager.Instance;
+            if (ngm != null && seat == PLAYERS.PLAYER1 && ngm.creatorData != null) return MatchFlow.Who(ngm.creatorData.playerId);
+            if (ngm != null && seat == PLAYERS.PLAYER2 && ngm.joinerData != null) return MatchFlow.Who(ngm.joinerData.playerId);
+            return seat.ToString();
+        }
+
+        /// <summary>Match-log score line from the server's own capture counts. Logging only.</summary>
+        private string FlowScores()
+        {
+            return $"{FlowSeat(PLAYERS.PLAYER1)} {Myplayer1Score} – {Myplayer2Score} {FlowSeat(PLAYERS.PLAYER2)}";
+        }
+
         // ServerRecordCapture was removed after the rules-engine migration. Capture scoring is
         // part of the single validated move transaction and cannot be invoked independently.
 
@@ -280,6 +296,7 @@ namespace Twelve
             if (!matchFinalized && ngmSettled != null && ngmSettled.ServerMatchAlreadySettled)
             {
                 Debug.LogWarning($"[12Bead] Finalize ignored (reason={reason}); this match already has a server-side result.");
+                MatchFlow.Log("12 Beads", $"{reason} result ignored — match already settled by the server (quit / disconnect)");
                 matchFinalized = true;
                 isGameOver = true;
                 if (countdownCoroutine != null) StopCoroutine(countdownCoroutine);
@@ -291,6 +308,7 @@ namespace Twelve
             {
                 duplicateFinalizationCount++;
                 Debug.LogWarning($"[12Bead] Duplicate finalization ignored reason={reason} count={duplicateFinalizationCount}");
+                MatchFlow.Log("12 Beads", $"duplicate result ignored ({reason})");
                 return;
             }
             matchFinalized = true;
@@ -314,6 +332,12 @@ namespace Twelve
 
             Debug.Log($"[SERVER] Finalize | reason={reason} seat={winnerSeat} winnerId={winnerId} " +
                       $"P1={Myplayer1Score} P2={Myplayer2Score}");
+
+            MatchFlow.SendResult(winnerSeat == PLAYERS.EMPTY ? "draw" : winnerId,
+                reason == TwelveEndReason.ScoreLimit ? "captured all 12 beads"
+                : reason == TwelveEndReason.Timeout ? (winnerSeat == PLAYERS.EMPTY ? "match time over, scores level" : "match time over, more captures")
+                : reason == TwelveEndReason.Checkmate ? "opponent has no legal move"
+                : "forfeit", FlowScores());
 
             // Settlement. On the headless build this posts to the backend with the deployment
             // auth key; on a client build the same call is a no-op that only refreshes balance.
@@ -399,6 +423,7 @@ namespace Twelve
             Myplayer1Score = 0;
             Myplayer2Score = 0;
             matchFinalized = false;
+            MatchFlow.Log("12 Beads", "board reset to the starting position");
         }
         public override void OnStartClient()
         {
@@ -423,6 +448,7 @@ namespace Twelve
         public void StartGameTimer()
         {
             Debug.Log("[SERVER] Starting countdown timer...");
+            MatchFlow.Log("12 Beads", $"match clock started ({remainingTime / 60}:{remainingTime % 60:00})");
             if (countdownCoroutine != null)
                 StopCoroutine(countdownCoroutine);
             countdownCoroutine = StartCoroutine(ServerCountdown());
@@ -521,6 +547,7 @@ namespace Twelve
             }
 
             Debug.Log("[SERVER] Both players present, starting countdown...");
+            MatchFlow.Begin("12 Beads", $"game started — {FlowSeat(PLAYERS.PLAYER1)} (creator) vs {FlowSeat(PLAYERS.PLAYER2)} (joiner)");
             yield return StartCountdown();
         }
 
@@ -709,6 +736,7 @@ namespace Twelve
                 seat, fromNode, toNode);
             if (!rulesResult.applied)
             {
+                MatchFlow.Log("12 Beads", $"{FlowSeat(seat)} tried an illegal move {fromNode} → {toNode} ({rulesResult.rejectReason})");
                 RejectTwelveMove(sender, requestId, rulesResult.rejectReason.ToString());
                 return;
             }
@@ -773,6 +801,8 @@ namespace Twelve
             rejectedMoveCounters[reason] = count + 1;
             if (reason == "Stale revision") staleRequestCount++;
             Debug.LogWarning($"[SERVER] 12 Bead move rejected: {reason} request={requestId} revision={twelveRevision}");
+            PLAYERS flowSeat;
+            MatchFlow.Log("12 Beads", $"move rejected for {(TryGetTwelveSeat(sender, out flowSeat) ? FlowSeat(flowSeat) : "unseated client")}: {reason}");
             if (sender != null)
                 TargetTwelveMoveRejected(sender, requestId, reason, twelveRevision);
         }
@@ -889,6 +919,11 @@ namespace Twelve
                 RpcUpdateScoreUI(Myplayer1Score, Myplayer2Score);
             }
 
+            PLAYERS flowOpponent = seat == PLAYERS.PLAYER1 ? PLAYERS.PLAYER2 : PLAYERS.PLAYER1;
+            MatchFlow.Log("12 Beads", isJump
+                ? $"{FlowSeat(seat)} jumped bead {fromNode} → {toNode} and captured {FlowSeat(flowOpponent)}'s bead at {capturedNode} ({FlowSeat(flowOpponent)} has {12 - (seat == PLAYERS.PLAYER1 ? Myplayer1Score : Myplayer2Score)} left)"
+                : $"{FlowSeat(seat)} moved bead {fromNode} → {toNode}");
+
             ServerRecordTwelveHistory(movingBead, destination, wasInCaptureChain);
 
             bool legacyChainContinues = isJump && ServerHasCaptureForBead(movingBead, seat, true);
@@ -899,6 +934,7 @@ namespace Twelve
             if (chainContinues)
             {
                 forcedChainBead = movingBead;
+                MatchFlow.Log("12 Beads", $"{FlowSeat(seat)} can jump again — must continue with the bead on {toNode}");
             }
             else
             {
@@ -914,6 +950,7 @@ namespace Twelve
                         ? PLAYERS.PLAYER2 : PLAYERS.EMPTY;
                 TwelveEndReason reason = rulesResult.match.reason == TwelveMatchEndReason.ScoreLimit
                     ? TwelveEndReason.ScoreLimit : TwelveEndReason.Checkmate;
+                MatchFlow.Log("12 Beads", $"game over after {FlowSeat(seat)}'s move — {rulesResult.match.reason}, {(winner == PLAYERS.EMPTY ? "draw" : FlowSeat(winner) + " wins")}");
                 ServerFinalize(reason, winner);
             }
 
@@ -930,6 +967,7 @@ namespace Twelve
 
             if (turnChanged && !matchFinalized)
             {
+                MatchFlow.Log("12 Beads", $"turn → {FlowSeat(serverRulesState.turn)}");
                 ServerResetTurnTimer();
                 TwelveBeadNetworkManager.instance.ServerBroadcastCurrentTurn();
             }
@@ -1204,6 +1242,7 @@ namespace Twelve
             }
             TwelveTurnResult rulesResult = TwelveRulesEngine.ExpireTurn(ref serverRulesState);
             PLAYERS expiredSeat = rulesResult.expiredPlayer;
+            MatchFlow.Log("12 Beads", $"turn timer ran out for {FlowSeat(expiredSeat)} — turn skipped");
             forcedChainBead = null;
             bool turnChanged = rulesResult.turnChanged && TwelveBeadNetworkManager.instance != null &&
                 TwelveBeadNetworkManager.instance.ServerSetCurrentPlayer(rulesResult.nextPlayer);
@@ -1213,9 +1252,13 @@ namespace Twelve
             if (legacyNoMove != rulesResult.match.ended)
                 Debug.LogError($"[12Bead] Rules shadow mismatch expired-turn noMove engine={rulesResult.match.ended} legacy={legacyNoMove}");
             if (rulesResult.match.ended)
+                MatchFlow.Log("12 Beads", $"{FlowSeat(rulesResult.nextPlayer)} has no legal move — {FlowSeat(expiredSeat)} wins");
+            if (rulesResult.match.ended)
                 ServerFinalize(TwelveEndReason.Checkmate, expiredSeat);
 
             twelveRevision = rulesResult.newRevision;
+            if (!matchFinalized)
+                MatchFlow.Log("12 Beads", $"turn → {FlowSeat(rulesResult.nextPlayer)}");
             if (!matchFinalized)
                 ServerResetTurnTimer();
 

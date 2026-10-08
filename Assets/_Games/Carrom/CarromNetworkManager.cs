@@ -77,6 +77,8 @@ public class CarromNetworkManager : NetworkBehaviour
         }
         if (gameEnded) yield break;
         BEKStudio.GameController.Instance.gameWinner = NetworkGameManager.Instance.joinerData.Scores > NetworkGameManager.Instance.creatorData.Scores ? NetworkGameManager.Instance.joinerData.playerId : NetworkGameManager.Instance.creatorData.playerId;
+        MatchFlow.Log("Carrom", $"match time over — board {BEKStudio.GameController.FlowScores()}, winner picked from synced scores {MatchFlow.Scores()}");
+        MatchFlow.SendResult(BEKStudio.GameController.Instance.gameWinner, "match time over", BEKStudio.GameController.FlowScores());
         BEKStudio.GameController.currentHomeScore = 0;
         BEKStudio.GameController.currentAwayScore = 0;
         StopAllTurnLogic();
@@ -141,6 +143,8 @@ public class CarromNetworkManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdAnnounceDisconnectWin(string winnerId)
     {
+        MatchFlow.Log("Carrom", $"opponent of {MatchFlow.Who(winnerId)} disconnected and did not return");
+        MatchFlow.SendResult(winnerId, "opponent disconnected", BEKStudio.GameController.FlowScores());
         StopAllTurnLogic();
         RpcHandleDisconnectWin(winnerId);
         this.Delay(1, () =>
@@ -316,6 +320,10 @@ public class CarromNetworkManager : NetworkBehaviour
                 this.Delay(4, () =>
                 {
                     Rpc_ShowPlayer();
+                    var flowNgm = NetworkGameManager.Instance;
+                    MatchFlow.Begin("Carrom", $"game started — {BEKStudio.GameController.FlowOwner("White")} (white) vs {BEKStudio.GameController.FlowOwner("Black")} (black), 10 min match"
+                        + (string.IsNullOrEmpty(PlayercurrentTurnId) ? "" : $", {MatchFlow.Who(PlayercurrentTurnId)} starts")
+                        + (flowNgm != null ? $", prize {flowNgm.Prize} {(flowNgm.IsGoldCoin ? "gold" : "silver")}" : ""));
                     if (countdownCoroutine != null)
                         StopCoroutine(countdownCoroutine);
                     countdownCoroutine = StartCoroutine(ServerCountdown());
@@ -366,6 +374,7 @@ public class CarromNetworkManager : NetworkBehaviour
         // It is re-armed by StartTurnTimer(...) when the next turn begins.
         StopTurnTimer();
         lastShooterId = PlayercurrentTurnId;
+        MatchFlow.Log("Carrom", $"{MatchFlow.Who(PlayercurrentTurnId)} strikes (power {forceMultiplier:0.00})");
 
         if (playerPuck != null)
         {
@@ -1069,6 +1078,7 @@ public class CarromNetworkManager : NetworkBehaviour
             RpcApplyStrikerReadyPose(playerPuck.transform.localPosition, 90f);
 
             Debug.Log($"[Carrom][Server] Turn assigned to OFFLINE player {playerId}; striker authority deferred until reconnect.");
+            MatchFlow.Log("Carrom", $"{MatchFlow.Who(playerId)} is offline — turn waits for reconnect");
             return true;
         }
 
@@ -1117,6 +1127,7 @@ public class CarromNetworkManager : NetworkBehaviour
 
         string nextTurn = currentPlayerId == creatorId ? joinerId : creatorId;
 
+        bool flowFirstTurn = string.IsNullOrEmpty(PlayercurrentTurnId);
         // Ready pose is applied inside TryAssignStrikerAuthority, while the server
         // still holds the striker (server-first handoff).
         if (!TryAssignStrikerAuthority(nextTurn, allowOffline))
@@ -1136,6 +1147,7 @@ public class CarromNetworkManager : NetworkBehaviour
                 BEKStudio.GameController.Instance.masterClientTag = nextColor;
         }
 
+        MatchFlow.Log("Carrom", flowFirstTurn ? $"{MatchFlow.Who(nextTurn)} starts (plays {nextColor})" : $"turn → {MatchFlow.Who(nextTurn)}");
         RpcSwitchTurn(nextTurn);
         StartTurnTimer(nextTurn);
         ResetPlayerPuckPos();
@@ -1176,6 +1188,7 @@ public class CarromNetworkManager : NetworkBehaviour
             return;
         }
 
+        MatchFlow.Log("Carrom", $"player reconnected — board resynced, turn stays with {MatchFlow.Who(PlayercurrentTurnId)}");
         // ── Push full server state to the reconnecting client ──────────
         // Player avatars/names — idempotent, also reaches the opponent
         // but they already have the right UI.
@@ -1311,6 +1324,7 @@ public class CarromNetworkManager : NetworkBehaviour
         bool queenPendingCover = gc != null && gc.redPuckWaiting;
         string pendingQueenTag = queenPendingCover ? gc.QueenPendingTag : null;
 
+        MatchFlow.Log("Carrom", $"turn continues for {MatchFlow.Who(currentPlayerId)}" + (queenPendingCover ? " — must cover the queen" : ""));
         RpcGiveTurnToSamePlayer(currentPlayerId, queenPendingCover, pendingQueenTag);
         StartTurnTimer(currentPlayerId);
         ResetPlayerPuckPos();
@@ -1357,6 +1371,7 @@ public class CarromNetworkManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdGameOver()
     {
+        MatchFlow.SendResult(PlayercurrentTurnId, "game over", BEKStudio.GameController.FlowScores());
         StopAllTurnLogic();
         RpcGameOver(PlayercurrentTurnId);
         this.Delay(5, () =>
@@ -1391,6 +1406,7 @@ public class CarromNetworkManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     void CmdLeftRoom()
     {
+        MatchFlow.Log("Carrom", "a player left the room");
         RpcLeftRoom();
     }
 
@@ -1495,6 +1511,7 @@ public class CarromNetworkManager : NetworkBehaviour
         isTimerRunning = false;
 
         if (gameEnded) yield break;
+        MatchFlow.Log("Carrom", $"turn timer ran out for {MatchFlow.Who(playerId)}");
 
         // The SERVER switches the turn itself, immediately — the old flow sent
         // RpcOnTimerEnd and waited for a client to answer with CmdSwitchTurnByPlayerId.
@@ -1584,6 +1601,10 @@ public class CarromNetworkManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdGameStateWin(int PlayerId)
     {
+        MatchFlow.SendResult(BEKStudio.GameController.currentHomeScore == BEKStudio.GameController.currentAwayScore ? "draw"
+            : BEKStudio.GameController.currentHomeScore > BEKStudio.GameController.currentAwayScore ? NetworkGameManager.Instance?.creatorData?.playerId
+            : NetworkGameManager.Instance?.joinerData?.playerId,
+            $"game over — {MatchFlow.Who(PlayerId.ToString())} reported a win, higher board score wins", BEKStudio.GameController.FlowScores());
         StopAllTurnLogic();
         RpcGameStateWin(PlayerId);
         this.Delay(5, () =>
@@ -1638,6 +1659,10 @@ public class CarromNetworkManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdGameStatelose(int PlayerId)
     {
+        MatchFlow.SendResult(BEKStudio.GameController.currentHomeScore == BEKStudio.GameController.currentAwayScore ? "draw"
+            : BEKStudio.GameController.currentHomeScore > BEKStudio.GameController.currentAwayScore ? NetworkGameManager.Instance?.creatorData?.playerId
+            : NetworkGameManager.Instance?.joinerData?.playerId,
+            $"game over — {MatchFlow.Who(PlayerId.ToString())} reported a loss, higher board score wins", BEKStudio.GameController.FlowScores());
         StopAllTurnLogic();
         RpcGameStatelose(PlayerId);
         this.Delay(5, () =>

@@ -103,6 +103,7 @@ public class PlayerPowerController : NetworkBehaviour
     public void CmdAddNOSPickup(int nosCount)
     {
         // Update NOS on the server and sync to all clients
+        MatchFlow.Log("Horse Riding", $"{HorseMirrorGameManager.FlowName(netIdentity)} picked up nitro (+{nosCount})");
         AINosCount += nosCount;
         RpcOnBoostChanged(nosCount);
     }

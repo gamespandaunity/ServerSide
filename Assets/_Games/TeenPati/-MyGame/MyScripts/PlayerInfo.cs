@@ -784,6 +784,7 @@ namespace TeenPattiGame
         void OnDestroy()
         {
             TPLog.Warn("PlayerInfo", "PLAYER OBJECT DESTROYED: '" + gameObject.name + "' (netId " + netId + ") - he left or disconnected");
+            if (MatchFlow.Enabled) MatchFlow.Log("Teen Patti", $"{gameObject.name} left the table / disconnected");
             PlayerStateManager.Instance.OnPlayerLeftRoom((int)netId);
         }
 
@@ -1016,6 +1017,15 @@ namespace TeenPattiGame
         public void CmdUpdatePotSize(string potSize, int currentBetSpawnAmount)
         {
             TPLog.Flow("PlayerInfo", "CmdUpdatePotSize on server -> pot " + potSize + ", bet " + currentBetSpawnAmount);
+            if (MatchFlow.Enabled && TeenPattiNNetworkManager.instance != null)
+            {
+                string flowWho = TeenPattiNNetworkManager.instance.FlowName(connectionToClient, gameObject.name);
+                // Before the first turn is handed out (no actor seat yet) this is the boot seeding the pot.
+                if (TeenPattiNNetworkManager.instance.CurrentActorSeat != TeenPattiNNetworkManager.TPSeat.None)
+                    MatchFlow.Log(TeenPattiNNetworkManager.FlowGame, $"{flowWho} plays {(playerCustomProperties != null && playerCustomProperties.GetCustomBoolData("is_seen") ? "chaal" : "blind")} {TeenPattiNNetworkManager.instance.FlowPotDelta(potSize)} (pot {potSize})");
+                else
+                    MatchFlow.Log(TeenPattiNNetworkManager.FlowGame, $"boot {(Pot.instance != null ? Pot.instance.startPotAmount.ToString() : "?")} per player collected, pot {potSize}");
+            }
             UpdatePotSize(potSize, currentBetSpawnAmount);
             RpcUpdatePotSize(potSize, currentBetSpawnAmount);
 
@@ -1426,6 +1436,8 @@ namespace TeenPattiGame
         [Command(requiresAuthority = false)]
         public void CmdSeenAlert(bool isSeen)
         {
+            if (MatchFlow.Enabled && isSeen && TeenPattiNNetworkManager.instance != null && TeenPattiNNetworkManager.instance.FlowFirstSeen(connectionToClient))
+                MatchFlow.Log(TeenPattiNNetworkManager.FlowGame, $"{TeenPattiNNetworkManager.instance.FlowName(connectionToClient, gameObject.name)} sees the cards");
             RpcSeenAlert(isSeen);
         }
 
@@ -1519,6 +1531,8 @@ namespace TeenPattiGame
         [Command(requiresAuthority = false)]
         public void CmdSideShowAlert(bool isSideShow)
         {
+            if (MatchFlow.Enabled && isSideShow && TeenPattiNNetworkManager.instance != null)
+                MatchFlow.Log(TeenPattiNNetworkManager.FlowGame, $"{TeenPattiNNetworkManager.instance.FlowName(connectionToClient, gameObject.name)} asks for a side-show (pot {TeenPattiNNetworkManager.instance.FlowPot()})");
             RpcSideShowAlert(isSideShow);
         }
 
@@ -1592,6 +1606,8 @@ namespace TeenPattiGame
         [Command(requiresAuthority = false)]
         public void CmdUpdateAllPlayersCurrentChallAmount(string currentChalAmount)
         {
+            if (MatchFlow.Enabled && TeenPattiNNetworkManager.instance != null)
+                MatchFlow.Log(TeenPattiNNetworkManager.FlowGame, $"{TeenPattiNNetworkManager.instance.FlowName(connectionToClient, gameObject.name)} sets the chaal stake to {currentChalAmount}");
             RpcUpdateAllPlayersCurrentChallAmount(currentChalAmount);
         }
 

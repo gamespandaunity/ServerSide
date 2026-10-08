@@ -165,6 +165,7 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
         consumedTurnTokens.Clear();
         serverPacked.Clear();
         TPLog.Change("TeenPattiNNetworkManager", "handId", "Hand " + handId + " opened (" + why + ")");
+        if (MatchFlow.Enabled) MatchFlow.Begin(FlowGame, $"game started — hand {handId}, {FlowSeatName(TPSeat.Creator)} vs {FlowSeatName(TPSeat.Joiner)}, boot {(Pot.instance != null ? Pot.instance.startPotAmount.ToString() : "?")}");
     }
 
     /// <summary>Closes the hand exactly once. Returns false if it was already closed, so every
@@ -264,6 +265,7 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
         string roundId = staticVariables.CurrentRoundID;
         if (string.IsNullOrEmpty(roundId))
         {
+            if (MatchFlow.Enabled) MatchFlow.Log(FlowGame, $"hand {handId} NOT settled ({why}) — no casino round id");
             TPLog.Warn("TeenPattiNNetworkManager", "Hand " + handId + " NOT settled (" + why
                 + ") - there is no round id, so /casinos/create-new-round never came back");
             return;
@@ -272,6 +274,7 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
         TPSeat winner = forcedWinner != TPSeat.None ? forcedWinner : ServerDecideWinner();
         if (winner == TPSeat.None)
         {
+            if (MatchFlow.Enabled) MatchFlow.Log(FlowGame, $"hand {handId} NOT settled ({why}) — no winner could be decided");
             TPLog.Warn("TeenPattiNNetworkManager", "Hand " + handId + " NOT settled (" + why + ") - no winner could be decided");
             return;
         }
@@ -300,6 +303,21 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
         settledForHandId = handId;
         TPLog.Change("TeenPattiNNetworkManager", "settlement", "Hand " + handId + " won by " + winner
             + " (playerId '" + winnerId + "', pot " + pot + ") because " + why + " -> closing round " + roundId);
+
+        if (MatchFlow.Enabled)
+        {
+            TPSeat loser = winner == TPSeat.Creator ? TPSeat.Joiner : TPSeat.Creator;
+            bool flowShowdown = forcedWinner == TPSeat.None && SeatIsLive(TPSeat.Creator) && SeatIsLive(TPSeat.Joiner);
+            string flowReason = flowShowdown ? "showdown"
+                : quitSeat == (int)loser ? $"{FlowSeatName(loser)} left the match"
+                : $"{FlowSeatName(loser)} packed";
+            if (flowShowdown)
+                MatchFlow.Log(FlowGame, $"show: {FlowSeatName(TPSeat.Creator)} ({FlowHand(TPSeat.Creator)}) vs {FlowSeatName(TPSeat.Joiner)} ({FlowHand(TPSeat.Joiner)}) — {FlowSeatName(winner)} wins pot {pot}");
+            else
+                MatchFlow.Log(FlowGame, $"{FlowSeatName(winner)} wins pot {pot} — {flowReason}");
+            MatchFlow.SendResult(winnerId, flowReason,
+                $"pot {pot}; staked {FlowSeatName(TPSeat.Creator)} {SeatStake(TPSeat.Creator)} – {SeatStake(TPSeat.Joiner)} {FlowSeatName(TPSeat.Joiner)}");
+        }
 
         StartCoroutine(ServerConnection.PostApiRequest(ServerConnection.End_Round_casino_Url, data,
             accepted =>
@@ -461,6 +479,7 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
         }
         if (currentActorSeat == (int)seat)
             return;
+        if (MatchFlow.Enabled && !handEnded) MatchFlow.Log(FlowGame, $"turn → {FlowSeatName(seat)}");
         ServerSetActorSeat(seat, "'" + who + "' began his turn");
     }
 
@@ -564,6 +583,7 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
         dealtForHandId = handId;
         TPLog.Change("TeenPattiNNetworkManager", "deal", "Server dealt hand " + handId + " to "
             + players + " player(s) from a " + deckSize + " card deck");
+        if (MatchFlow.Enabled) MatchFlow.Log(FlowGame, $"cards dealt to {players} player(s)");
 
         // Delivery still goes out on a broadcast. Making the server the DEALER and making each
         // player's cards PRIVATE are two separate changes: private delivery only works once the
@@ -749,6 +769,8 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
     public void CmdUpdateThisStateOnNetwork(int state, string message)
     {
         TPLog.Flow("TeenPattiNNetworkManager", "CmdUpdateThisStateOnNetwork -> room state " + (RoomState.STATE)state + " msg='" + message + "'");
+        if (MatchFlow.Enabled && (RoomState.STATE)state == RoomState.STATE.WaitingForResults)
+            MatchFlow.Log(FlowGame, $"{FlowSeatName(CurrentActorSeat)} calls show" + (string.IsNullOrEmpty(message) ? "" : $" ({message})") + $", pot {FlowPot()}");
         RpcUpdateThisStateOnNetwork(state, message);
 
         // Keep the SERVER's own copy of the room state in step. This Cmd relayed the Rpc and nothing
@@ -916,6 +938,7 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
         }
 
         quitSeat = (int)leaver;
+        if (MatchFlow.Enabled) MatchFlow.Log(FlowGame, $"{FlowSeatName(leaver)} left the match (pressed exit), pot {FlowPot()}");
 
         // The seat still here wins by walkover, and the round has to be closed from this path: the
         // showdown that would normally settle it is never going to happen now.
@@ -955,6 +978,94 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
     // identically in both repos, so the server build needs them too - inert there, because of the
     // NetworkClient.active guard below.
 
+
+    // ===================== MATCH FLOW LOGS (server log only) =====================
+    // Wording helpers for MatchFlow. Read-only: nothing here changes a hand, a seat or a SyncVar.
+    // Callers gate on MatchFlow.Enabled, so these only ever run on the dedicated server.
+
+    public const string FlowGame = "Teen Patti";
+
+    /// <summary>"handId:seat" keys already logged as "sees cards", so a repeated seen Cmd logs once.</summary>
+    readonly HashSet<string> flowSeenKeys = new HashSet<string>();
+
+    string FlowSeatName(TPSeat seat)
+    {
+        string id = PlayerIdForSeat(seat);
+        return string.IsNullOrEmpty(id) ? seat.ToString() : MatchFlow.Who(id);
+    }
+
+    /// <summary>Display name of the player owning a connection, or the fallback (the object's name).</summary>
+    public string FlowName(NetworkConnectionToClient conn, string fallback)
+    {
+        TPSeat seat = conn != null ? SeatForConnection(conn) : TPSeat.None;
+        if (seat != TPSeat.None) return FlowSeatName(seat);
+        return string.IsNullOrEmpty(fallback) ? "?" : fallback;
+    }
+
+    /// <summary>The pot as the room property holds it right now.</summary>
+    public string FlowPot()
+    {
+        return roomCustomPropertiesTeenPatti != null
+            ? roomCustomPropertiesTeenPatti.GetTableCollectedCash(LocalSettings.TableCashKey).ToString()
+            : "?";
+    }
+
+    /// <summary>What a pot update added: the new pot minus the room's pot before it (the client
+    /// writes the room pot right after its pot Cmd, so at Cmd time it still holds the old value).</summary>
+    public string FlowPotDelta(string newPot)
+    {
+        System.Numerics.BigInteger next;
+        if (roomCustomPropertiesTeenPatti == null || !System.Numerics.BigInteger.TryParse(newPot, out next)) return "?";
+        return (next - roomCustomPropertiesTeenPatti.GetTableCollectedCash(LocalSettings.TableCashKey)).ToString();
+    }
+
+    /// <summary>True when the owner's seat is already out of this hand (or the hand is over), so a
+    /// repeated Packed/OutOfTable state is not logged twice.</summary>
+    public bool FlowIsOut(NetworkConnectionToClient conn)
+    {
+        TPSeat seat = conn != null ? SeatForConnection(conn) : TPSeat.None;
+        return handEnded || (seat != TPSeat.None && serverPacked.Contains(seat));
+    }
+
+    /// <summary>True the first time the owner's seat reports seeing its cards in this hand.</summary>
+    public bool FlowFirstSeen(NetworkConnectionToClient conn)
+    {
+        TPSeat seat = conn != null ? SeatForConnection(conn) : TPSeat.None;
+        return flowSeenKeys.Add(handId + ":" + seat);
+    }
+
+    /// <summary>"pair: K♠ K♥ 7♦" for a seat's dealt hand. Calls ServerEvaluateSeat, so it must
+    /// run Creator then Joiner (the order ServerDecideWinner uses) to leave the rank statics as they were.</summary>
+    string FlowHand(TPSeat seat)
+    {
+        int rank, score;
+        int[] values;
+        int[] hand;
+        if (!ServerEvaluateSeat(seat, out rank, out score, out values) || !serverHands.TryGetValue(seat, out hand))
+            return "hand unknown";
+
+        CardProperty[] deck = TeenPattiGame.GameManager.Instance.AllCards.Card;
+        string rankName = rank == 7 ? "trail" : rank == 6 ? "pure sequence" : rank == 5 ? "sequence"
+            : rank == 4 ? "colour" : rank == 3 ? "pair" : "high card";
+        return rankName + ": " + FlowCard(deck[hand[0]]) + " " + FlowCard(deck[hand[1]]) + " " + FlowCard(deck[hand[2]]);
+    }
+
+    static string FlowCard(CardProperty card)
+    {
+        string value;
+        switch (card.Card)
+        {
+            case CardState.CARDVALUE.ACE: value = "A"; break;
+            case CardState.CARDVALUE.KING: value = "K"; break;
+            case CardState.CARDVALUE.QUEEN: value = "Q"; break;
+            case CardState.CARDVALUE.JACK: value = "J"; break;
+            default: value = ((int)card.Card).ToString(); break;
+        }
+        string suit = card.Suit == CardState.SUIT.SPADE ? "♠" : card.Suit == CardState.SUIT.HEART ? "♥"
+            : card.Suit == CardState.SUIT.DIAMOND ? "♦" : "♣";
+        return value + suit;
+    }
+
     private void OnDisable()
     {
         MirrorNetwork.OnDirectWinWithoutInternet -= DirectResult;
@@ -973,6 +1084,7 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
     private void AnnounceWinner(string reason)
     {
         TPLog.Flow("TeenPattiNNetworkManager", "AnnounceWinner - opponent disconnect timer expired, reason='" + reason + "' -> I win");
+        if (MatchFlow.Enabled) MatchFlow.Log(FlowGame, $"reconnect timer ran out for the disconnected player ({reason}), pot {FlowPot()}");
         DirectResult(true);
     }
 

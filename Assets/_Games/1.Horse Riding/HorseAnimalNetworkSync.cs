@@ -284,6 +284,14 @@ public class HorseAnimationSync : NetworkBehaviour
             nameText.text = newName;
     }
 
+    public override void OnStopServer()
+    {
+        base.OnStopServer();
+        // MatchFlow (logging only): the server removes a rider's horse when that rider disconnects.
+        if (MatchFlow.Enabled && !MConstants.isRaceOver)
+            MatchFlow.Log("Horse Riding", $"{HorseMirrorGameManager.FlowName(netIdentity)} disconnected — horse removed");
+    }
+
     private void OnDestroy()
     {
         // Save position one last time before destruction
@@ -311,6 +319,8 @@ public class HorseAnimationSync : NetworkBehaviour
     [Command]
     public void CmdPlayerFinished()
     {
+        if (!MConstants.isRaceOver)
+            MatchFlow.Log("Horse Riding", $"{HorseMirrorGameManager.FlowName(netIdentity)} reports reaching the finish line");
         if (HorseMirrorGameManager.Instance == null)
         {
             Debug.LogWarning("[HorseServerResult] Finish rejected: Horse manager is missing on the server.");

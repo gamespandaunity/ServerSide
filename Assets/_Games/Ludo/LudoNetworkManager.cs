@@ -54,6 +54,7 @@ public class LudoNetworkManager : NetworkBehaviour
 
         //    yield return new WaitForSeconds(1f);
         //}
+        MatchFlow.Log("Ludo", "match timer ran out (15:00) — winner by tokens home");
         int creatorFinished = LudoGame.GameManager.Instance.playerObjects[0].finishedPawns;
         int joinerFinished = LudoGame.GameManager.Instance.playerObjects[1].finishedPawns;
 
@@ -66,6 +67,9 @@ public class LudoNetworkManager : NetworkBehaviour
         else
             winnerID = NetworkGameManager.Instance.creatorData.playerId;
 
+        MatchFlow.SendResult(winnerID, creatorFinished == joinerFinished
+            ? $"match time over — tokens home tied {creatorFinished}–{joinerFinished} (server count), creator wins the tie"
+            : $"match time over — tokens home {creatorFinished}–{joinerFinished} (server count)", GameGUIController.FlowHomeCounts());
         RpcTimerEnded(winnerID);
     }
 
@@ -117,12 +121,14 @@ public class LudoNetworkManager : NetworkBehaviour
             {
 
                 Debug.Log($"✅ {NetworkServer.connections.Count} players connected, setting players...");
+                GameGUIController.FlowMatchStarted();
                 this.Delay(4, () =>
                 {
 
                     if (countdownCoroutine != null)
                         StopCoroutine(countdownCoroutine);
                     countdownCoroutine = StartCoroutine(ServerCountdown());
+                    MatchFlow.Log("Ludo", $"match timer started (15:00) — {GameGUIController.FlowWho(0)} vs {GameGUIController.FlowWho(1)}");
                 });
             });
         }

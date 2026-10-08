@@ -380,6 +380,12 @@ namespace POKER
             {
                 PokerStatesManager.Instance.UpdateDIndex();
                 PokerManager.Instance.SettingRandomCardsArrayToRoomProperty();
+
+                PokerFlow.Hand++;
+                if (PokerFlow.Hand == 1)
+                    MatchFlow.Begin("Poker", $"game started — {PokerFlow.Players()}");
+                MatchFlow.Log("Poker", $"hand {PokerFlow.Hand} — {PokerFlow.Players()}, blinds {LocalSettings.MinBetAmount / 2}/{LocalSettings.MinBetAmount}");
+                MatchFlow.Log("Poker", "hole cards dealt");
             }
             ApiAndRoomManager._instance.ModifyUserBalance(onfetchbalance =>
             {
@@ -720,6 +726,7 @@ namespace POKER
             }
 
             Psm.PlayingList[dealerIndex].Dealer.SetActive(true);
+            MatchFlow.Log("Poker", $"dealer {PokerFlow.Who(Psm.PlayingList[dealerIndex])}");
 
 
             dealerIndex = DealerToNextPlayerTurn(dealerIndex);
@@ -730,10 +737,12 @@ namespace POKER
             // Old Is Gold F
             Debug.Log(dealerIndex + " " + counternwe++);
             PokerActionPanel.Instance.SetBetAmountOnDealer(Psm.PlayingList.Count == 2 ? false : true, Psm.PlayingList[dealerIndex]);
+            MatchFlow.Log("Poker", $"{PokerFlow.Who(Psm.PlayingList[dealerIndex])} posts blind {(Psm.PlayingList.Count == 2 ? LocalSettings.MinBetAmount : LocalSettings.MinBetAmount / 2)} (pot {PokerFlow.Pot()})");
 
             dealerIndex = DealerToNextPlayerTurn(dealerIndex);
             Debug.Log(dealerIndex + " " + counternwe++);
             PokerActionPanel.Instance.SetBetAmountOnDealer(Psm.PlayingList.Count == 2 ? true : false, Psm.PlayingList[dealerIndex]);
+            MatchFlow.Log("Poker", $"{PokerFlow.Who(Psm.PlayingList[dealerIndex])} posts blind {(Psm.PlayingList.Count == 2 ? LocalSettings.MinBetAmount / 2 : LocalSettings.MinBetAmount)} (pot {PokerFlow.Pot()})");
 
             dealerIndex = Psm.PlayingList.Count == 2 ? dealerIndex : DealerToNextPlayerTurn(dealerIndex);
 

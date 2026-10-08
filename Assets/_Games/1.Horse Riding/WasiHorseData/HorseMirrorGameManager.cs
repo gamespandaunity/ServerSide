@@ -46,11 +46,43 @@ public class HorseMirrorGameManager : NetworkBehaviour
     //	hissa hai ya reconnect.
     private bool countdownFinished = false;
 
+    // MatchFlow (logging only): why the next ServerDeclareResult happens.
+    private string flowResultReason;
+
+    /// <summary>Display name of a horse's player for MatchFlow lines (logging only).</summary>
+    public static string FlowName(NetworkIdentity participant)
+    {
+        return FlowName(participant != null ? participant.connectionToClient : null);
+    }
+
+    /// <summary>Display name of a connection's player for MatchFlow lines (logging only).</summary>
+    public static string FlowName(NetworkConnectionToClient conn)
+    {
+        NetworkGameManager ngm = NetworkGameManager.Instance;
+        if (conn == null) return "?";
+        if (ngm != null)
+        {
+            if (ngm.CreatorRef != null && ngm.creatorData != null && conn.connectionId == ngm.CreatorRef.connectionId)
+                return MatchFlow.Who(ngm.creatorData.playerId);
+            if (ngm.JoinerRef != null && ngm.joinerData != null && conn.connectionId == ngm.JoinerRef.connectionId)
+                return MatchFlow.Who(ngm.joinerData.playerId);
+        }
+        return "player " + conn.connectionId;
+    }
+
+    /// <summary>Elapsed match clock as m:ss for MatchFlow lines (logging only).</summary>
+    private string FlowClock()
+    {
+        int elapsed = Mathf.Max(0, 600 - remainingTime);
+        return $"{elapsed / 60}:{elapsed % 60:00}";
+    }
+
     [Server]
     private IEnumerator ServerCountdown()
     {
         remainingTime = 600;
         Debug.Log("Server Countdown Started." + remainingTime);
+        MatchFlow.Log("Horse Riding", "match timer started — 10:00, draw if nobody finishes");
         while (remainingTime > 0)
         {
             if (!NetworkGameManager.Instance.IsPaused)
@@ -174,6 +206,7 @@ public class HorseMirrorGameManager : NetworkBehaviour
         float distance = Vector3.Distance(horsePosition, finishTrigger.ClosestPoint(horsePosition));
         if (distance > ServerFinishTolerance)
         {
+            MatchFlow.Log("Horse Riding", $"finish rejected for {FlowName(participant)} — {distance:F0}m from the finish line");
             Debug.LogWarning($"[HorseServerResult] Finish rejected: netId={participant.netId}, distance={distance:F1}m.");
             return false;
         }
@@ -183,6 +216,7 @@ public class HorseMirrorGameManager : NetworkBehaviour
             : 0;
         if (requiredWaypoints > 0 && progress.GrandTalWaypointPassed + 1 < requiredWaypoints)
         {
+            MatchFlow.Log("Horse Riding", $"finish rejected for {FlowName(participant)} — only {progress.GrandTalWaypointPassed}/{requiredWaypoints} checkpoints passed");
             Debug.LogWarning($"[HorseServerResult] Finish rejected: player passed " +
                              $"{progress.GrandTalWaypointPassed}/{requiredWaypoints} server waypoints.");
             return false;
@@ -197,6 +231,8 @@ public class HorseMirrorGameManager : NetworkBehaviour
         if (serverResultDeclared || !serverObservedTwoPlayers || !ValidateServerFinish(participant))
             return false;
 
+        MatchFlow.Log("Horse Riding", $"{FlowName(participant)} finished — 1st (match time {FlowClock()})");
+        flowResultReason = "first across the finish line";
         return ServerDeclareResult(participant, true);
     }
 
@@ -224,6 +260,7 @@ public class HorseMirrorGameManager : NetworkBehaviour
         MConstants.isRaceOver = true;
         MirrorNetwork.winnerID = winnerId;
         Debug.Log($"[HorseServerResult] Server decided winner={winnerId}, connection={participant.connectionToClient.connectionId}.");
+        MatchFlow.SendResult(winnerId, flowResultReason ?? (participantWon ? "finished first" : "opponent forfeited"));
         ApiAndRoomManager._instance.winLoseChallengeId = networkManager.transactionId;
         ApiAndRoomManager._instance.WinnerLossChallenge(winnerId);
         RpcShowServerWinner(winnerId);
@@ -246,6 +283,8 @@ public class HorseMirrorGameManager : NetworkBehaviour
 
         serverResultDeclared = true;
         MConstants.isRaceOver = true;
+        MatchFlow.Log("Horse Riding", "match time over (10:00) — nobody crossed the finish line");
+        MatchFlow.SendResult("draw", "match time over — nobody finished");
         ApiAndRoomManager._instance.winLoseChallengeId = transactionId;
         ApiAndRoomManager._instance.DrawChallenge(transactionId);
         RpcShowServerDraw();
@@ -278,6 +317,8 @@ public class HorseMirrorGameManager : NetworkBehaviour
                 continue;
 
             Debug.Log($"[HorseServerResult] Player forfeited, connection={sender.connectionId}.");
+            MatchFlow.Log("Horse Riding", $"{FlowName(identity)} left the race (forfeit, match time {FlowClock()})");
+            flowResultReason = "opponent forfeited";
             ServerDeclareResult(identity, false);
             return;
         }
@@ -314,6 +355,8 @@ public class HorseMirrorGameManager : NetworkBehaviour
                 continue;
 
             Debug.Log($"[HorseServerResult] Existing disconnect flow verified; remaining connection={connection.connectionId} wins.");
+            MatchFlow.Log("Horse Riding", $"opponent disconnected — {FlowName(identity)} is the last horse in the race");
+            flowResultReason = "opponent disconnected";
             ServerDeclareResult(identity, true);
             return;
         }
@@ -539,6 +582,7 @@ public class HorseMirrorGameManager : NetworkBehaviour
     {
         base.OnStartServer();
         Debug.Log("✅ OnStartServer called - Server started");
+        MatchFlow.Begin("Horse Riding", "game started — race server ready, waiting for 2 riders");
 
         if (NetworkServer.active)
         {
@@ -547,6 +591,7 @@ public class HorseMirrorGameManager : NetworkBehaviour
             {
 
                 serverObservedTwoPlayers = true;
+                MatchFlow.Log("Horse Riding", $"{NetworkServer.connections.Count} players connected — match timer starts in 4s");
 
                 Debug.Log($"✅ {NetworkServer.connections.Count} players connected, setting players...");
                 this.Delay(4, () =>
@@ -607,6 +652,7 @@ public class HorseMirrorGameManager : NetworkBehaviour
 
         // Spawn on network and give ownership to the player
         NetworkServer.Spawn(spawnedHorse, sender);
+        MatchFlow.Log("Horse Riding", $"{FlowName(sender)} joined — horse spawned");
 
         // Tell client to setup local controls + camera
         TargetSetupHorse(sender, spawnedHorse);
@@ -627,6 +673,7 @@ public class HorseMirrorGameManager : NetworkBehaviour
         if (spawnedPlayers >= 2 && ReadyToGO.Instance != null && !ReadyToGO.hasGameStarted)
         {
             Debug.Log("🎬 All players ready - starting countdown");
+            MatchFlow.Log("Horse Riding", $"both riders ready ({spawnedPlayers} horses) — countdown 3, 2, 1, GO");
             ReadyToGO.hasGameStarted = true;
             StartCoroutine(ServerCountdownSequence());
             return;
@@ -641,6 +688,7 @@ public class HorseMirrorGameManager : NetworkBehaviour
         //	Sirf isi player ko game state bhejo (ClientRpc sab ka race timer dobara start kar deta
         //	tha) aur uske buttons foren dikha do.
         Debug.Log("🔁 [Server] Countdown already over - restoring game state for the rejoining player.");
+        MatchFlow.Log("Horse Riding", $"{FlowName(sender)} back in the race (match time {FlowClock()})");
         TargetStartGameForRejoiner(sender);
     }
 
@@ -658,6 +706,7 @@ public class HorseMirrorGameManager : NetworkBehaviour
         }
 
         countdownFinished = true;
+        MatchFlow.Log("Horse Riding", "GO — race started");
 
         // Start the game - this is the initial start
         RpcStartGame();

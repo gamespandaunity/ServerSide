@@ -194,6 +194,7 @@ namespace POKER
         // this only guards the everybody-connected-but-nobody-acting case.
         const float serverTurnGraceSeconds = 8f;
         PlayerInfo serverTurnPlayer;
+        bool flowHandPaused;   // match-log only: so "hand paused" / "resumes" are written once each
         float serverTurnElapsed;
 
         // Second half of the backstop: a live hand where NOBODY holds ExecutingTurn. A reconnect
@@ -232,6 +233,7 @@ namespace POKER
                 {
                     Debug.LogWarning($"[ServerTurnBackstop] Nobody holds the turn and {p.gameObject.name} " +
                                      $"is {state} while still in PlayingList - folding it so the hand can resolve.");
+                    MatchFlow.Log("Poker", $"nobody held the turn for {serverNoTurnGraceSeconds}s — {PokerFlow.Who(p)} is {state}, auto fold");
                     p.UpdatePlayerState(PlayerState.STATE.Packed);
                     return;
                 }
@@ -242,6 +244,7 @@ namespace POKER
             {
                 Debug.LogWarning($"[ServerTurnBackstop] Nobody held the turn for {serverNoTurnGraceSeconds}s " +
                                  $"and every player looks valid - handing the turn to {fallback.gameObject.name}.");
+                MatchFlow.Log("Poker", $"nobody held the turn for {serverNoTurnGraceSeconds}s — handing it to {PokerFlow.Who(fallback)}");
                 fallback.currentPlayerStateRef.UpdateCurrentPlayerState(PlayerState.STATE.ExecutingTurn);
             }
         }
@@ -261,8 +264,18 @@ namespace POKER
             NetworkGameManager networkGameManager = NetworkGameManager.Instance;
             if (networkGameManager == null || networkGameManager.IsPaused || networkGameManager.currentPlayerCount < 2)
             {
+                if (networkGameManager != null && !flowHandPaused)
+                {
+                    flowHandPaused = true;
+                    MatchFlow.Log("Poker", $"hand paused — waiting for a disconnected or paused player ({networkGameManager.currentPlayerCount} connected)");
+                }
                 serverTurnPlayer = null;
                 return;
+            }
+            if (flowHandPaused)
+            {
+                flowHandPaused = false;
+                MatchFlow.Log("Poker", "players connected again — hand resumes");
             }
 
             PlayerInfo turnPlayer = null;
@@ -303,6 +316,7 @@ namespace POKER
             Debug.LogWarning($"[ServerTurnBackstop] {stalled.gameObject.name} held the turn for " +
                              $"{LocalSettings.PlayerTurnDurationPoker + serverTurnGraceSeconds}s without acting - " +
                              $"folding server-side so the hand can continue.");
+            MatchFlow.Log("Poker", $"turn timer ran out for {PokerFlow.Who(stalled)} — auto fold");
 
             // Work out the next player BEFORE folding: TriggerStatePacked removes the folding player
             // from PlayingList, and it only passes the turn on that player's own client (IsMine),

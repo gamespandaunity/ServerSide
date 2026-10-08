@@ -162,6 +162,7 @@ public class TwelveBeadNetworkManager : NetworkBehaviour
         Debug.LogError("🎯 Toss Winner: " + tossWinnerId);
 
         ServerSetCurrentPlayer((PLAYERS)tossWinnerId);
+        MatchFlow.Log("12 Beads", $"{MultiPlayerGameManagerTwelve.FlowSeat((PLAYERS)tossWinnerId)} won the toss and moves first");
 
         // Show per-client toss announcement ("You won/lost the toss")
         NotifyTossResult(tossWinnerId);

@@ -270,6 +270,7 @@ public class HighwayCarNetwork : NetworkBehaviour
         }
 
         Debug.Log($"🔄 Server updated car position for reconnected player: {pos}");
+        MatchFlow.Log("Highway Racer", $"{HR_NetworkManager.FlowWho(netIdentity)} restored position after reconnect (z {pos.z:F0} m)");
         RpcForcePositionSync(pos, rot, vel, angVel);
     }
 
@@ -424,12 +425,14 @@ public class HighwayCarNetwork : NetworkBehaviour
             return;
 
         Debug.Log($"[HighwayServerResult] Server finish trigger hit by netId={netId}.");
+        MatchFlow.Log("Highway Racer", $"{HR_NetworkManager.FlowWho(netIdentity)} crossed the finish line (score {(playerHandler != null ? Mathf.FloorToInt(playerHandler.score) : 0)}, {(playerHandler != null ? playerHandler.distance : 0f):F2} km)");
         ServerReachedFinishLine();
     }
 
     [Command]
     public void CmdPlayerFinished(int PlayerId)
     {
+        MatchFlow.Log("Highway Racer", $"{HR_NetworkManager.FlowWho(netIdentity)} reports reaching the finish");
         ServerValidateFinishRequest();
     }
 
@@ -439,6 +442,7 @@ public class HighwayCarNetwork : NetworkBehaviour
         if (HR_NetworkManager.Instance == null || !HR_NetworkManager.hasHighWayGameStarted)
         {
             Debug.LogWarning($"[HighwayServerResult] Finish request rejected before race start, netId={netId}.");
+            MatchFlow.Log("Highway Racer", $"finish of {HR_NetworkManager.FlowWho(netIdentity)} rejected — race not started");
             return false;
         }
 
@@ -455,6 +459,7 @@ public class HighwayCarNetwork : NetworkBehaviour
         if (distanceFromFinish > 35f)
         {
             Debug.LogWarning($"[HighwayServerResult] Remote finish request rejected: netId={netId}, distance={distanceFromFinish:F1}m.");
+            MatchFlow.Log("Highway Racer", $"finish of {HR_NetworkManager.FlowWho(netIdentity)} rejected — {distanceFromFinish:F0} m from the line");
             return false;
         }
 
@@ -472,6 +477,7 @@ public class HighwayCarNetwork : NetworkBehaviour
     [Server]
     public bool ServerWasEliminated()
     {
+        MatchFlow.Log("Highway Racer", $"{HR_NetworkManager.FlowWho(netIdentity)} eliminated (score {(playerHandler != null ? Mathf.FloorToInt(playerHandler.score) : 0)}, {(playerHandler != null ? playerHandler.distance : 0f):F2} km)");
         return HR_NetworkManager.Instance != null &&
                HR_NetworkManager.Instance.ServerDeclareLoser(netIdentity);
     }
@@ -488,6 +494,7 @@ public class HighwayCarNetwork : NetworkBehaviour
     {
         // PlayerId is intentionally ignored. The server derives the player from
         // this owned car's connection after validating its synced position.
+        MatchFlow.Log("Highway Racer", $"{HR_NetworkManager.FlowWho(netIdentity)} reports reaching the finish");
         ServerValidateFinishRequest();
     }
 
@@ -522,6 +529,8 @@ public class HighwayCarNetwork : NetworkBehaviour
     private void OnDestroy()
     {
         Cars.Remove(this);
+        if (isServer)
+            MatchFlow.Log("Highway Racer", $"{HR_NetworkManager.FlowWho(netIdentity)}'s car removed — left or disconnected (score {(playerHandler != null ? Mathf.FloorToInt(playerHandler.score) : 0)}, {(playerHandler != null ? playerHandler.distance : 0f):F2} km)");
 
         if (isOwned)
         {
@@ -574,6 +583,8 @@ public class HighwayCarNetwork : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdAnnounceVictory(int playerId, string reaosn)
     {
+        MatchFlow.Log("Highway Racer", $"victory announced: {MatchFlow.Who(playerId.ToString())} — {reaosn}");
+        MatchFlow.SendResult(playerId.ToString(), "victory announced: " + reaosn);
         ApiAndRoomManager._instance.WinnerLossChallenge(playerId.ToString());
         RpcAnnounceVictory(playerId, reaosn);
         NetworkGameManager.Instance.creatorData.Scores = 0;

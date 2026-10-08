@@ -1031,6 +1031,7 @@ namespace POKER
         public void CmdSendPokerBet(string pokerCurrentBetAmountString, bool isAllIn)
         {
             ServerAccumulatePokerBet(LocalSettings.StringToBigInteger(pokerCurrentBetAmountString));
+            PokerFlow.Bet(this, pokerCurrentBetAmountString, isAllIn);
             SendPokerBetRPC(pokerCurrentBetAmountString, isAllIn);
         }
 
@@ -1092,6 +1093,8 @@ namespace POKER
             if (GameManager.Instance != null)
                 foreach (PlayerInfo p in GameManager.Instance.playersList)
                     if (p != null) p.syncedPokerRoundBet = "0";
+
+            PokerFlow.Board(index, communityCardsCsv);
         }
 
         [Command(requiresAuthority = false)]
@@ -1398,6 +1401,8 @@ namespace POKER
             {
                 if (NetworkServer.active)
                 {
+                    if (winner && PokerFlow.FirstResult())
+                        MatchFlow.SendResult(ownerPlayerId, PokerFlow.Winner(this), PokerFlow.Chips());
                     RPCWinner(winner);
                     if (winner) ServerStartSettleWatch();
                 }
@@ -1435,6 +1440,8 @@ namespace POKER
                     }
                 }
             }
+            if (winner && PokerFlow.FirstResult())
+                MatchFlow.SendResult(ownerPlayerId, PokerFlow.Winner(this), PokerFlow.Chips());
             RPCWinner(winner);
             if (winner) ServerStartSettleWatch();
         }

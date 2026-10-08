@@ -314,6 +314,7 @@ public class LudoGameController : NetworkBehaviour, IMiniGame
             string[] data = ((string)CustomData).Split(';');
             steps = int.Parse(data[0]);
             int pl = int.Parse(data[1]);
+            GameGUIController.FlowDiceRolled(pl, steps);
 
             LudoGame.GameManager.Instance.playerObjects[pl].dice.GetComponent<GameDiceController>().RollDiceStart(steps);
         }
@@ -323,6 +324,7 @@ public class LudoGameController : NetworkBehaviour, IMiniGame
             int index = int.Parse(data[0]);
             int pl = int.Parse(data[1]);
             steps = int.Parse(data[2]);
+            GameGUIController.FlowPawnMoved(pl, index, steps);
             LudoGame.GameManager.Instance.playerObjects[pl].pawns[index].GetComponent<LudoPawnController>().MakeMovePC();
             // ✅ Real player clients report the settled board to the server (client-authoritative
             //    reconnect snapshot). The dedicated server must not build the snapshot itself.

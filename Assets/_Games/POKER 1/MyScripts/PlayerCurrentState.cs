@@ -89,6 +89,7 @@ namespace POKER
                 {
                     // Server updates its own state and broadcasts to all clients
                     Debug.Log($"[UpdateState] SERVER setting {state} on {gameObject.name} (ownerPlayerId={playerInfo.ownerPlayerId})");
+                    PokerFlow.State(playerInfo, currentState, state);
                     currentState = state;
                     OnUpdateCurrentState(state);
                     Debug.Log($"[UpdateState] SERVER about to send ClientRpc for {state}");
@@ -111,6 +112,7 @@ namespace POKER
         public void CmdUpdatePlayerState(PlayerState.STATE state)
         {
             playerInfo.playerCustomProperties.SetPlayerStateProperty(LocalSettings.playerState, (int)state);
+            PokerFlow.State(playerInfo, currentState, state);
             currentState = state;
             OnUpdateCurrentState(state);
             UpdateCurrentPlayerStateOnNetwork(state);

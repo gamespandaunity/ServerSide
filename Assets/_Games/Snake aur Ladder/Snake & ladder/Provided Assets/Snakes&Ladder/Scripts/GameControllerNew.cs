@@ -891,6 +891,7 @@ namespace Snake_Ladder
             int playerindex = playerNum == Player1Soldier.GetComponent<SnakePlayerRef>().playerID ? 1 : 2;
             Debug.Log("playerindex" + playerindex);
             Node currentNode = playerNum == Player1Soldier.GetComponent<SnakePlayerRef>().playerID ? CurrentNodePlayer1 : CurrentNodePlayer2;
+            string flowFrom = currentNode != null ? currentNode.name : "?"; // match log only
             List<Vector3> path = new List<Vector3>();
             Transform playerSoldier = playerNum == Player1Soldier.GetComponent<SnakePlayerRef>().playerID ? Player1Soldier : Player2Soldier;
             Debug.Log("PLayerNum1" + playerNum);
@@ -922,6 +923,10 @@ namespace Snake_Ladder
             {
                 isGameEnd = true;
             }
+
+            MatchFlow.Log("Snake & Ladder", isSkipMove
+                ? $"{MatchFlow.Who(playerNum)} rolled a {turnNumber} — {flowFrom} + {turnNumber} overshoots 100, no move"
+                : $"{MatchFlow.Who(playerNum)} rolled a {turnNumber} — {flowFrom} → {(currentNode != null ? currentNode.name : "?")}");
 
             if (isSkipMove)
             {
@@ -968,6 +973,7 @@ namespace Snake_Ladder
                                 {
                                     if (NetworkServer.active && SnakeMirrorNetworkManager.Instance != null)
                                     {
+                                        MatchFlow.Log("Snake & Ladder", $"{MatchFlow.Who(playerNum)} reached 100!");
                                         SnakeMirrorNetworkManager.Instance.ServerCompleteMove();
                                         SnakeMirrorNetworkManager.Instance.ServerDeclareBoardWinner(playerNum);
                                     }
@@ -1034,6 +1040,10 @@ namespace Snake_Ladder
                 if (entry.TriggerNode == currentNode)
                 {
                     Debug.Log($"🐍/🪜 Player {playerNum + 1} hit {entry.type}!");
+                    MatchFlow.Log("Snake & Ladder", (entry.type == SnakesAndLadderEntry.Type.Ladder
+                        ? $"{MatchFlow.Who(playerNum)} climbed a ladder "
+                        : $"{MatchFlow.Who(playerNum)} bitten by a snake ")
+                        + $"{(entry.TriggerNode != null ? entry.TriggerNode.name : "?")} → {(entry.TargetNode != null ? entry.TargetNode.name : "?")}");
 
                     if (entry.PathPoints.Count > 0)
                     {
@@ -1213,6 +1223,7 @@ namespace Snake_Ladder
 
                 SnakeMirrorNetworkManager.Instance.RpcNotifyFirstTurn(
                     SnakeMirrorNetworkManager.Instance.currentTurnPlayerNumber);
+                MatchFlow.Log("Snake & Ladder", $"turn → {SnakeMirrorNetworkManager.FlowWho(SnakeMirrorNetworkManager.Instance.currentTurnPlayerNumber)}");
 
                 // Restart timer for the new player's turn
                 SnakeMirrorNetworkManager.Instance.ServerStartTimer();

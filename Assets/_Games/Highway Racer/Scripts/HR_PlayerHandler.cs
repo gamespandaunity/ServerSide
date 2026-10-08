@@ -655,6 +655,7 @@ public class HR_PlayerHandler : MonoBehaviour
         for (int i = 0; i < scores.Length; i++)
             HR_API.AddCurrency(scores[i]);
 
+        MatchFlow.Log("Highway Racer", $"{HR_NetworkManager.FlowWho(carNetwork != null ? carNetwork.netIdentity : null)} crashed (score {Mathf.FloorToInt(score)}, {distance:F2} km, {nearMisses} near misses)");
         HR_GamePlayHandler.Instance.CrashedPlayer(this, scores);
 
     }

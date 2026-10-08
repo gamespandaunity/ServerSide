@@ -911,11 +911,45 @@ namespace BEKStudio
             HandleWorstCase();
         }
 
+        // ---- Match-flow log helpers (logging only; MatchFlow writes on the dedicated server only) ----
+        // The creator plays White (home score), the joiner Black (away score).
+        internal static string FlowShooter()
+        {
+            var net = CarromNetworkManager.instance;
+            return MatchFlow.Who(net != null ? net.PlayercurrentTurnId : null);
+        }
+
+        internal static string FlowOwner(string colourTag)
+        {
+            var ngm = NetworkGameManager.Instance;
+            if (ngm == null) return colourTag;
+            NetworkPlayerData data = colourTag == "White" ? ngm.creatorData : colourTag == "Black" ? ngm.joinerData : null;
+            return data != null ? MatchFlow.Who(data.playerId) : colourTag;
+        }
+
+        internal static string FlowScores()
+        {
+            return $"{FlowOwner("White")} {currentHomeScore} – {currentAwayScore} {FlowOwner("Black")}";
+        }
+
+        static string FlowCoin(string tag)
+        {
+            switch (tag)
+            {
+                case "White": return "a white coin";
+                case "Black": return "a black coin";
+                case "Red": return "the queen";
+                case "Player": return "the striker";
+                default: return tag;
+            }
+        }
+
         public void PuckOnHole(string puckTag, string puckName)
         {
             if (practiceMode) return;
             if (gameState == GameState.WIN || gameState == GameState.LOSE) return;
             puckName.Show("puckInHole");
+            if (MatchFlow.Enabled) MatchFlow.Log("Carrom", $"{FlowShooter()} pocketed {FlowCoin(puckTag)}");
             if (puckTag == "Player")
             {
                 pucksCollected.Add(playerPuck.gameObject);
@@ -1067,6 +1101,8 @@ namespace BEKStudio
         void CheckGameStatus()
         {
             Debug.Log("Checking Game Status...");
+            int flowHomeBefore = homePucksCollected != null ? homePucksCollected.Count : 0;
+            int flowAwayBefore = awayPucksCollected != null ? awayPucksCollected.Count : 0;
             if (pucksCollected.Contains(playerPuck.gameObject))
             {
                 Debug.Log("CheckPlayerPenalty");
@@ -1088,6 +1124,9 @@ namespace BEKStudio
             OnSliderPointerUp();
 
             UpdateScoreText();
+            if (MatchFlow.Enabled && homePucksCollected != null && awayPucksCollected != null
+                && (homePucksCollected.Count != flowHomeBefore || awayPucksCollected.Count != flowAwayBefore))
+                MatchFlow.Log("Carrom", $"score updated: {FlowScores()}" + (redPuckCollected ? " (queen covered)" : ""));
 
             if (practiceMode)
             {
@@ -1119,6 +1158,10 @@ namespace BEKStudio
                     if (CarromNetworkManager.instance != null)
                     {
                         // Pass winner ID as string — int.Parse would throw on MongoDB ObjectId player IDs
+                        MatchFlow.SendResult(CarromNetworkManager.instance.PlayercurrentTurnId,
+                            homePucksCollected.Count == 9 ? $"{FlowOwner("White")} pocketed all white coins + queen"
+                            : awayPucksCollected.Count == 9 ? $"{FlowOwner("Black")} pocketed all black coins + queen"
+                            : "board cleared", FlowScores());
                         CarromNetworkManager.instance.RpcGameOver(CarromNetworkManager.instance.PlayercurrentTurnId);
                     }
                     else
@@ -1281,11 +1324,13 @@ namespace BEKStudio
         void CheckPlayerPenalty()
         {
             Debug.Log("🔍 [PenaltyCheck] Started checking player penalty...");
+            MatchFlow.Log("Carrom", $"foul — {FlowShooter()} pocketed the striker");
 
             // --- RED PUCK SECTION ---
             if (pucksCollected.Contains(redPuck))
             {
                 Debug.Log("⚠️ [PenaltyCheck] Red puck found in pucksCollected. Resetting...");
+                MatchFlow.Log("Carrom", "queen pocketed with the striker — returned to the centre");
                 pucksCollected.Remove(redPuck);
                 redPuck.GetComponent<Puck>().ResetPosition();
                 redPuck.GetComponent<Puck>().BroadCastResetPosition();
@@ -1294,6 +1339,7 @@ namespace BEKStudio
             if (redPuckWaiting)
             {
                 Debug.Log("🕐 [PenaltyCheck] Red puck was waiting. Resetting its position...");
+                MatchFlow.Log("Carrom", "queen not covered (foul) — returned to the centre");
                 redPuckWaiting = false;
                 redPuck.GetComponent<Puck>().BroadCastResetPosition();
             }
@@ -1314,6 +1360,7 @@ namespace BEKStudio
                 if (targetPuck.CompareTag(masterClientTag))
                 {
                     Debug.Log($"🚫 [PenaltyCheck] Target puck ({targetPuck.name}) matches masterClientTag ({masterClientTag}). Resetting and removing...");
+                    MatchFlow.Log("Carrom", $"coin returned — {FlowCoin(targetPuck.tag)} pocketed on the foul goes back to the board");
                     targetPuck.GetComponent<Puck>().ResetAndRemove();
                 }
                 else
@@ -1356,6 +1403,7 @@ namespace BEKStudio
                 {
                     GameObject targetPuck = homePucksCollected[0];
                     Debug.Log($"🗑️ [PenaltyCheck] Removing first home puck: {targetPuck.name}");
+                    MatchFlow.Log("Carrom", $"penalty: one of {FlowOwner("White")}'s white coins returned to the board");
                     targetPuck.GetComponent<Puck>().ResetAndRemove();
                 }
             }
@@ -1366,6 +1414,7 @@ namespace BEKStudio
                 {
                     GameObject targetPuck = awayPucksCollected[0];
                     Debug.Log($"🗑️ [PenaltyCheck] Removing first away puck: {targetPuck.name}");
+                    MatchFlow.Log("Carrom", $"penalty: one of {FlowOwner("Black")}'s black coins returned to the board");
                     targetPuck.GetComponent<Puck>().ResetAndRemove();
                 }
             }
@@ -1374,12 +1423,14 @@ namespace BEKStudio
             if (homePucksCollected.Count.Equals(9) && !redPuckCollected)
             {
                 Debug.Log("⚪ [PenaltyCheck] Home player reached 9 pucks without red puck! Resetting last puck...");
+                MatchFlow.Log("Carrom", "last white coin before the queen — returned to the board");
                 homePucksCollected[8].GetComponent<Puck>().ResetAndRemove();
             }
 
             if (awayPucksCollected.Count.Equals(9) && !redPuckCollected)
             {
                 Debug.Log("⚫ [PenaltyCheck] Away player reached 9 pucks without red puck! Resetting last puck...");
+                MatchFlow.Log("Carrom", "last black coin before the queen — returned to the board");
                 awayPucksCollected[8].GetComponent<Puck>().ResetAndRemove();
             }
 
@@ -1469,6 +1520,7 @@ namespace BEKStudio
             if (isValid)
             {
                 Debug.Log("🟢 [RedPuckPenalty] Red puck collection is valid. Player will shoot again.");
+                MatchFlow.Log("Carrom", $"queen pocketed by {FlowShooter()} — needs cover");
                 redPuckWaiting = true;
                 // Remember WHO owes the cover, so CheckTurn only preserves the pending
                 // state while that same player keeps the turn.
@@ -1483,6 +1535,7 @@ namespace BEKStudio
             else
             {
                 Debug.Log("🔴 [RedPuckPenalty] Invalid red puck collection. Resetting red puck and removing invalid pucks...");
+                MatchFlow.Log("Carrom", $"foul — queen pocketed by {FlowShooter()} not allowed yet, returned to the centre");
                 redPuck.GetComponent<Puck>().ResetPosition();
                 CarromNetworkManager.instance.RpcResetRedPunk();
                 List<GameObject> tempList = new List<GameObject>();
@@ -1493,6 +1546,7 @@ namespace BEKStudio
                     if (targetPuck.CompareTag("Player") || !targetPuck.CompareTag(masterClientTag)) continue;
 
                     Debug.Log($"🗑️ [RedPuckPenalty] Removing {targetPuck.name} (Tag: {targetPuck.tag}) due to invalid red puck penalty.");
+                    MatchFlow.Log("Carrom", $"coin returned — {FlowCoin(targetPuck.tag)} from the queen foul goes back to the board");
                     targetPuck.GetComponent<Puck>().ResetAndRemove();
                     tempList.Add(targetPuck);
                 }
@@ -1536,11 +1590,13 @@ namespace BEKStudio
             if (homePucksCollected.Count.Equals(9))
             {
                 Debug.Log("⚪ [RedPuckPenalty] Home player reached 9 pucks! Resetting last puck...");
+                MatchFlow.Log("Carrom", "last white coin before the queen is covered — returned to the board");
                 homePucksCollected[8].GetComponent<Puck>().ResetAndRemove();
             }
             if (awayPucksCollected.Count.Equals(9))
             {
                 Debug.Log("⚫ [RedPuckPenalty] Away player reached 9 pucks! Resetting last puck...");
+                MatchFlow.Log("Carrom", "last black coin before the queen is covered — returned to the board");
                 awayPucksCollected[8].GetComponent<Puck>().ResetAndRemove();
             }
 
@@ -1584,10 +1640,12 @@ namespace BEKStudio
             if (pucksCollected.Count == 0)
             {
                 Debug.Log("⚪ No pucks collected this turn.");
+                MatchFlow.Log("Carrom", $"{FlowShooter()} pocketed nothing");
 
                 if (redPuckWaiting)
                 {
                     Debug.Log("❌ Queen not covered! Resetting queen to board center...");
+                    MatchFlow.Log("Carrom", $"queen not covered by {FlowShooter()} — returned to the centre");
                     redPuckWaiting = false;
                     redPuck.GetComponent<Puck>().ResetPosition();
                     redPuck.GetComponent<Puck>().BroadCastResetPosition();
@@ -1599,6 +1657,7 @@ namespace BEKStudio
                         homePucksCollected.Remove(lastPuck);
                         lastPuck.GetComponent<Puck>().ResetAndRemove();
                         Debug.Log("🚨 Penalty: White loses one puck (returned to board).");
+                        MatchFlow.Log("Carrom", $"penalty: one of {FlowOwner("White")}'s white coins returned to the board");
                     }
                     else if (masterClientTag == "Black" && awayPucksCollected.Count > 0)
                     {
@@ -1606,6 +1665,7 @@ namespace BEKStudio
                         awayPucksCollected.Remove(lastPuck);
                         lastPuck.GetComponent<Puck>().ResetAndRemove();
                         Debug.Log("🚨 Penalty: Black loses one puck (returned to board).");
+                        MatchFlow.Log("Carrom", $"penalty: one of {FlowOwner("Black")}'s black coins returned to the board");
                     }
                 }
 
@@ -1623,6 +1683,7 @@ namespace BEKStudio
                     tempRedPuckWaiting = false;
                     statusPanelText.text = "✅ Queen Covered!";
                     Debug.Log("✅ Queen Covered Successfully!");
+                    MatchFlow.Log("Carrom", $"queen covered by {FlowShooter()}");
                 }
                 else
                 {
@@ -1631,6 +1692,7 @@ namespace BEKStudio
                     queenCheck = false;
 
                     Debug.Log("❌ Queen not covered! Resetting queen + applying penalty...");
+                    MatchFlow.Log("Carrom", $"queen not covered by {FlowShooter()} — returned to the centre");
 
                     // Reset the queen
                     redPuck.GetComponent<Puck>().ResetPosition();
@@ -1645,6 +1707,7 @@ namespace BEKStudio
                         lastPuck.GetComponent<Puck>().ResetAndRemove();
                         // lastPuck.GetComponent<Puck>().BroadCastResetPosition();
                         Debug.Log("⚪ Penalty applied: White player puck returned to board.");
+                        MatchFlow.Log("Carrom", $"penalty: one of {FlowOwner("White")}'s white coins returned to the board");
                     }
                     else if (masterClientTag == "Black" && awayPucksCollected.Count > 0)
                     {
@@ -1654,6 +1717,7 @@ namespace BEKStudio
                         lastPuck.GetComponent<Puck>().ResetAndRemove();
                         // lastPuck.GetComponent<Puck>().BroadCastResetPosition();
                         Debug.Log("⚫ Penalty applied: Black player puck returned to board.");
+                        MatchFlow.Log("Carrom", $"penalty: one of {FlowOwner("Black")}'s black coins returned to the board");
                     }
                     else
                     {
@@ -1690,6 +1754,7 @@ namespace BEKStudio
                                 StatusPanelActive();
                             }
                             Debug.Log("🚫 White potted all before queen covered → foul");
+                            MatchFlow.Log("Carrom", "foul — last white coin before the queen is covered, returned to the board");
                         }
                         else
                         {
@@ -1709,6 +1774,7 @@ namespace BEKStudio
                             //     StatusPanelActive();
                             // }
                             // Debug.Log("🚫 White potted all before queen covered → foul");
+                            MatchFlow.Log("Carrom", "opponent's last black coin pocketed before the queen is covered — returned to the board");
                         }
                         else
                         {
@@ -1734,6 +1800,7 @@ namespace BEKStudio
                                 StatusPanelActive();
                             }
                             Debug.Log("🚫 Black potted all before queen covered → foul");
+                            MatchFlow.Log("Carrom", "foul — last black coin before the queen is covered, returned to the board");
                         }
                         else
                         {
@@ -1753,6 +1820,7 @@ namespace BEKStudio
                             //     StatusPanelActive();
                             // }
                             // Debug.Log("🚫 Black potted all before queen covered → foul");
+                            MatchFlow.Log("Carrom", "opponent's last white coin pocketed before the queen is covered — returned to the board");
                         }
                         else
                         {

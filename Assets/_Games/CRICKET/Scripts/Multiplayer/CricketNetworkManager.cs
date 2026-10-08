@@ -260,6 +260,7 @@ public class CricketNetworkManager : NetworkBehaviour
             if (NetworkServer.active)
             {
                 ConstantsData_M.MpLog("[CricketNetworkManager][Start] NetworkServer is active. Setting gameStarted = true.");
+                MatchFlow.Log("Cricket", $"ground loaded — match on ({FlowPlayers()})");
                 gameStarted = true;
                 this.Delay(3, () =>
                 {
@@ -350,6 +351,10 @@ public class CricketNetworkManager : NetworkBehaviour
             }
         }
         bool _inningsChangedThisPush = innings != syncedCurrentInnings;
+        if (_inningsChangedThisPush)
+            MatchFlow.Log("Cricket", innings <= 0
+                ? "innings 1 starts"
+                : $"innings 1 over — {t1Scores}/{t1Wickets} ({FlowOvers(t1Balls)} ov), target {t1Scores + 1}; innings 2 starts");
         syncedTeam0Scores = t0Scores; syncedTeam0Wickets = t0Wickets; syncedTeam0Balls = t0Balls;
         syncedTeam1Scores = t1Scores; syncedTeam1Wickets = t1Wickets; syncedTeam1Balls = t1Balls;
         syncedCurrentInnings   = innings;
@@ -1353,6 +1358,7 @@ public class CricketNetworkManager : NetworkBehaviour
     public void CmdNotifyOtherPlayerIAmReconnected(int senderId)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdNotifyOtherPlayerIAmReconnected] CMD received. senderId = {senderId}.");
+        MatchFlow.Log("Cricket", $"{FlowWho(senderId)} reconnected" + (syncedCurrentInnings >= 0 ? $" ({FlowScoreSummary()})" : ""));
         RpcNotifyOtherPlayerIAmReconnected(senderId);
     }
     [ClientRpc]
@@ -1443,6 +1449,10 @@ public class CricketNetworkManager : NetworkBehaviour
     /// </summary>
     private void OnClientDisconnectedFromServer(NetworkConnectionToClient conn)
     {
+        MatchFlow.Log("Cricket", (conn != null && conn.identity != null && conn.identity.GetComponent<MirrorPlayerPrefab>() != null
+                ? MatchFlow.Who(conn.identity.GetComponent<MirrorPlayerPrefab>().playerId)
+                : "a player")
+            + (gameStarted ? " disconnected" + (syncedCurrentInnings >= 0 ? $" ({FlowScoreSummary()})" : "") : $" disconnected before the match (panel {currentOpenPanel})"));
         // In-game disconnects are handled by the shared NetworkGameManager.ShouldPauseGame() system.
         if (gameStarted) return;
         // Only act if we are past the initial waiting-for-opponent stage
@@ -1463,6 +1473,7 @@ public class CricketNetworkManager : NetworkBehaviour
         if (!gameStarted && currentOpenPanel > PanelsInfo.WaitingForOpponent)
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][DisconnectAutoProgressTimer] 8s elapsed, no reconnect — auto-progressing pre-game.");
+            MatchFlow.Log("Cricket", $"no reconnect within 8s — auto-progressing pre-game (panel {currentOpenPanel})");
             StartCoroutine(AutoProgressPreGame());
         }
     }
@@ -1517,6 +1528,8 @@ public class CricketNetworkManager : NetworkBehaviour
     public void CmdAnnounceVictory(int playerId, string reaosn)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdAnnounceVictory] CMD received. playerId = {playerId}, reason = '{reaosn}'.");
+        MatchFlow.Log("Cricket", $"{FlowWho(playerId)} declared winner — {(string.IsNullOrEmpty(reaosn) ? "opponent disconnected" : reaosn)}");
+        MatchFlow.SendResult(playerId.ToString(), "opponent disconnected", FlowScoreSummary());
         ApiAndRoomManager._instance.WinnerLossChallenge(playerId.ToString());
         RpcAnnounceVictory(playerId);
         NetworkGameManager.Instance.creatorData.Scores = 0;
@@ -1675,6 +1688,7 @@ public class CricketNetworkManager : NetworkBehaviour
         if (currentOpenPanel > PanelsInfo.WaitingForOpponent)
         {
             ConstantsData_M.MpLog($"[CricketNetworkManager][CmdOnOpponentConnected] Reconnect mid-flow — panel={currentOpenPanel}. Restoring panel for reconnecting client.");
+            MatchFlow.Log("Cricket", $"a player rejoined before the match (panel {currentOpenPanel})");
             // Restore the current panel for the reconnecting client only.
             // Do NOT auto-progress here — the 8-second timer handles that if the player drops again.
             if (sender != null)
@@ -1723,6 +1737,7 @@ public class CricketNetworkManager : NetworkBehaviour
         if (currentOpenPanel == PanelsInfo.TeamSelection)
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][AutoProgressPreGame] Auto-advancing TeamSelection → Toss.");
+            MatchFlow.Log("Cricket", "team selection auto-completed → toss");
             currentOpenPanel = PanelsInfo.Toss;
             tossSwipeDone = true;
             RpcAutoAdvanceToToss();
@@ -1742,6 +1757,7 @@ public class CricketNetworkManager : NetworkBehaviour
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][AutoProgressPreGame] Auto-completing Toss.");
             bool ownerBatsFirst = UnityEngine.Random.value > 0.5f;
+            MatchFlow.Log("Cricket", $"toss auto-completed (player absent) — room owner {(ownerBatsFirst ? "bats" : "bowls")} first");
             currentOpenPanel = PanelsInfo.None;
             RpcAutoCompleteToss(ownerBatsFirst);
 #if !UNITY_SERVER
@@ -1816,6 +1832,7 @@ public class CricketNetworkManager : NetworkBehaviour
         if (currentOpenPanel > PanelsInfo.WaitingForOpponent)
         {
             ConstantsData_M.MpLog($"[CricketNetworkManager][CmdMenuSceneReady] Late-join — restoring panel={currentOpenPanel} for reconnecting client.");
+            MatchFlow.Log("Cricket", $"a player rejoined before the match (panel {currentOpenPanel})");
             if (sender != null)
                 TargetSyncPreGamePanel(sender, currentOpenPanel);
             return;
@@ -1829,6 +1846,7 @@ public class CricketNetworkManager : NetworkBehaviour
             _menuReadyCount = 0;
             currentOpenPanel = PanelsInfo.WaitingForOpponent;
             ConstantsData_M.MpLog("[CricketNetworkManager][CmdMenuSceneReady] Both players confirmed in MainMenu — broadcasting room panel.");
+            MatchFlow.Begin("Cricket", $"game started — {FlowPlayers()}");
             RpcBothPlayersInMenu();
 #if !UNITY_SERVER
             if (!NetworkClient.active) RoomMenu.Instance?.RPC_OnOpponentConnected();
@@ -1856,6 +1874,9 @@ public class CricketNetworkManager : NetworkBehaviour
     public void CmdSetOver(int senderId, int selectedTeamIndex)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdSetOver] CMD received. senderId = {senderId}, selectedTeamIndex = {selectedTeamIndex}.");
+        MatchFlow.Log("Cricket", (CONTROLLER.Overs != null && selectedTeamIndex >= 0 && selectedTeamIndex < CONTROLLER.Overs.Length && CONTROLLER.Overs[selectedTeamIndex] > 0)
+            ? $"{FlowWho(senderId)} set the match to {CONTROLLER.Overs[selectedTeamIndex]} overs"
+            : $"{FlowWho(senderId)} set the overs option #{selectedTeamIndex}");
         RpcSetOver(senderId, selectedTeamIndex);
     }
 
@@ -1938,6 +1959,7 @@ public class CricketNetworkManager : NetworkBehaviour
     public void CmdTossDecision(int senderId, bool ChoseBatting)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdTossDecision] CMD received. senderId = {senderId}, ChoseBatting = {ChoseBatting}.");
+        MatchFlow.Log("Cricket", $"toss: {FlowWho(senderId)} calls {(ChoseBatting ? "heads" : "tails")}");
         currentOpenPanel = PanelsInfo.Toss;
         RpcTossDecision(senderId, ChoseBatting);
     }
@@ -1958,6 +1980,7 @@ public class CricketNetworkManager : NetworkBehaviour
     public void CmdChoseTo(int senderId, bool ChoseBatting)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdChoseTo] CMD received. senderId = {senderId}, ChoseBatting = {ChoseBatting}.");
+        MatchFlow.Log("Cricket", $"toss: {FlowWho(senderId)} won, chose to {(ChoseBatting ? "bat" : "bowl")}");
         currentOpenPanel = PanelsInfo.Toss;
         RpcChoseTo(senderId, ChoseBatting);
     }
@@ -1994,6 +2017,7 @@ public class CricketNetworkManager : NetworkBehaviour
     public void CmdCoinStatus(int senderId, string IsHeads)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdCoinStatus] CMD received. senderId = {senderId}, IsHeads = {IsHeads}.");
+        MatchFlow.Log("Cricket", $"toss: coin flipped by {FlowWho(senderId)} lands {(IsHeads == "heads" ? "heads" : "tails")}");
         RpcCoinStatus(senderId, IsHeads);
     }
 
@@ -2013,6 +2037,7 @@ public class CricketNetworkManager : NetworkBehaviour
     public void CmdALoadScene()
     {
         ConstantsData_M.MpLog("[CricketNetworkManager][CmdALoadScene] CMD received. Calling SceneChange to Ground.");
+        MatchFlow.Log("Cricket", "loading the ground");
         MirrorNetwork.Instance.SceneChange("Ground");
     }
 
@@ -2801,6 +2826,7 @@ public class CricketNetworkManager : NetworkBehaviour
     public void CmdAutomaticBall()
     {
         ConstantsData_M.MpLog("[CricketNetworkManager][CmdAutomaticBall] CMD received.");
+        MatchFlow.Log("Cricket", "bowling timer ran out — automatic delivery");
         RpcAutomaticBall();
     }
 
@@ -3035,6 +3061,7 @@ public class CricketNetworkManager : NetworkBehaviour
     public void CmdCallCheckForOverComplete(int senderId)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdCallCheckForOverComplete] CMD received. senderId = {senderId}.");
+        MatchFlow.Log("Cricket", $"end of over {(syncedMatchBalls < 0 ? 0 : syncedMatchBalls / 6)} — {syncedMatchScores}/{syncedMatchWickets}");
         RpcCallCheckForOverComplete(senderId);
     }
 
@@ -3065,6 +3092,7 @@ public class CricketNetworkManager : NetworkBehaviour
     public void CmdDRS_Decision(int senderId, bool decision, bool isOut)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdDRS_Decision] CMD received. senderId = {senderId}, decision = {decision}, isOut = {isOut}.");
+        MatchFlow.Log("Cricket", decision ? $"DRS review ({FlowWho(senderId)}): {(isOut ? "OUT" : "NOT OUT")}" : $"DRS: {FlowWho(senderId)} did not review");
         RpcDRS_Decision(senderId, decision, isOut);
     }
 
@@ -3120,6 +3148,7 @@ public class CricketNetworkManager : NetworkBehaviour
     public void CmdShowThirdUmpireReview(int senderId, bool playerStumped)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdShowThirdUmpireReview] CMD received. senderId = {senderId}, playerStumped = {playerStumped}.");
+        MatchFlow.Log("Cricket", $"third umpire stumping review: {(playerStumped ? "OUT" : "NOT OUT")}");
         RpcShowThirdUmpireReview(senderId, playerStumped);
     }
 
@@ -3242,6 +3271,8 @@ public class CricketNetworkManager : NetworkBehaviour
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdBallOutcome] senderId={senderId} " +
                   $"valid={validBall} runs={runsScored} extra={extraRun} wicket={isWicket}");
+        if (MatchFlow.Enabled)
+            MatchFlow.Log("Cricket", FlowBall(senderId, validBall, canCountBall, runsScored, extraRun, isWicket, wicketType, isBoundary));
         RpcBallOutcome(senderId, validBall, canCountBall, runsScored, extraRun,
                        batsmanID, isWicket, wicketType, bowlerID, catcherID, batsmanOut, isBoundary);
     }
@@ -3318,6 +3349,27 @@ public class CricketNetworkManager : NetworkBehaviour
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdCorrectBallState] senderId={senderId} " +
                   $"scores={scores} wickets={wickets} ballCount={ballCount} ballNum={ballNumber}");
+        if (MatchFlow.Enabled)
+        {
+            MatchFlow.Log("Cricket", $"score {scores}/{wickets} after {FlowOvers(matchBalls)} ov");
+            // The match result itself is decided on the clients (GameOverDisplay); the server can only see the
+            // two certain 2nd-innings endings here: target passed, or the chasing side all out (10 wickets).
+            if (syncedCurrentInnings == 1 && scores > syncedTeam1Scores)
+            {
+                MatchFlow.Log("Cricket", $"target {syncedTeam1Scores + 1} chased — {FlowWho(senderId)} wins with {10 - wickets} wicket(s) left");
+                MatchFlow.SendResult(senderId.ToString(), "target chased", $"{syncedTeam1Scores}/{syncedTeam1Wickets} vs {scores}/{wickets} ({FlowOvers(matchBalls)} ov)");
+            }
+            else if (syncedCurrentInnings == 1 && wickets >= 10 && scores == syncedTeam1Scores)
+            {
+                MatchFlow.Log("Cricket", $"chasing side all out level on {scores} — match tied");
+                MatchFlow.SendResult("draw", "tie — chasing side all out level", $"{syncedTeam1Scores}/{syncedTeam1Wickets} vs {scores}/{wickets} ({FlowOvers(matchBalls)} ov)");
+            }
+            else if (syncedCurrentInnings == 1 && wickets >= 10 && FlowOpponentId(senderId) != null)
+            {
+                MatchFlow.Log("Cricket", $"chasing side all out for {scores} — {FlowOpponent(senderId)} wins by {syncedTeam1Scores - scores} run(s)");
+                MatchFlow.SendResult(FlowOpponentId(senderId), "chasing side all out", $"{syncedTeam1Scores}/{syncedTeam1Wickets} vs {scores}/{wickets} ({FlowOvers(matchBalls)} ov)");
+            }
+        }
         // Persist to SyncVars — reconnecting clients pick these up automatically.
         syncedMatchScores     = scores;
         syncedMatchWickets    = wickets;
@@ -3433,6 +3485,80 @@ public class CricketNetworkManager : NetworkBehaviour
         }
         ConstantsData_M.MpLog($"[CricketNetworkManager][RpcCheckScene] Calling RPC_CheckScene. sceneName = {sceneName}, meFirstBatting = {meFirstBatting}.");
         Launcher.Instance.RPC_CheckScene(sceneName, meFirstBatting);
+    }
+
+    // ─── Match-flow log helpers ("[Cricket Flow]" lines, see MatchFlow) ──────────────────────────────
+    // Wording only: read state, never change it. MatchFlow writes only on the dedicated server.
+
+    /// <summary>Display name for a user id sent by a client (creator / joiner name).</summary>
+    static string FlowWho(int id) => MatchFlow.Who(id.ToString());
+
+    /// <summary>The OTHER player's id (creator ↔ joiner), or null when it cannot be mapped.</summary>
+    static string FlowOpponentId(int id)
+    {
+        var ngm = NetworkGameManager.Instance;
+        if (ngm == null || ngm.creatorData == null || ngm.joinerData == null) return null;
+        string s = id.ToString();
+        if (ngm.creatorData.playerId == s) return ngm.joinerData.playerId;
+        if (ngm.joinerData.playerId == s) return ngm.creatorData.playerId;
+        return null;
+    }
+
+    static string FlowOpponent(int id)
+    {
+        string o = FlowOpponentId(id);
+        return string.IsNullOrEmpty(o) ? "opponent" : MatchFlow.Who(o);
+    }
+
+    static string FlowPlayers()
+    {
+        var ngm = NetworkGameManager.Instance;
+        if (ngm == null || ngm.creatorData == null || ngm.joinerData == null) return "?";
+        return $"{MatchFlow.Who(ngm.creatorData.playerId)} vs {MatchFlow.Who(ngm.joinerData.playerId)}";
+    }
+
+    /// <summary>Legal balls → "overs.balls" (e.g. 15 → "2.3").</summary>
+    static string FlowOvers(int balls) => balls < 0 ? "0.0" : $"{balls / 6}.{balls % 6}";
+
+    static string FlowWicket(int wicketType)
+    {
+        switch (wicketType)
+        {
+            case 1: return "bowled";
+            case 2: return "lbw";
+            case 3: return "caught";
+            case 4: return "run out";
+            case 5: return "caught behind";
+            case 6: return "stumped";
+            default: return "out";
+        }
+    }
+
+    /// <summary>One delivery from CmdBallOutcome's raw params, e.g. "over 2.3 — Sara bowls, Ali hits FOUR".</summary>
+    string FlowBall(int senderId, int validBall, int canCountBall, int runsScored, int extraRun,
+                    int isWicket, int wicketType, bool isBoundary)
+    {
+        string bat = FlowWho(senderId);
+        int b = syncedMatchBalls < 0 ? 0 : syncedMatchBalls;   // legal balls BEFORE this delivery
+        string what;
+        if (isWicket == 1) what = $"WICKET — {bat} {FlowWicket(wicketType)}" + (runsScored > 0 ? $" ({runsScored} run{(runsScored == 1 ? "" : "s")} completed)" : "");
+        else if (isBoundary && runsScored == 6) what = $"{bat} hits SIX";
+        else if (isBoundary && runsScored == 4) what = $"{bat} hits FOUR";
+        else if (runsScored > 0) what = $"{bat} takes {runsScored} run{(runsScored == 1 ? "" : "s")}";
+        else what = $"{bat} — dot ball";
+        string extras = "";
+        if (validBall == 0) extras = $", {(canCountBall == 0 ? "WIDE" : "NO-BALL")} (+{extraRun})";
+        else if (extraRun > 0) extras = $", +{extraRun} extras";
+        return $"over {b / 6}.{b % 6 + 1} — {FlowOpponent(senderId)} bowls, {what}{extras}";
+    }
+
+    /// <summary>Score summary from the batting authority's synced totals (t0 = batting side, t1 = bowling side).</summary>
+    string FlowScoreSummary()
+    {
+        if (syncedCurrentInnings < 0) return "";
+        if (syncedCurrentInnings == 0)
+            return $"innings 1: {syncedTeam0Scores}/{syncedTeam0Wickets} ({FlowOvers(syncedTeam0Balls)} ov)";
+        return $"innings 1: {syncedTeam1Scores}/{syncedTeam1Wickets}, innings 2: {syncedTeam0Scores}/{syncedTeam0Wickets} ({FlowOvers(syncedTeam0Balls)} ov), target {syncedTeam1Scores + 1}";
     }
 
 }

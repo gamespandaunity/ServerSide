@@ -185,6 +185,9 @@ public class PlayerPositionController : NetworkBehaviour
             //Vector3 nextWaypointPosition1 = transform.InverseTransformPoint(new Vector3(waypointsContainer.waypoints[currentWaypoint].position.x, transform.position.y, waypointsContainer.waypoints[currentWaypoint].position.z));
 
             GrandTalWaypointPassed++;
+            if (MatchFlow.Enabled && !isAI)
+                MatchFlow.Log("Horse Riding", $"{HorseMirrorGameManager.FlowName(netIdentity)} passed checkpoint {GrandTalWaypointPassed}" +
+                    (DemoGameManagers.Instance != null ? $"/{DemoGameManagers.Instance.multiplayerMaxRounds}" : ""));
             //if (photonView && photonView.IsMine && !MConstants.isRaceOver)
             //{
             //    photonView.Owner.AddScore(1);
@@ -198,6 +201,8 @@ public class PlayerPositionController : NetworkBehaviour
                 currentWaypoint = 0;
 
                 lap++;
+                if (MatchFlow.Enabled && !isAI)
+                    MatchFlow.Log("Horse Riding", $"{HorseMirrorGameManager.FlowName(netIdentity)} completed lap {lap}");
                 if (isLocalPlayer && !MultiPlayerGame.isLastManStandingMode && lap < LevelsManager.instance.playerCompletedLaps)
                 {
                     HudMenuManager.instance.notifyLapCompletion();

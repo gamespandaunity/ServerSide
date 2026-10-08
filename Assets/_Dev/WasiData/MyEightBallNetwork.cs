@@ -197,6 +197,20 @@ public class MyEightBallNetwork : NetworkBehaviour
     private System.Collections.Generic.Dictionary<string, int> ballTypeByPlayerId
         = new System.Collections.Generic.Dictionary<string, int>();
 
+    // ---- MatchFlow (server game-event log) — logging only, never read by game logic ----
+    private string _flowWinReason;
+    private int _flowLastOutcomeShot = -1;
+    private int _flowLastPotShot = -1;
+    private int _flowLastOpenTableShot = -1;
+
+    private static string FlowWho(int playerId) => MatchFlow.Who(playerId.ToString());
+
+    private int FlowOpponent(int playerId)
+    {
+        if (!int.TryParse(player1Id, out int p1) || !int.TryParse(player2Id, out int p2)) return -1;
+        return playerId == p1 ? p2 : p1;
+    }
+
     public Win8Ball winPanel;
     void Awake()
     {
@@ -252,6 +266,14 @@ public class MyEightBallNetwork : NetworkBehaviour
                 player2WasConnectedForTimer = true;
                 timerConnectionMonitorReady = true;
                 continue;
+            }
+
+            if (MatchFlow.Enabled && !isGameOver)
+            {
+                if (player1WasConnectedForTimer && !p1Connected) MatchFlow.Log("8 Ball", $"{FlowWho(p1Id)} disconnected");
+                if (!player1WasConnectedForTimer && p1Connected) MatchFlow.Log("8 Ball", $"{FlowWho(p1Id)} reconnected");
+                if (player2WasConnectedForTimer && !p2Connected) MatchFlow.Log("8 Ball", $"{FlowWho(p2Id)} disconnected");
+                if (!player2WasConnectedForTimer && p2Connected) MatchFlow.Log("8 Ball", $"{FlowWho(p2Id)} reconnected");
             }
 
             if (player1WasConnectedForTimer && !p1Connected)
@@ -312,6 +334,8 @@ public class MyEightBallNetwork : NetworkBehaviour
                 }
 
 
+                MatchFlow.Begin("8 Ball", $"game started — {MatchFlow.Who(player1Id)} (creator) vs {MatchFlow.Who(player2Id)} (joiner)");
+                MatchFlow.Log("8 Ball", $"toss: {FlowWho(currentTurnId)} breaks");
                 RpcNotifyTurnSet(currentTurnId);
                 ServerSetControlState(EightBallShotPhase.Aiming, true);
 
@@ -935,6 +959,7 @@ public class MyEightBallNetwork : NetworkBehaviour
                 return;
             }
 
+            MatchFlow.Log("8 Ball", $"turn timer ran out for {FlowWho(CurrentPlayerId)}");
             RequestTurnShiftAck(CurrentPlayerId, "client timeout request", true);
             return;
         }
@@ -986,6 +1011,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         ClearPendingTurnAck();
 
         Debug.Log($"[Server] Turn changed to: {currentTurnId} ({reason})");
+        MatchFlow.Log("8 Ball", $"turn → {FlowWho(nextPlayerId)}");
         // Force the cue rig (stick + aim line) back up on BOTH clients. `ballIsDragging = false` above
         // cannot do it: Mirror fires a SyncVar hook only when the value CHANGES, and on a turn TIMEOUT
         // nobody dragged, so that write is false-over-false and the watcher stayed stickless/lineless
@@ -3448,6 +3474,19 @@ public class MyEightBallNetwork : NetworkBehaviour
 
         string shooterType = shooter.isSolids ? "solids" : (shooter.isStripes ? "stripes" : "unassigned");
         Debug.Log($"[8Ball][ServerPocketRule] shooter={shooterPlayerId} type={shooterType}, newly=[{string.Join(",", newlyPocketed)}], own=[{string.Join(",", ownBallsPocketed)}], opponent=[{string.Join(",", opponentBallsPocketed)}], cue={cueBallPocketed}, black={blackBallPocketed}, hasRightPocket={gs.hasRightBallInPocket}.");
+        if (MatchFlow.Enabled && _flowLastPotShot != activeShotSequence)
+        {
+            _flowLastPotShot = activeShotSequence;
+            string potter = FlowWho(shooterPlayerId);
+            foreach (int potted in ownBallsPocketed)
+                MatchFlow.Log("8 Ball", $"{potter} potted the {potted} ({(AightBallPoolGameLogic.isSolidsBall(potted) ? "solids" : "stripes")}, own ball)");
+            foreach (int potted in opponentBallsPocketed)
+                MatchFlow.Log("8 Ball", $"{potter} potted the {potted} ({(AightBallPoolGameLogic.isSolidsBall(potted) ? "solids" : "stripes")}{(gs.playersHasBallType ? ", opponent's ball" : ", table open")})");
+            if (blackBallPocketed)
+                MatchFlow.Log("8 Ball", $"{potter} potted the 8-ball");
+            if (cueBallPocketed)
+                MatchFlow.Log("8 Ball", $"{potter} potted the cue ball");
+        }
     }
 
     [Server]
@@ -3537,6 +3576,11 @@ public class MyEightBallNetwork : NetworkBehaviour
         else if (solidBall != -1 && stripeBall != -1)
         {
             Debug.Log($"[8Ball][BallTypePersist] break pocketed both groups (solid={solidBall}, stripe={stripeBall}); leaving table unassigned.");
+            if (MatchFlow.Enabled && _flowLastOpenTableShot != activeShotSequence)
+            {
+                _flowLastOpenTableShot = activeShotSequence;
+                MatchFlow.Log("8 Ball", $"both groups potted (the {solidBall} and the {stripeBall}) — table stays open");
+            }
         }
     }
 
@@ -3588,6 +3632,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         }
 
         UpdatePlayerUI();
+        MatchFlow.Log("8 Ball", $"groups set — {FlowWho(shooterPlayerId)} is {(shooterType == 1 ? "solids" : "stripes")}, {FlowWho(FlowOpponent(shooterPlayerId))} is {(shooterType == 1 ? "stripes" : "solids")} (from the {ballId})");
         Debug.Log($"[8Ball][BallTypePersist] assigned from authoritative shot-end pocket ball={ballId}, shooter={shooterPlayerId}, shooterType={(shooterType == 1 ? "solids" : "stripes")}.");
     }
 
@@ -3691,6 +3736,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         }
 
 
+        int shotPhaseBeforeFlowShot = shotPhase; // MatchFlow log only
         activeShotSequence = ++authoritativeShotSequence;
         if (pendingTimerRewardTurnPlayerId == currentTurnId)
             ClearPendingReconnectTimerReward("turn player started a shot");
@@ -3709,6 +3755,13 @@ public class MyEightBallNetwork : NetworkBehaviour
         RememberActiveShotSnapshot(cueBallPosition, cuePivotPosition, cuePivotLocalRotationY,
             cueVerticalLocalRotationX, cueDisplacementLocalPositionXY, cueSliderLocalPositionZ,
             force, ballPositions);
+        if (MatchFlow.Enabled)
+        {
+            if (!breakShotDone)
+                MatchFlow.Log("8 Ball", $"{FlowWho(senderPlayerId)} makes the break (power {force:0.00})");
+            else
+                MatchFlow.Log("8 Ball", $"{FlowWho(senderPlayerId)} shoots (power {force:0.00}, shot #{activeShotSequence}){(shotPhaseBeforeFlowShot == (int)EightBallShotPhase.BallInHand ? " from ball in hand" : "")}");
+        }
         Debug.Log("StartSimulate CMD called with impulse: " + impulse);
         if (sender != null && sender.isReady)
             TargetRpcNoteShotSequence(sender, activeShotSequence);
@@ -4000,6 +4053,7 @@ public class MyEightBallNetwork : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdPlayerFinished()
     {
+        MatchFlow.Log("8 Ball", "player finished — match closing");
 
         RpcActivateUIAndHandleResult();
         Debug.Log("CmdPlayerFinished");
@@ -4022,6 +4076,7 @@ public class MyEightBallNetwork : NetworkBehaviour
     public void CmdGameLeave()
     {
 
+        MatchFlow.Log("8 Ball", "a player left the match (home / leave button)");
         RpcGameLeave();
         Debug.Log("CmdGameLeave");
 
@@ -4038,6 +4093,12 @@ public class MyEightBallNetwork : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdGameWin(int PlayerId)
     {
+        if (MatchFlow.Enabled && !isGameOver && _flowWinReason == null)
+        {
+            bool opponentConnected = IsPlayerConnected(FlowOpponent(PlayerId));
+            _flowWinReason = opponentConnected ? "game complete (client report)" : "opponent left / disconnected";
+            MatchFlow.Log("8 Ball", $"{FlowWho(PlayerId)} claims the win ({_flowWinReason})");
+        }
 
         ServerDeclareGameWin(PlayerId);
     }
@@ -4053,6 +4114,8 @@ public class MyEightBallNetwork : NetworkBehaviour
 
         isGameOver = true;
         gameWinnerId = winnerId.ToString();
+        MatchFlow.Log("8 Ball", $"game over — {FlowWho(winnerId)} wins");
+        MatchFlow.SendResult(gameWinnerId, _flowWinReason ?? "game over");
 
         // Two-step reveal, both driven from here: caption now, panel ResultPanelRevealDelay later.
         RpcShowWinLoseText(gameWinnerId);
@@ -4097,6 +4160,45 @@ public class MyEightBallNetwork : NetworkBehaviour
         }
 
         Debug.Log($"[8Ball][ShotOutcome] server publish shot {activeShotSequence}: code={(EightBallOutcomeCode)outcomeCode}, shooter={shooterPlayerId}, turnAfter={currentTurnId}, needChange={needChange}, cueInHand={cueInHand}, gameEnd={gameIsEnd}, winner={winnerId}.");
+        if (MatchFlow.Enabled && _flowLastOutcomeShot != activeShotSequence)
+        {
+            _flowLastOutcomeShot = activeShotSequence;
+            string shooterName = FlowWho(shooterPlayerId);
+            string opponentName = FlowWho(FlowOpponent(shooterPlayerId));
+            switch ((EightBallOutcomeCode)outcomeCode)
+            {
+                case EightBallOutcomeCode.Scratch:
+                    MatchFlow.Log("8 Ball", $"foul — {shooterName} potted the cue ball (scratch)");
+                    break;
+                case EightBallOutcomeCode.WeakBreak:
+                    MatchFlow.Log("8 Ball", $"foul — weak break by {shooterName} (not enough balls hit a rail)");
+                    break;
+                case EightBallOutcomeCode.WrongBallHit:
+                    MatchFlow.Log("8 Ball", $"foul — {shooterName} hit the wrong ball first (or nothing)");
+                    break;
+                case EightBallOutcomeCode.NoRightBallPotted:
+                    MatchFlow.Log("8 Ball", $"{shooterName} potted nothing of theirs");
+                    break;
+                case EightBallOutcomeCode.LegalPotContinue:
+                    MatchFlow.Log("8 Ball", $"{shooterName} potted legally");
+                    break;
+                case EightBallOutcomeCode.LegalBlackWin:
+                    MatchFlow.Log("8 Ball", $"{shooterName} potted the 8-ball legally — {FlowWho(winnerId)} wins");
+                    _flowWinReason = "8-ball potted legally";
+                    break;
+                case EightBallOutcomeCode.IllegalBlackLoss:
+                    MatchFlow.Log("8 Ball", $"{shooterName} potted the 8-ball illegally — loses, {FlowWho(winnerId)} wins");
+                    _flowWinReason = "8-ball foul by " + shooterName;
+                    break;
+            }
+            if (!gameIsEnd)
+            {
+                if (needChange && cueInHand)
+                    MatchFlow.Log("8 Ball", $"ball in hand for {opponentName}");
+                else if (!needChange)
+                    MatchFlow.Log("8 Ball", $"turn continues — {shooterName} shoots again");
+            }
+        }
         RpcApplyShotOutcome(activeShotSequence, shooterPlayerId, currentTurnId, needChange, cueInHand, cueInPocket,
             p1Id, p1Type, p1Black, p2Id, p2Type, p2Black, gameIsEnd, winnerId, outcomeCode);
     }

@@ -1296,6 +1296,7 @@ public class GameGUIController : NetworkBehaviour
     }
     public void NextPlayerTurn(string index)
     {
+        FlowTurnEnded(index);
         if (playerObjects[(int.Parse(index))].AvatarObject.GetComponent<PlayerAvatarController>().Active && currentPlayerIndex == int.Parse(index))
         {
             if (!FinishWindowActive)
@@ -1335,6 +1336,7 @@ public class GameGUIController : NetworkBehaviour
                 {
                     // Server-only cache of the client-authoritative board snapshot.
                     // Other clients receive this broadcast but ignore it.
+                    FlowBoardReported((string)CustomData);
                     if (NetworkServer.active)
                         reconnectSnapshot = (string)CustomData;
                 }
@@ -1352,6 +1354,7 @@ public class GameGUIController : NetworkBehaviour
                         // there the server IS the creator player). Instead we echo the
                         // client-authoritative snapshot cached via the SaveBoardState event.
                         // Format: "c0;c1;c2;c3;j0;j1;j2;j3;currentPlayerIndex;"
+                        MatchFlow.Log("Ludo", $"a player rejoined (connection {(sender != null ? sender.connectionId.ToString() : "?")}) — " + (string.IsNullOrEmpty(reconnectSnapshot) ? "no saved board to send back" : "last saved board sent to both players"));
                         if (!string.IsNullOrEmpty(reconnectSnapshot))
                             NetworkGameManager.Instance.RiseEventRpc((int)EnumPhoton.ReconnectGame, reconnectSnapshot);
                     }
@@ -1775,5 +1778,164 @@ public class GameGUIController : NetworkBehaviour
         }
     }
 
+    // ─── Server match-flow logs ("[Ludo Flow]", see MatchFlow) — logging only, nothing here changes the game ───
+    // Written only on the dedicated server. The server's own board is not trusted (see ReconnectGame above), so
+    // the lines are built from what the clients send: dice / move events, turn-ends and the SaveBoardState board.
+    // Player index = index into playerObjects, which every client sorts by id (ascending).
+
+    static int _flowTurn;                 // player index whose turn it is (by these logs)
+    static int _flowRollsThisTurn;
+    static int _flowLastRoll;
+    static int _flowSixes;                // 6s in a row this turn
+    static bool _flowRollPending;         // rolled, no move yet
+    static int[] _flowPos;                // creator tokens 0-3, joiner tokens 4-7 (-1 = base)
+    static bool _flowCreatorUnlocked, _flowJoinerUnlocked;
+
+    static bool FlowIsCreator(int pl)
+    {
+        var ngm = NetworkGameManager.Instance;
+        if (ngm == null || ngm.creatorData == null || ngm.joinerData == null) return pl == 0;
+        bool creatorFirst = string.Compare(ngm.creatorData.playerId, ngm.joinerData.playerId) != 1;
+        return (pl == 0) == creatorFirst;
+    }
+
+    static string FlowSide(bool creator)
+    {
+        var ngm = NetworkGameManager.Instance;
+        if (ngm == null || ngm.creatorData == null || ngm.joinerData == null) return creator ? "creator" : "joiner";
+        return MatchFlow.Who(creator ? ngm.creatorData.playerId : ngm.joinerData.playerId);
+    }
+
+    /// <summary>Name for a Ludo player index (0/1).</summary>
+    public static string FlowWho(int pl) => (pl < 0 || pl > 1) ? "player " + (pl + 1) : FlowSide(FlowIsCreator(pl));
+
+    static int FlowHomeIndex()
+    {
+        var g = insta;
+        if (g == null || g.PlayersPawns == null || g.PlayersPawns.Length == 0 || g.PlayersPawns[0] == null) return -1;
+        var arr = g.PlayersPawns[0].objectsArray;
+        if (arr == null || arr.Length == 0 || arr[0] == null) return -1;
+        var pc = arr[0].GetComponent<LudoPawnController>();
+        return pc != null && pc.path != null && pc.path.Length > 0 ? pc.path.Length - 1 : -1;
+    }
+
+    static string FlowSquare(int p, int home) => p < 0 ? "base" : (p == home ? "home" : "square " + p);
+
+    static int FlowHomeCount(bool creator)
+    {
+        int home = FlowHomeIndex(), n = 0;
+        if (_flowPos == null || home < 0) return 0;
+        for (int t = 0; t < 4; t++) if (_flowPos[(creator ? 0 : 4) + t] == home) n++;
+        return n;
+    }
+
+    /// <summary>"Ali 2 – 1 Sara tokens home" from the client-reported board.</summary>
+    public static string FlowHomeCounts() =>
+        $"tokens home (client board): {FlowSide(true)} {FlowHomeCount(true)} – {FlowHomeCount(false)} {FlowSide(false)}";
+
+    /// <summary>Server-side match start (both players connected).</summary>
+    public static void FlowMatchStarted()
+    {
+        if (!MatchFlow.Enabled) return;
+        _flowTurn = LudoGame.GameManager.Instance != null ? LudoGame.GameManager.Instance.firstPlayerInGame : 0;
+        _flowRollsThisTurn = 0; _flowLastRoll = 0; _flowSixes = 0; _flowRollPending = false;
+        _flowPos = new int[] { -1, -1, -1, -1, -1, -1, -1, -1 };
+        _flowCreatorUnlocked = false; _flowJoinerUnlocked = false;
+        MatchFlow.Begin("Ludo", $"game started — {FlowWho(0)} vs {FlowWho(1)}, first turn → {FlowWho(_flowTurn)}");
+    }
+
+    public static void FlowDiceRolled(int pl, int value)
+    {
+        if (!MatchFlow.Enabled) return;
+        _flowRollsThisTurn++;
+        _flowSixes = value == 6 ? _flowSixes + 1 : 0;
+        _flowLastRoll = value;
+        _flowRollPending = true;
+        string note = _flowRollsThisTurn > 1 ? " (bonus roll)" : "";
+        if (value == 6 && _flowSixes >= 3) note += " — third 6 in a row, turn is lost";
+        MatchFlow.Log("Ludo", $"{FlowWho(pl)} rolled a {value}{note}");
+    }
+
+    public static void FlowPawnMoved(int pl, int token, int steps)
+    {
+        if (!MatchFlow.Enabled) return;
+        _flowRollPending = false;
+        try
+        {
+            bool creator = FlowIsCreator(pl);
+            int home = FlowHomeIndex();
+            string line = $"{FlowWho(pl)} moved token {token + 1}";
+            int slot = (creator ? 0 : 4) + token;
+            if (_flowPos == null || token < 0 || token > 3)
+            {
+                MatchFlow.Log("Ludo", line + $" by {steps}");
+                return;
+            }
+            int from = _flowPos[slot];
+            int to = from < 0 ? 0 : from + steps;
+            _flowPos[slot] = to;
+            line += from < 0 ? $" out of base onto the start square (rolled {steps})" : $" by {steps}: {FlowSquare(from, home)} → {FlowSquare(to, home)}";
+            MatchFlow.Log("Ludo", line);
+            if (home >= 0 && to == home)
+            {
+                int n = FlowHomeCount(creator);
+                MatchFlow.Log("Ludo", $"{FlowWho(pl)}'s token {token + 1} reached home ({n}/4 home) — bonus roll");
+                if (n == 4)
+                {
+                    var ngm = NetworkGameManager.Instance;
+                    string winnerId = ngm == null || ngm.creatorData == null || ngm.joinerData == null ? null
+                        : (creator ? ngm.creatorData.playerId : ngm.joinerData.playerId);
+                    MatchFlow.SendResult(winnerId, "all 4 tokens home", FlowHomeCounts());
+                }
+            }
+        }
+        catch (System.Exception e) { MatchFlow.Log("Ludo", "move log failed: " + e.Message); }
+    }
+
+    static void FlowTurnEnded(string index)
+    {
+        if (!MatchFlow.Enabled) return;
+        if (!int.TryParse(index, out int pl)) return;
+        string who = FlowWho(pl);
+        if (pl != _flowTurn) MatchFlow.Log("Ludo", $"turn-end sent by {who} while it was {FlowWho(_flowTurn)}'s turn");
+        if (_flowRollsThisTurn == 0) MatchFlow.Log("Ludo", $"turn timer ran out for {who} (did not roll)");
+        else if (_flowRollPending && _flowSixes < 3) MatchFlow.Log("Ludo", $"{who} rolled a {_flowLastRoll} but made no move (no legal move or turn timer ran out)");
+        _flowTurn = 1 - pl;
+        _flowRollsThisTurn = 0; _flowSixes = 0; _flowRollPending = false;
+        MatchFlow.Log("Ludo", $"turn → {FlowWho(_flowTurn)}");
+    }
+
+    /// <summary>A client reported the settled board ("c0..c3;j0..j3;turn;creatorCanEnterHome;joinerCanEnterHome;").</summary>
+    static void FlowBoardReported(string snap)
+    {
+        if (!MatchFlow.Enabled || string.IsNullOrEmpty(snap)) return;
+        try
+        {
+            string[] d = snap.Split(';');
+            if (d.Length < 8) return;
+            int[] now = new int[8];
+            for (int s = 0; s < 8; s++) if (!int.TryParse(d[s], out now[s])) return;
+            int home = FlowHomeIndex();
+            if (_flowPos != null)
+            {
+                for (int s = 0; s < 8; s++)
+                {
+                    if (_flowPos[s] >= 0 && now[s] < 0)
+                        MatchFlow.Log("Ludo", $"{FlowSide(s < 4)}'s token {s % 4 + 1} was captured by {FlowSide(s >= 4)} — back to base from {FlowSquare(_flowPos[s], home)}, bonus roll");
+                    else if (_flowPos[s] != now[s] && now[s] == home && home >= 0)
+                        MatchFlow.Log("Ludo", $"{FlowSide(s < 4)}'s token {s % 4 + 1} is home (client board)");
+                }
+            }
+            _flowPos = now;
+            if (d.Length > 10)
+            {
+                bool c = d[9] == "1", j = d[10] == "1";
+                if (c && !_flowCreatorUnlocked) MatchFlow.Log("Ludo", $"{FlowSide(true)} has captured — home entry unlocked");
+                if (j && !_flowJoinerUnlocked) MatchFlow.Log("Ludo", $"{FlowSide(false)} has captured — home entry unlocked");
+                _flowCreatorUnlocked = c; _flowJoinerUnlocked = j;
+            }
+        }
+        catch (System.Exception e) { MatchFlow.Log("Ludo", "board log failed: " + e.Message); }
+    }
 
 }

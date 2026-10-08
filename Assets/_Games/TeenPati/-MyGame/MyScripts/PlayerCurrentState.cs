@@ -147,6 +147,12 @@ namespace TeenPattiGame
             // A pack is the other half of that record: it is what decides who is still contesting
             // the pot, and the server settles the hand the moment one seat is left. Same reasoning
             // for reading the seat off the owning connection - this Cmd is requiresAuthority = false.
+            if (MatchFlow.Enabled && TeenPattiNNetworkManager.instance != null
+                && ((PlayerState.STATE)state == PlayerState.STATE.Packed || (PlayerState.STATE)state == PlayerState.STATE.OutOfTable)
+                && !TeenPattiNNetworkManager.instance.FlowIsOut(connectionToClient))
+                MatchFlow.Log(TeenPattiNNetworkManager.FlowGame, (PlayerState.STATE)state == PlayerState.STATE.Packed
+                    ? $"{TeenPattiNNetworkManager.instance.FlowName(connectionToClient, gameObject.name)} packs (pot {TeenPattiNNetworkManager.instance.FlowPot()})"
+                    : $"{TeenPattiNNetworkManager.instance.FlowName(connectionToClient, gameObject.name)} left the seat (stood up or turn timer ran out) — auto pack, pot {TeenPattiNNetworkManager.instance.FlowPot()}");
             if (((PlayerState.STATE)state == PlayerState.STATE.Packed || (PlayerState.STATE)state == PlayerState.STATE.OutOfTable)
                 && TeenPattiNNetworkManager.instance != null)
                 TeenPattiNNetworkManager.instance.ServerNotePacked(connectionToClient, gameObject.name);
