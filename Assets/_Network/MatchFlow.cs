@@ -18,6 +18,8 @@ public static class MatchFlow
 
     [Serializable] class FlowEvent { public float t; public string time; public string msg; }
 
+    [Serializable] class FlowPlayer { public string id, name, role; }
+
     [Serializable]
     class FlowFlag { public float t; public string time, player_id, player_name, code, detail; }
 
@@ -28,6 +30,7 @@ public static class MatchFlow
         public int game_id;
         public List<FlowEvent> events = new List<FlowEvent>();
         public List<FlowFlag> flags = new List<FlowFlag>();
+        public List<FlowPlayer> players = new List<FlowPlayer>();   // user id + name of each player (for the panel)
     }
 
     // What each flag sent to the stats panel carries (one POST per flag, capped per player and code).
@@ -89,6 +92,11 @@ public static class MatchFlow
         _match.reason = reason;
         _match.scores = scores;
         _match.ended_at = DateTime.UtcNow.ToString("o");
+        _match.players.Clear();
+        if (ngm != null && ngm.creatorData != null && !string.IsNullOrEmpty(ngm.creatorData.playerId))
+            _match.players.Add(new FlowPlayer { id = ngm.creatorData.playerId, name = Who(ngm.creatorData.playerId), role = "creator" });
+        if (ngm != null && ngm.joinerData != null && !string.IsNullOrEmpty(ngm.joinerData.playerId))
+            _match.players.Add(new FlowPlayer { id = ngm.joinerData.playerId, name = Who(ngm.joinerData.playerId), role = "joiner" });
         if (!string.IsNullOrEmpty(_match.transaction_id))
             MatchStats.SendMatchLog(JsonUtility.ToJson(_match));
         else
