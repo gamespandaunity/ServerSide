@@ -122,6 +122,12 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
         if (reason == null)
             return true;
 
+        // Out of turn and a replayed token cannot come from lag alone (stale hand / stale token can): flag those.
+        if (currentActorSeat != (int)seat && seat != TPSeat.None && !handEnded && intentHandId == handId)
+            MatchFlow.Flag(FlowGame, sender, "out_of_turn", action + " while it was the opponent's turn");
+        else if (seat != TPSeat.None && consumedTurnTokens.Contains(intentToken) && intentToken == turnToken)
+            MatchFlow.Flag(FlowGame, sender, "replayed_action", action + " re-sent with an already used turn token");
+
         TPLog.Warn("TeenPattiNNetworkManager", "REJECT " + action + " from " + seat
             + "/conn=" + (sender != null ? sender.connectionId.ToString() : "null")
             + " - " + reason + (enforceServerAuthority ? "" : "  [observe-only, allowed through]"));

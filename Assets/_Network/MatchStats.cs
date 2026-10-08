@@ -16,17 +16,23 @@ public static class MatchStats
     const string Url = "https://pandabugsreporting.com/api/stats/match";
 
     const string LogUrl = "https://pandabugsreporting.com/api/stats/match-log";
+    const string FlagUrl = "https://pandabugsreporting.com/api/stats/flag";
 
     static readonly HashSet<string> Sent = new HashSet<string>();
 
+    /// <summary>Match server only: one flagged player (see MatchFlow.Flag) for the stats panel. Fire and forget.</summary>
+    public static void SendFlag(string json) => Post(FlagUrl, json, "flag");
+
     /// <summary>
-    /// Match server only: sends the match's event log (JSON with transaction_id, game_id, winner, events …) to the
-    /// stats panel, where it is shown under that day's matches. Fire and forget.
+    /// Match server only: sends the match's event log (JSON with transaction_id, game_id, winner, events, flags …) to
+    /// the stats panel, where it is shown under that day's matches. Fire and forget.
     /// </summary>
-    public static void SendMatchLog(string json)
+    public static void SendMatchLog(string json) => Post(LogUrl, json, "match log");
+
+    static void Post(string url, string json, string what)
     {
         if (string.IsNullOrEmpty(json)) return;
-        var req = new UnityWebRequest(LogUrl, UnityWebRequest.kHttpVerbPOST)
+        var req = new UnityWebRequest(url, UnityWebRequest.kHttpVerbPOST)
         {
             uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json)),
             downloadHandler = new DownloadHandlerBuffer(),
@@ -37,7 +43,7 @@ public static class MatchStats
         req.SendWebRequest().completed += _ =>
         {
             if (req.result != UnityWebRequest.Result.Success)
-                Debug.LogWarning($"[MatchStats] match log upload failed: {req.responseCode} {req.error}");
+                Debug.LogWarning($"[MatchStats] {what} upload failed: {req.responseCode} {req.error}");
             req.Dispose();
         };
     }

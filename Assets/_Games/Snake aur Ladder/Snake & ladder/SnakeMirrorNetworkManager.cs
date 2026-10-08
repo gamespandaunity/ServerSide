@@ -191,6 +191,7 @@ namespace Snake_Ladder
             {
                 Debug.LogWarning($"[SnakeServerResult] Finish rejected for player={playerId}: server board is not at EndNode.");
                 MatchFlow.Log("Snake & Ladder", $"finish claim from {MatchFlow.Who(playerId)} rejected — not on 100 (at {(playerNode != null ? playerNode.name : "?")})");
+                MatchFlow.Flag("Snake & Ladder", playerId, "false_win_claim", $"claimed reaching 100 while on {(playerNode != null ? playerNode.name : "?")}");
                 return false;
             }
 
@@ -1119,6 +1120,7 @@ namespace Snake_Ladder
             {
                 Debug.LogWarning($"[SnakeServerResult] Out-of-turn move rejected from Player {playerIndex + 1}.");
                 MatchFlow.Log("Snake & Ladder", $"roll from {FlowWho(playerIndex)} rejected — not their turn");
+                MatchFlow.Flag("Snake & Ladder", authoritativePlayerId, "out_of_turn", "rolled while it was the opponent's turn");
                 return;
             }
             if (diceNumber < 1 || diceNumber > 6)

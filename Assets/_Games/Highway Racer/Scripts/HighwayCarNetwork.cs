@@ -443,6 +443,7 @@ public class HighwayCarNetwork : NetworkBehaviour
         {
             Debug.LogWarning($"[HighwayServerResult] Finish request rejected before race start, netId={netId}.");
             MatchFlow.Log("Highway Racer", $"finish of {HR_NetworkManager.FlowWho(netIdentity)} rejected — race not started");
+            MatchFlow.Flag("Highway Racer", connectionToClient, "finish_before_start", "claimed the finish before the race started");
             return false;
         }
 
@@ -460,6 +461,7 @@ public class HighwayCarNetwork : NetworkBehaviour
         {
             Debug.LogWarning($"[HighwayServerResult] Remote finish request rejected: netId={netId}, distance={distanceFromFinish:F1}m.");
             MatchFlow.Log("Highway Racer", $"finish of {HR_NetworkManager.FlowWho(netIdentity)} rejected — {distanceFromFinish:F0} m from the line");
+            MatchFlow.Flag("Highway Racer", connectionToClient, "finish_too_far", $"claimed the finish {distanceFromFinish:F0} m from the line");
             return false;
         }
 

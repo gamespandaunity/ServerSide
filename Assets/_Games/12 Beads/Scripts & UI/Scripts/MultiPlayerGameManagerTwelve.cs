@@ -737,6 +737,7 @@ namespace Twelve
             if (!rulesResult.applied)
             {
                 MatchFlow.Log("12 Beads", $"{FlowSeat(seat)} tried an illegal move {fromNode} → {toNode} ({rulesResult.rejectReason})");
+                MatchFlow.Flag("12 Beads", sender, "illegal_move", $"{fromNode} → {toNode} ({rulesResult.rejectReason})");
                 RejectTwelveMove(sender, requestId, rulesResult.rejectReason.ToString());
                 return;
             }
@@ -803,6 +804,7 @@ namespace Twelve
             Debug.LogWarning($"[SERVER] 12 Bead move rejected: {reason} request={requestId} revision={twelveRevision}");
             PLAYERS flowSeat;
             MatchFlow.Log("12 Beads", $"move rejected for {(TryGetTwelveSeat(sender, out flowSeat) ? FlowSeat(flowSeat) : "unseated client")}: {reason}");
+            if (reason == "Out of turn") MatchFlow.Flag("12 Beads", sender, "out_of_turn", "moved while it was the opponent's turn");
             if (sender != null)
                 TargetTwelveMoveRejected(sender, requestId, reason, twelveRevision);
         }

@@ -19,12 +19,23 @@ public static class MatchFlow
     [Serializable] class FlowEvent { public float t; public string time; public string msg; }
 
     [Serializable]
+    class FlowFlag { public float t; public string time, player_id, player_name, code, detail; }
+
+    [Serializable]
     class FlowLog
     {
         public string transaction_id, game, winner_id, winner_name, reason, scores, started_at, ended_at;
         public int game_id;
         public List<FlowEvent> events = new List<FlowEvent>();
+        public List<FlowFlag> flags = new List<FlowFlag>();
     }
+
+    // What each flag sent to the stats panel carries (one POST per flag, capped per player and code).
+    [Serializable]
+    class FlagReport { public string transaction_id, game, player_id, player_name, code, detail; public int game_id; }
+
+    const int MaxFlagsSentPerCode = 3;
+    static readonly Dictionary<string, int> _flagsSent = new Dictionary<string, int>();
 
     const int MaxEvents = 3000;
     static FlowLog _match;
@@ -37,6 +48,7 @@ public static class MatchFlow
         if (!Enabled) return;
         _game = string.IsNullOrEmpty(game) ? "Match" : game;
         _match = new FlowLog { game = _game, started_at = DateTime.UtcNow.ToString("o") };
+        _flagsSent.Clear();
         _matchStart = Time.realtimeSinceStartup;
         if (message != null) Log(message);
     }
@@ -82,6 +94,54 @@ public static class MatchFlow
         else
             Debug.LogWarning("[" + _game + " Flow] no transaction id — match log not sent");
         _match = null;
+    }
+
+    /// <summary>
+    /// The server saw something from this player that the rules do not allow (a win claim the board does not back, a
+    /// finish far from the line, a move out of turn …). Logged, kept in the match JSON, and sent straight to the stats
+    /// panel's "Flagged players" list — a reason to review the player's matches, not proof of cheating (a bad network
+    /// can cause the odd one). <paramref name="code"/> is a short stable id such as "false_win_claim".
+    /// The first <see cref="MaxFlagsSentPerCode"/> of each code per player per match are sent; the rest are only logged.
+    /// </summary>
+    public static void Flag(string game, string playerId, string code, string detail)
+    {
+        if (!Enabled) return;
+        if (_match == null || _game != game) Begin(game);
+        string name = Who(playerId);
+        Log($"FLAG {code} — {name}: {detail}");
+        if (_match.flags.Count < MaxEvents)
+            _match.flags.Add(new FlowFlag { t = Time.realtimeSinceStartup - _matchStart, time = DateTime.UtcNow.ToString("o"),
+                                            player_id = playerId, player_name = name, code = code, detail = detail });
+        string key = playerId + "|" + code;
+        _flagsSent.TryGetValue(key, out int sent);
+        if (sent >= MaxFlagsSentPerCode) return;
+        _flagsSent[key] = sent + 1;
+        var ngm = NetworkGameManager.Instance;
+        MatchStats.SendFlag(JsonUtility.ToJson(new FlagReport
+        {
+            transaction_id = ngm != null ? ngm.transactionId : null, game = _game, game_id = ngm != null ? ngm.currentGameId : 0,
+            player_id = playerId, player_name = name, code = code, detail = detail,
+        }));
+    }
+
+    /// <summary>Flag the player behind a connection (creator / joiner by NetworkGameManager's connection refs).</summary>
+    public static void Flag(string game, NetworkConnectionToClient conn, string code, string detail)
+    {
+        if (!Enabled) return;
+        Flag(game, IdOf(conn), code, detail);
+    }
+
+    /// <summary>Player id for a server connection: the creator's or joiner's id, else "connection N".</summary>
+    public static string IdOf(NetworkConnectionToClient conn)
+    {
+        if (conn == null) return "?";
+        var ngm = NetworkGameManager.Instance;
+        if (ngm != null)
+        {
+            if (ngm.CreatorRef != null && ngm.creatorData != null && ngm.CreatorRef.connectionId == conn.connectionId) return ngm.creatorData.playerId;
+            if (ngm.JoinerRef != null && ngm.joinerData != null && ngm.JoinerRef.connectionId == conn.connectionId) return ngm.joinerData.playerId;
+        }
+        return "connection " + conn.connectionId;
     }
 
     /// <summary>Display name for a player id (creator / joiner name from NetworkGameManager), "AI" for bots.</summary>

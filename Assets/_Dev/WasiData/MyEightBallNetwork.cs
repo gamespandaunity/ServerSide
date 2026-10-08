@@ -4098,6 +4098,10 @@ public class MyEightBallNetwork : NetworkBehaviour
             bool opponentConnected = IsPlayerConnected(FlowOpponent(PlayerId));
             _flowWinReason = opponentConnected ? "game complete (client report)" : "opponent left / disconnected";
             MatchFlow.Log("8 Ball", $"{FlowWho(PlayerId)} claims the win ({_flowWinReason})");
+            // The server decides a finished frame itself (end of the last shot). A win claimed while the opponent is
+            // still connected and the server has not ended the frame is not backed by the table.
+            if (opponentConnected)
+                MatchFlow.Flag("8 Ball", PlayerId.ToString(), "unbacked_win_claim", "claimed the win while the opponent was connected and the server had not ended the frame");
         }
 
         ServerDeclareGameWin(PlayerId);

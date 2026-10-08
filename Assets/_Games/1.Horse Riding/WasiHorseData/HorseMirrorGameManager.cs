@@ -207,6 +207,7 @@ public class HorseMirrorGameManager : NetworkBehaviour
         if (distance > ServerFinishTolerance)
         {
             MatchFlow.Log("Horse Riding", $"finish rejected for {FlowName(participant)} — {distance:F0}m from the finish line");
+            MatchFlow.Flag("Horse Riding", participant.connectionToClient, "finish_too_far", $"claimed the finish {distance:F0} m from the line");
             Debug.LogWarning($"[HorseServerResult] Finish rejected: netId={participant.netId}, distance={distance:F1}m.");
             return false;
         }
@@ -217,6 +218,7 @@ public class HorseMirrorGameManager : NetworkBehaviour
         if (requiredWaypoints > 0 && progress.GrandTalWaypointPassed + 1 < requiredWaypoints)
         {
             MatchFlow.Log("Horse Riding", $"finish rejected for {FlowName(participant)} — only {progress.GrandTalWaypointPassed}/{requiredWaypoints} checkpoints passed");
+            MatchFlow.Flag("Horse Riding", participant.connectionToClient, "finish_missing_checkpoints", $"claimed the finish after {progress.GrandTalWaypointPassed}/{requiredWaypoints} checkpoints");
             Debug.LogWarning($"[HorseServerResult] Finish rejected: player passed " +
                              $"{progress.GrandTalWaypointPassed}/{requiredWaypoints} server waypoints.");
             return false;
