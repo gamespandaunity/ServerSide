@@ -27,6 +27,7 @@ public static class MatchFlow
     class FlowLog
     {
         public string transaction_id, game, winner_id, winner_name, reason, scores, started_at, ended_at;
+        public string request_id;   // Edgegap deployment id: the panel finds this server's container log by it
         public int game_id;
         public List<FlowEvent> events = new List<FlowEvent>();
         public List<FlowFlag> flags = new List<FlowFlag>();
@@ -87,6 +88,7 @@ public static class MatchFlow
         var ngm = NetworkGameManager.Instance;
         _match.transaction_id = ngm != null ? ngm.transactionId : null;
         _match.game_id = ngm != null ? ngm.currentGameId : 0;
+        _match.request_id = Environment.GetEnvironmentVariable("ARBITRIUM_REQUEST_ID");
         _match.winner_id = winnerId;
         _match.winner_name = Who(winnerId);
         _match.reason = reason;
