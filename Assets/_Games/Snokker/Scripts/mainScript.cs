@@ -3145,9 +3145,9 @@ public class mainScript : MonoBehaviour
         HandleBallRespotting();
         if (strikeCount > 0 || SnokerNetwork.IsMultiplayer)
         {
+            ProcessTurnResults();   // may find a foul (e.g. no ball touched), so log after it
             if (!ballPottedInThisTurn && !foulInThisTurn)
                 SnookerFlow.Log($"{SnookerFlow.Who(SnokerGameManager.currentTurn)}: no ball potted, no foul");
-            ProcessTurnResults();
             if (HandleGameEndConditions(gameMode))
                 return;
 
