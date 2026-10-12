@@ -33,67 +33,8 @@ public static class ServerConnection
             r.SetRequestHeader("X-Firebase-AppCheck", appCheckEnvToken);
     }
 
-    // ── Settlement auth key (headless server only) ──────────────────────────────────────────────────
-    // Win/loss settlement now happens on the Edgegap headless build rather than on a player's device, so
-    // the backend needs to tell a real server apart from anyone replaying the call. The key is supplied as
-    // a deployment environment variable ("authkey" on the Edgegap version) and never ships inside any APK.
-    // Read once and cached: it is fixed for the life of the container.
-    private static string _settlementAuthKey;
-    private static bool _settlementAuthKeyRead;
-    public const string SETTLEMENT_AUTH_HEADER = "gameplaytoken";
-
-    /// <summary>
-    /// The build token this process authenticates settlement with, kept separate from
-    /// staticVariables.UserProfiledata.access_token. That field is reloaded and cleared while a match
-    /// is running (the 401 handler further down deletes the saved userModel), so settlement fired
-    /// mid-match was going out under the STALE login token instead. Replaying both tokens against the
-    /// live endpoint confirmed it: build token answers 200, stale login token answers 401.
-    /// </summary>
+    /// <summary>Kept so old callers still compile. The build token is gone: the match server authenticates with x-match-key.</summary>
     public static string BuildAuthToken;
-
-#if UNITY_EDITOR
-    // Editor-only fallback: the Editor is not an Edgegap container, so there is no deployment
-    // environment to read the key from and settlement testing from Play Mode would always be
-    // unauthenticated. Paste a key here to test. The #if keeps it out of every player build, but it is
-    // still plain text in the repository — use a test key, not the production one.
-    private const string EDITOR_SETTLEMENT_AUTH_KEY = "d010a9cb93a91531d3eb072463c72bf94947809235f5a84309a3c4aabdd968ae";
-#endif
-
-    public static string SettlementAuthKey
-    {
-        get
-        {
-            if (!_settlementAuthKeyRead)
-            {
-                _settlementAuthKeyRead = true;
-                try { _settlementAuthKey = Environment.GetEnvironmentVariable(SETTLEMENT_AUTH_HEADER); }
-                catch (Exception e) { _settlementAuthKey = null; Debug.LogWarning($"[Settlement] Could not read the {SETTLEMENT_AUTH_HEADER} environment variable: {e.Message}"); }
-#if UNITY_EDITOR
-                // The environment variable still wins when one is set, so an Editor launched with the real
-                // variable behaves exactly like the container.
-                if (string.IsNullOrEmpty(_settlementAuthKey) && !string.IsNullOrEmpty(EDITOR_SETTLEMENT_AUTH_KEY))
-                {
-                    _settlementAuthKey = EDITOR_SETTLEMENT_AUTH_KEY;
-                    Debug.LogWarning($"[Settlement] Using the hardcoded Editor {SETTLEMENT_AUTH_HEADER} ({_settlementAuthKey.Length} chars). This path never exists in a build.");
-                }
-#endif
-                if (string.IsNullOrEmpty(_settlementAuthKey))
-                    Debug.LogError($"[Settlement] {SETTLEMENT_AUTH_HEADER} is not set in this deployment's environment — settlement calls will be sent without it and the backend is expected to reject them.");
-                else
-                    Debug.Log($"[Settlement] {SETTLEMENT_AUTH_HEADER} loaded from the deployment environment ({_settlementAuthKey.Length} chars).");
-            }
-            return _settlementAuthKey;
-        }
-    }
-
-    // Resolve the key as the process starts instead of on the first settlement call. A container that
-    // came up without it then says so in the first lines of its log, rather than twenty minutes later
-    // when a hand finishes and the backend rejects the call.
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-    private static void PrimeSettlementAuthKey()
-    {
-        _ = SettlementAuthKey;
-    }
 
     public static IEnumerator GetApiRequest(string url, Action<string> onSuccess = null, Action<string> onFailure = null, bool withSettlementAuth = false)
     {
@@ -106,30 +47,16 @@ public static class ServerConnection
 
             using (UnityWebRequest webRequest = UnityWebRequest.Get(Main_URL() + url))
             {
-                // A settlement call must present the build token; every other call keeps using whatever
-                // the profile currently holds. The endpoint needs BOTH this header and gameplaytoken:
-                // dropping either one answers 401.
-                string bearerToken = withSettlementAuth && !string.IsNullOrEmpty(BuildAuthToken)
-                    ? BuildAuthToken
-                    : (staticVariables.UserProfiledata != null ? staticVariables.UserProfiledata.access_token : null);
-                if (!string.IsNullOrEmpty(bearerToken))
+                // On the Edgegap match server every call carries x-match-key (and no Authorization), as the
+                // backend contract asks; on a device the player's own token goes out as before.
+                string bearerToken = staticVariables.UserProfiledata != null ? staticVariables.UserProfiledata.access_token : null;
+                if (!MatchServerApi.ApplyHeaders(webRequest, url) && !string.IsNullOrEmpty(bearerToken))
                     webRequest.SetRequestHeader("Authorization", "Bearer " + bearerToken);
                 if (secrets.ContainsKey("apk_signature_black_arch"))
                     webRequest.SetRequestHeader("apk_signature_black_arch", secrets["apk_signature_black_arch"]);
                 // Deliberately outside the if above -- the indentation used to suggest otherwise.
                 AttachAppCheck(webRequest);
-                // Only settlement calls carry the deployment key, so an ordinary request cannot be
-                // repurposed into one if it is ever observed.
-                if (withSettlementAuth && !string.IsNullOrEmpty(SettlementAuthKey))
-                {
-                    webRequest.SetRequestHeader(SETTLEMENT_AUTH_HEADER, SettlementAuthKey);
-#if UNITY_EDITOR
-                    string attachedGameplayToken = webRequest.GetRequestHeader(SETTLEMENT_AUTH_HEADER);
-                    bool matchesResolvedToken = string.Equals(attachedGameplayToken, SettlementAuthKey, StringComparison.Ordinal);
-                    bool usingEditorFallback = string.IsNullOrEmpty(Environment.GetEnvironmentVariable(SETTLEMENT_AUTH_HEADER));
-                    Debug.Log($"[Settlement][Editor Header Check] url={Main_URL() + url}, header={SETTLEMENT_AUTH_HEADER}, attached={!string.IsNullOrEmpty(attachedGameplayToken)}, matchesResolvedToken={matchesResolvedToken}, source={(usingEditorFallback ? "EDITOR_SETTLEMENT_AUTH_KEY" : "environment")}, length={attachedGameplayToken?.Length ?? 0}");
-#endif
-                }
+                // withSettlementAuth is kept for the callers; the match headers above already cover it.
                 webRequest.SetRequestHeader("accept", "*/*");
                 webRequest.SetRequestHeader("Content-Type", "application/json");
                 yield return webRequest.SendWebRequest();
@@ -231,7 +158,7 @@ public static class ServerConnection
 
             using (UnityWebRequest webRequest = UnityWebRequest.Delete(Main_URL() + url))
             {
-                if (staticVariables.UserProfiledata != null && !string.IsNullOrEmpty(staticVariables.UserProfiledata.access_token))
+                if (!MatchServerApi.ApplyHeaders(webRequest, url) && staticVariables.UserProfiledata != null && !string.IsNullOrEmpty(staticVariables.UserProfiledata.access_token))
                     webRequest.SetRequestHeader("Authorization", "Bearer " + staticVariables.UserProfiledata.access_token);
                 webRequest.SetRequestHeader("apk_signature_black_arch", secrets["apk_signature_black_arch"]);
                 AttachAppCheck(webRequest);
@@ -499,14 +426,12 @@ public static class ServerConnection
             {
                 webRequest.downloadHandler = (DownloadHandler)new DownloadHandlerBuffer();
                 webRequest.SetRequestHeader("Content-Type", "application/json");
-                if (staticVariables.UserProfiledata != null && !string.IsNullOrEmpty(staticVariables.UserProfiledata.access_token))
+                if (!MatchServerApi.ApplyHeaders(webRequest, url) && staticVariables.UserProfiledata != null && !string.IsNullOrEmpty(staticVariables.UserProfiledata.access_token))
                 {
                     webRequest.SetRequestHeader("Authorization", "Bearer " + staticVariables.UserProfiledata.access_token);
                 }
                 webRequest.SetRequestHeader("apk_signature_black_arch", secrets["apk_signature_black_arch"]);
                 AttachAppCheck(webRequest);
-                if (withSettlementAuth && !string.IsNullOrEmpty(SettlementAuthKey))
-                    webRequest.SetRequestHeader(SETTLEMENT_AUTH_HEADER, SettlementAuthKey);
                 yield return webRequest.SendWebRequest();
                 //("<color=green> Url =" + url + "</color>").Show();
                 (" data = " + webRequest.downloadHandler.text).Show();
@@ -573,14 +498,12 @@ public static class ServerConnection
             {
                 webRequest.downloadHandler = (DownloadHandler)new DownloadHandlerBuffer();
                 webRequest.SetRequestHeader("Content-Type", "application/json");
-                if (staticVariables.UserProfiledata != null && !string.IsNullOrEmpty(staticVariables.UserProfiledata.access_token))
+                if (!MatchServerApi.ApplyHeaders(webRequest, url) && staticVariables.UserProfiledata != null && !string.IsNullOrEmpty(staticVariables.UserProfiledata.access_token))
                 {
                     webRequest.SetRequestHeader("Authorization", "Bearer " + staticVariables.UserProfiledata.access_token);
                 }
                 webRequest.SetRequestHeader("apk_signature_black_arch", secrets["apk_signature_black_arch"]);
                 AttachAppCheck(webRequest);
-                if (withSettlementAuth && !string.IsNullOrEmpty(SettlementAuthKey))
-                    webRequest.SetRequestHeader(SETTLEMENT_AUTH_HEADER, SettlementAuthKey);
                 yield return webRequest.SendWebRequest();
                 ("" + Main_URL() + url).Show("URL");
                 ("<color=yellow> data = " + webRequest.downloadHandler.text + "</color>").Show();
@@ -624,7 +547,7 @@ public static class ServerConnection
             using (UnityWebRequest webRequest = UnityWebRequest.Post(Main_URL() + url, form))
             {
                 webRequest.downloadHandler = (DownloadHandler)new DownloadHandlerBuffer();
-                if (staticVariables.UserProfiledata != null && !string.IsNullOrEmpty(staticVariables.UserProfiledata.access_token))
+                if (!MatchServerApi.ApplyHeaders(webRequest, url) && staticVariables.UserProfiledata != null && !string.IsNullOrEmpty(staticVariables.UserProfiledata.access_token))
                     webRequest.SetRequestHeader("Authorization", "Bearer " + staticVariables.UserProfiledata.access_token);
                 webRequest.SetRequestHeader("apk_signature_black_arch", secrets["apk_signature_black_arch"]);
                 AttachAppCheck(webRequest);
@@ -678,7 +601,7 @@ public static class ServerConnection
 
                 // Set headers
                 webRequest.SetRequestHeader("Content-Type", "application/json");
-                if (staticVariables.UserProfiledata != null && !string.IsNullOrEmpty(staticVariables.UserProfiledata.access_token))
+                if (!MatchServerApi.ApplyHeaders(webRequest, url) && staticVariables.UserProfiledata != null && !string.IsNullOrEmpty(staticVariables.UserProfiledata.access_token))
                     webRequest.SetRequestHeader("Authorization", "Bearer " + staticVariables.UserProfiledata.access_token);
                 webRequest.SetRequestHeader("apk_signature_black_arch", secrets["apk_signature_black_arch"]);
                 AttachAppCheck(webRequest);
@@ -798,7 +721,7 @@ public static class ServerConnection
             {
                 webRequest.downloadHandler = (DownloadHandler)new DownloadHandlerBuffer();
                 webRequest.SetRequestHeader("Content-Type", "application/json");
-                if (staticVariables.UserProfiledata != null && !string.IsNullOrEmpty(staticVariables.UserProfiledata.access_token))
+                if (!MatchServerApi.ApplyHeaders(webRequest, url) && staticVariables.UserProfiledata != null && !string.IsNullOrEmpty(staticVariables.UserProfiledata.access_token))
                     webRequest.SetRequestHeader("Authorization", "Bearer " + staticVariables.UserProfiledata.access_token);
 
                 webRequest.SetRequestHeader("apk_signature_black_arch", "077586297b5a8145c6317f821a5cc23d390944c87de714c65de476712f9adca7");
@@ -839,9 +762,11 @@ public static class ServerConnection
 
     #region API Urls 
 
-    public static string Main_URL() => "https://api-player.gamespanda.net";
+    // Same Player API as the app build (staging). A deployment can point elsewhere with PLAYER_API_URL.
+    static string mainUrl;
+    public static string Main_URL() => mainUrl ??= (Environment.GetEnvironmentVariable("PLAYER_API_URL") ?? "https://api-player.gpstagings.com").TrimEnd('/');
 
-    public static string Main_URLLottery = "https://api-player.gamespanda.net";
+    public static string Main_URLLottery => Main_URL();
     public static string TimeZoneApi_Url() => "https://timeapi.io/api/Time/current/zone?timeZone=Europe/London";
     public static string ServerTime_Url() => "/games/standard/server-time";
     public static string UpdateProfile_Url() => "/user/mobile/profile/";
@@ -890,7 +815,7 @@ public static class ServerConnection
 
     public static string Social_Login() => "/auth/login/social";
     public static string Social_Otp_Generate() => "/auth/otp-generate/social";
-    public static string User_Balance_Url() => "/user/get-my-balances/";
+    public static string User_Balance_Url() => "/client-balances/my-balances";
     public static string Support_Contacts_Url() => "/whatsapp/find/country/";
     public static string Friend_Request_Send_Url() => "/friends/request";
     public static string Friend_Request_Accept_Url() => "/friends/accept";

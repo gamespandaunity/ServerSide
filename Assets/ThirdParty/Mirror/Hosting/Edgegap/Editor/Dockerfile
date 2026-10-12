@@ -14,4 +14,5 @@ RUN apt-get update && \
     apt-get clean && \
     update-ca-certificates
 
-CMD ["/bin/bash", "-c", "env;/root/build/ServerBuild -batchmode -nographics $UNITY_COMMANDLINE_ARGS"]
+# No "env;" before the server: it printed MatchKey and the other deployment secrets into the container log.
+CMD ["/bin/bash", "-c", "/root/build/ServerBuild -batchmode -nographics $UNITY_COMMANDLINE_ARGS"]

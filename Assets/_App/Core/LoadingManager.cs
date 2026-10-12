@@ -137,7 +137,8 @@ public class LoadingManager : MonoBehaviour
                     userModeljson = "{\"status\":true,\"message\":\"\",\"user\":{\"file_url\":\"uploads/51d02ud2rm.jpg\",\"_id\":10201,\"first_name\":\"Server\",\"last_name\":\"Headless\",\"full_name\":\"\",\"country\":\"india\",\"status\":\"active\",\"email\":\"6\",\"password\":\"75\",\"role\":\"player\",\"phone\":\"926\",\"silver_balance\":4977518,\"gold_balance\":4979500,\"createdAt\":\"2025-01-23T09:53:56.000Z\",\"updatedAt\":\"2025-09-18T19:13:28.000Z\",\"referral_code\":\"F657DE\",\"imei\":\"\",\"user_login_token\":\"ffe06542ab3062fe811a13ed14f8b2b7ac4ea3ea\",\"block\":\"\",\"allow_to_game\":false,\"game_restrict_at\":\"\",\"restriction_end_at\":\"\",\"attempts\":0,\"__v\":0,\"bet_block\":[],\"updated_by\":\"\",\"deviceToken\":\"StubToken\",\"is_authorized_merchants\":0},\"access_token\":\"eyqJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOjEwMjAxLCJuYW1lIjoicGxheWVyIDYiLCJjb3VudHJ5IjoiaW5kaWEiLCJlbWFpbCI6IjYiLCJzdGF0dXMiOiJhY3RpdmUiLCJyb2xlIjoicGxheWVyIiwiaWF0IjoxNzU4MjIyODA2LCJleHAiOjE3NTg4Mjc2MDZ9.oWu-EmSTd6TpS0fE2Nmbm1WqeyiVVCg51r6bW1e6Xoo\"}";
 
                 UserModel userModel = JsonUtility.FromJson<UserModel>(userModeljson);
-                Debug.Log(Utils.IsHeadless() + " : " + userModeljson);
+                // Not the profile JSON itself: it holds a login token, and the server log goes to S3 and the stats panel.
+                Debug.Log(Utils.IsHeadless() ? "[Boot] Headless profile loaded." : "[Boot] Saved profile loaded.");
                 //"3".Show();
 
                 if (userModeljson != null && userModeljson != "")

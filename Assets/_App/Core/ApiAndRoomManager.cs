@@ -61,24 +61,22 @@ public class ApiAndRoomManager : MonoBehaviour
     }
     private void Start()
     {
-        if (Utils.IsHeadless())
+        // The Edgegap match server no longer takes a build token: it authenticates with x-match-key (MatchServerApi).
+        if (Utils.IsHeadless() && !MatchServerApi.IsMatchServer)
         {
             this.Delay(3, () =>
             {
                 GetAnonymousBuildToken(onSuccess =>
            {
-               onSuccess.Show("Api and Room Manager get token");
 
                var node = JSON.Parse(onSuccess);
 
                // Get access_token directly
                string token = node["access_token"];
-               token.Show("Token");
                staticVariables.UserProfiledata.access_token = token;
                // Settlement reads this copy instead: the profile field gets reloaded and cleared
                // during a match, which is what sent an expired token to the settlement endpoint.
                ServerConnection.BuildAuthToken = token;
-               Debug.Log("Access Token: " + token);
            });
             });
 
@@ -161,7 +159,9 @@ public class ApiAndRoomManager : MonoBehaviour
             if (OnCoinsUpdated != null)
                 OnCoinsUpdated(coins);
         }
-        StartCoroutine(GetApiRequest(User_Balance_Url() + UserProfiledata.user._id, Balance =>
+        // A match server has no player logged in, so there is no balance to read.
+        if (MatchServerApi.IsMatchServer) return;
+        StartCoroutine(GetApiRequest(User_Balance_Url(), Balance =>
         {
 
             UserBalanceResponse Userbalnace = JsonUtility.FromJson<UserBalanceResponse>(Balance);
@@ -519,73 +519,16 @@ public class ApiAndRoomManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Mint a build token for the settlement that is about to go out.
-    ///
-    /// The backend keeps only the MOST RECENTLY issued build token valid: minting a new one silently
-    /// kills the previous. Verified by issuing two in a row -- the first stops working the instant the
-    /// second exists. This process took its token once at startup, so anything that minted one
-    /// afterwards (another instance coming up, a restart, a second editor) left this server holding a
-    /// dead token, and the settlement five minutes later answered 401 with a perfectly good
-    /// gameplaytoken. Taking a fresh one immediately before the request closes that window.
+    /// Report one result the way the backend contract asks: PATCH with x-match-key and a result_id that stays
+    /// the same on retries (MatchServerApi). onFailed runs when the API did not save it.
     /// </summary>
-    private IEnumerator RefreshBuildToken()
+    private IEnumerator SubmitSettlement(Func<Action<bool, string>, IEnumerator> report, string what, Action onFailed = null)
     {
-        yield return GetBearerApiRequest("/auth/generate/build-token", json =>
-        {
-            try
-            {
-                string token = JSON.Parse(json)["access_token"];
-                if (string.IsNullOrEmpty(token)) return;
-                ServerConnection.BuildAuthToken = token;
-                if (staticVariables.UserProfiledata != null)
-                    staticVariables.UserProfiledata.access_token = token;
-            }
-            catch (Exception e)
-            {
-                ConstantsData_M.Log($"[Settlement] Could not read the refreshed build token: {e.Message}");
-            }
-        },
-        fail => ConstantsData_M.Log($"[Settlement] Build-token refresh failed ({fail}); falling back to the token already held."));
-    }
-
-    /// <summary>
-    /// Send one settlement request under a fresh build token, and give it a second try if the backend
-    /// still answers 401 -- another instance can mint a token in the gap and kill ours again.
-    /// </summary>
-    private IEnumerator SubmitSettlement(string url, string what, Action onFailed = null)
-    {
-        for (int attempt = 1; attempt <= 2; attempt++)
-        {
-            yield return RefreshBuildToken();
-
-            string body = null;
-            string failure = null;
-            yield return GetApiRequest(url, ok => body = ok, err => failure = err, withSettlementAuth: true);
-
-            if (failure == null)
-            {
-                if (IsSettlementBodyFailure(body))
-                {
-                    onFailed?.Invoke();
-                    ConstantsData_M.LogCritical($"[Settlement] {what} was REFUSED by the backend body: {body}");
-                }
-                else
-                {
-                    ConstantsData_M.Log($"[Settlement] {what} accepted by the backend.");
-                }
-                yield break;
-            }
-
-            if (attempt == 1 && failure.Contains("401"))
-            {
-                ConstantsData_M.Log($"[Settlement] {what} answered 401 -- the build token was already stale. Minting another and retrying once.");
-                continue;
-            }
-
-            onFailed?.Invoke();
-            ConstantsData_M.LogCritical($"[Settlement] {what} REJECTED: {failure}");
-            yield break;
-        }
+        bool saved = false;
+        string said = null;
+        yield return report((ok, msg) => { saved = ok; said = msg; });
+        if (saved) ConstantsData_M.Log($"[Settlement] {what} accepted by the backend ({said}).");
+        else { onFailed?.Invoke(); ConstantsData_M.LogCritical($"[Settlement] {what} REJECTED: {said}"); }
     }
 
     /// <summary>
@@ -609,26 +552,16 @@ public class ApiAndRoomManager : MonoBehaviour
                 winLoseChallengeId = NetworkGameManager.Instance.transactionId;
             }
         }
-        // Settlement now runs on this headless build instead of a player's device, and carries the
-        // deployment auth key so the backend can tell a real game server from anyone replaying the call.
-        // The player build no longer sends this request at all.
+        // Settlement runs on this headless build, never on a player's device: PATCH with the match's
+        // x-match-key (MatchServerApi), the only key the backend accepts a result from.
         ConstantsData_M.Log($"[Settlement] Server submitting win/loss for {winLoseChallengeId}, winner {WinnerID}.");
-        // No ModifyUserBalance() here: that call reads staticVariables.UserProfiledata, and a headless
-        // build never logs anyone in, so it would throw. Each player's own client refreshes its balance.
-        string winUrl = Winner_Bet_Url() + winLoseChallengeId + "/user/" + WinnerID;
+        // No ModifyUserBalance() here: a headless build never logs anyone in. Each player's own client refreshes its balance.
+        string tx = winLoseChallengeId, winner = WinnerID;
 
-        // Outside the three scoped games this is the request as it stood before any of this work:
-        // no build-token refresh, no 401 retry, no response-body check, no settled latch.
+        // Outside the three scoped games there is no settled latch, as before.
         if (!IsScopedSettlementScene())
         {
-            StartCoroutine(GetApiRequest(winUrl, onsucess =>
-            {
-                ConstantsData_M.Log($"[Settlement] Win/loss for {winLoseChallengeId} accepted by the backend.");
-            }, onFailure =>
-            {
-                ConstantsData_M.Log($"[Settlement] Win/loss for {winLoseChallengeId} REJECTED: {onFailure}");
-            }
-            , withSettlementAuth: true));
+            StartCoroutine(SubmitSettlement(done => MatchServerApi.ReportWinner(tx, winner, done), $"Win/loss for {tx} (winner {winner})"));
             return;
         }
 
@@ -637,8 +570,8 @@ public class ApiAndRoomManager : MonoBehaviour
         // looking settled for good and nobody was ever paid.
         if (NetworkGameManager.Instance != null)
             NetworkGameManager.Instance.ServerMarkMatchSettled("win/loss submitted");
-        StartCoroutine(SubmitSettlement(winUrl,
-                                        $"Win/loss for {winLoseChallengeId} (winner {WinnerID})",
+        StartCoroutine(SubmitSettlement(done => MatchServerApi.ReportWinner(tx, winner, done),
+                                        $"Win/loss for {tx} (winner {winner})",
                                         () =>
                                         {
                                             if (NetworkGameManager.Instance != null)
@@ -687,7 +620,7 @@ public class ApiAndRoomManager : MonoBehaviour
             return;
         }
 
-        // The draw endpoint is GET and requires the deployment settlement key.
+        // The draw is a PATCH with the match's x-match-key (MatchServerApi).
         ConstantsData_M.Log($"[Settlement] Server submitting draw for {transactionId}.");
         // On any failure the transaction is un-marked so a later authoritative attempt may retry.
         string drawTx = transactionId;
@@ -695,22 +628,16 @@ public class ApiAndRoomManager : MonoBehaviour
         // Same scope as the win/loss path above.
         if (!IsScopedSettlementScene())
         {
-            StartCoroutine(GetApiRequest(DrawBet_Url() + drawTx, onsucess =>
-            {
-                ConstantsData_M.Log($"[Settlement] Draw for {drawTx} accepted by the backend.");
-            }, onFailure =>
-            {
-                // Permit a later authoritative retry if this request did not reach the backend.
-                submittedDrawTransactions.Remove(drawTx);
-                ConstantsData_M.Log($"[Settlement] Draw for {drawTx} REJECTED: {onFailure}");
-            }, withSettlementAuth: true));
+            // On failure the transaction is un-marked so a later authoritative attempt may retry.
+            StartCoroutine(SubmitSettlement(done => MatchServerApi.ReportDraw(drawTx, done), $"Draw for {drawTx}",
+                                            () => submittedDrawTransactions.Remove(drawTx)));
             return;
         }
 
         // Same reasoning as the win/loss path above.
         if (NetworkGameManager.Instance != null)
             NetworkGameManager.Instance.ServerMarkMatchSettled("draw submitted");
-        StartCoroutine(SubmitSettlement(DrawBet_Url() + drawTx,
+        StartCoroutine(SubmitSettlement(done => MatchServerApi.ReportDraw(drawTx, done),
                                         $"Draw for {drawTx}",
                                         () =>
                                         {
