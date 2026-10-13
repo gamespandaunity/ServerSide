@@ -26,6 +26,9 @@ public static class MatchServerApi
     /// </summary>
     public const bool LogMatchKeyForTesting = true;
 
+    /// <summary>Seconds between deciding a result and reporting it (the API stops the server right after).</summary>
+    public const float ResultDelaySeconds = 5f;
+
     static bool read;
     static string transactionId, matchKey, attempt, requestId;
 
@@ -202,6 +205,12 @@ public static class MatchServerApi
             done?.Invoke(false, "no match key");
             yield break;
         }
+        // The API stops this server about a second after it saves the result. Several games still need the server
+        // after deciding the winner: Ludo and Carrom (timeout) do a client->server->client round trip before the
+        // result screen, 8 Ball reveals its panel 3 s later, Highway Racer waits 3 s. Give them that time first.
+        Debug.Log($"[Settlement] Reporting {what} in {ResultDelaySeconds:0} s (clients get their result screens first).");
+        yield return new WaitForSecondsRealtime(ResultDelaySeconds);
+
         // Network failures are retried with the SAME result_id, so a result that did reach the API is not saved twice.
         for (int i = 1; i <= 4; i++)
         {
