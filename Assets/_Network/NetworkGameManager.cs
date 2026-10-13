@@ -58,6 +58,8 @@ public class NetworkGameManager : NetworkBehaviour
         string envGameId = Environment.GetEnvironmentVariable("GameId");
         string envTransaction = Environment.GetEnvironmentVariable("TransactionId");
         string envRequestId = Environment.GetEnvironmentVariable("ServerRequestId");
+        // The backend no longer sets ServerRequestId; Edgegap always sets ARBITRIUM_REQUEST_ID for the deployment.
+        if (string.IsNullOrEmpty(envRequestId)) envRequestId = MatchServerApi.RequestId;
         string envPrize = Environment.GetEnvironmentVariable("currentPrize");
         string envGold = Environment.GetEnvironmentVariable("isgoldcoins");
         string envCreator = Environment.GetEnvironmentVariable("Creator");

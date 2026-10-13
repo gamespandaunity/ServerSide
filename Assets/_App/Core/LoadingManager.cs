@@ -130,7 +130,10 @@ public class LoadingManager : MonoBehaviour
             {
                 //"2".Show();
                 string userModeljson;
-                yield return new WaitForSeconds(2);
+                // The match server opens its port before it reaches Home and turns players away until then
+                // (MirrorNetwork.OnServerConnect), so it does not wait here; the 2 s is for the app's splash only.
+                if (!Utils.IsHeadless())
+                    yield return new WaitForSeconds(2);
                 if (!Utils.IsHeadless())
                     userModeljson = PlayerPrefs.GetString("userModel");
                 else
