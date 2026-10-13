@@ -13,12 +13,18 @@ using UnityEngine.Networking;
 ///  - self-check when the server starts (keep:false = this is not the live server for the match, shut down);
 ///  - join tickets verified before a player is let in;
 ///  - results reported with PATCH, with a result_id that stays the same across retries so it is not saved twice.
-/// The MatchKey value is never logged.
+/// The MatchKey value is logged only while LogMatchKeyForTesting is on.
 /// </summary>
 public static class MatchServerApi
 {
     public const string MatchKeyHeader = "x-match-key";
     public const string MatchTransactionHeader = "x-match-transaction";
+
+    /// <summary>
+    /// TESTING ONLY: print the full MatchKey in the start-up log line. The log goes to S3 and the stats panel, and
+    /// anyone holding the key can report this match's result - set false before a production build.
+    /// </summary>
+    public const bool LogMatchKeyForTesting = true;
 
     static bool read;
     static string transactionId, matchKey, attempt, requestId;
@@ -113,7 +119,6 @@ public static class MatchServerApi
     public static IEnumerator SelfCheck()
     {
         if (!IsMatchServer) { Debug.Log("[MatchServer] No MatchKey in the environment - not an Edgegap match server, self-check skipped."); yield break; }
-        Debug.Log($"[MatchServer] tx={TransactionId} request_id={RequestId} attempt={Attempt} (match key set)");
         var body = new { transaction_id = TransactionId, request_id = RequestId, attempt = Attempt };
         for (int i = 1; i <= 3; i++)
         {
@@ -239,9 +244,22 @@ public static class MatchServerApi
         return runner.StartCoroutine(routine);
     }
 
+    /// <summary>One line with the match values read from the environment, for testing.</summary>
+    public static void LogEnvironment()
+    {
+        Read();
+        string key = string.IsNullOrEmpty(matchKey) ? "(not set)"
+            : LogMatchKeyForTesting ? matchKey
+            : $"set ({matchKey.Length} chars)";
+        Debug.Log($"[MatchServer] Environment: TransactionId={Show(transactionId)} MatchKey={key} MatchAttempt={Show(attempt)} ARBITRIUM_REQUEST_ID={Show(requestId)}");
+    }
+
+    static string Show(string v) => string.IsNullOrEmpty(v) ? "(not set)" : v;
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void StartUp()
     {
+        LogEnvironment();
         if (IsMatchServer) Run(SelfCheck());
     }
 }
