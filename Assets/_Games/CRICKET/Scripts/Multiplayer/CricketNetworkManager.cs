@@ -1527,6 +1527,7 @@ public class CricketNetworkManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdAnnounceVictory(int playerId, string reaosn)
     {
+        if (!ClaimedWinGuard.Allow(playerId, "Cricket", reaosn)) return;
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdAnnounceVictory] CMD received. playerId = {playerId}, reason = '{reaosn}'.");
         MatchFlow.Log("Cricket", $"{FlowWho(playerId)} declared winner — {(string.IsNullOrEmpty(reaosn) ? "opponent disconnected" : reaosn)}");
         MatchFlow.SendResult(playerId.ToString(), "opponent disconnected", FlowScoreSummary());

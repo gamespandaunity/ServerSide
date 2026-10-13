@@ -592,6 +592,7 @@ public class StickManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdAnnounceVictory(int playerId, string reaosn)
     {
+        if (!ClaimedWinGuard.Allow(playerId, "Snooker", reaosn)) return;
         SnookerFlow.SendResult(playerId.ToString(), "victory announced: " + reaosn);
         ApiAndRoomManager._instance.WinnerLossChallenge(playerId.ToString());
         RpcAnnounceVictory(playerId, reaosn);
