@@ -39,9 +39,22 @@ public class MirrorPlayerPrefab : NetworkBehaviour
             else                                       isCreator = creatorSlotFree;
         }
 
+        // The join ticket (CmdJoinTicket) must belong to this player.
+        JoinTicketGate.OnClaim(sender, playerData.playerId);
+
         playerData.isCreator = isCreator;
         AssignPlayerRole(sender, playerData, isCreator);
         TargetConfirmRole(sender, isCreator);
+    }
+
+    /// <summary>
+    /// The app sends the one-use join ticket the backend gave it for this match (JoinTicketGate checks it).
+    /// Same signature in the app's copy of this class, so Mirror matches the two.
+    /// </summary>
+    [Command(requiresAuthority = false)]
+    public void CmdJoinTicket(string ticket, NetworkConnectionToClient sender = null)
+    {
+        JoinTicketGate.OnTicket(sender, ticket);
     }
 
     [Server]

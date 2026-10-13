@@ -152,16 +152,17 @@ public static class MatchServerApi
     // ── join ticket ───────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Verify the ticket a connecting player sent. done(true, userId, message) = let that user in. A ticket works once.
+    /// Verify the ticket a connecting player sent. done(ok, answered, userId, message): ok = let that user in;
+    /// answered = false when the API could not be reached. A ticket works once.
     /// </summary>
-    public static IEnumerator VerifyJoinTicket(string ticket, Action<bool, string, string> done)
+    public static IEnumerator VerifyJoinTicket(string ticket, Action<bool, bool, string, string> done)
     {
-        if (string.IsNullOrEmpty(ticket)) { done?.Invoke(false, null, "no ticket"); yield break; }
+        if (string.IsNullOrEmpty(ticket)) { done?.Invoke(false, true, null, "no ticket"); yield break; }
         Reply r = default;
         yield return Send("POST", "/match-server/join-ticket/verify", new { transaction_id = TransactionId, ticket, request_id = RequestId }, x => r = x);
         string userId = r.json?["user_id"]?.ToString() ?? r.json?["data"]?["user_id"]?.ToString();
         Debug.Log($"[MatchServer] Join ticket for user {userId ?? "?"}: {(r.Ok ? "verified" : "refused - " + Short(r))}");
-        done?.Invoke(r.Ok, userId, r.Ok ? null : (r.message ?? Short(r)));
+        done?.Invoke(r.Ok, r.Answered && r.code < 500, userId, r.Ok ? null : (r.message ?? Short(r)));
     }
 
     // ── results ───────────────────────────────────────────────────────────────────────────────
