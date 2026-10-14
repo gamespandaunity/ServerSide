@@ -1086,8 +1086,16 @@ public class NetworkGameManager : NetworkBehaviour
     [Server]
     public void ServerCancelAbandonWatch(string why)
     {
+        // Only when BOTH players are here again. One player rejoining while the other is still gone used to cancel the
+        // watch and forget who had left, so nothing settled (12 Beads 3277960b-c78b-1: Wasi's app was killed, Alex
+        // blipped and reconnected, then left - the stakes stayed held).
+        if (NetworkServer.connections.Count < 2)
+        {
+            Debug.Log($"[Abandon][SERVER] {why}, but the opponent is still gone - the watch keeps running.");
+            return;
+        }
         _dropOrder.Clear();
-        ExplicitLeaverId = null;   // they came back: their announced departure no longer counts
+        ExplicitLeaverId = null;   // both are back: an announced departure no longer counts
         if (_abandonWatchRoutine == null) return;
         StopCoroutine(_abandonWatchRoutine);
         _abandonWatchRoutine = null;
