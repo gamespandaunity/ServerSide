@@ -172,7 +172,7 @@ public class LudoNetworkManager : NetworkBehaviour
     // OFF until tested on two phones against a match server built with it. To switch on: set ServerAuthorityEnabled
     // = true in BOTH repos (ClientSide + ServerSide), deploy the match server and publish the code together — the RPCs
     // and the SyncVar below must be identical on both sides.
-    public const bool ServerAuthorityEnabled = false;
+    public const bool ServerAuthorityEnabled = true;
 
     /// <summary>Set by the server when it runs the board; clients read it to decide whose rules they follow.</summary>
     [SyncVar] public bool serverAuthority;

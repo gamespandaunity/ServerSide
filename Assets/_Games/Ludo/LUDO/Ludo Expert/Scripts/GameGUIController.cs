@@ -1732,16 +1732,14 @@ public class GameGUIController : NetworkBehaviour
                     Debug.Log("Not connected to network, loading home scene.");
                     SceneManager.LoadScene("Home");
                 }
-                MirrorNetwork.Instance.currentDisconnectReason = DisconnectReason.ApplicationQuit;
+                // A deliberate leave, as 8 Ball / Carrom / 12 Beads send it: the server settles it for the other
+                // player. ApplicationQuit + CmdReloadServer was never treated as a leave and sent the server Home.
                 if (NetworkGameManager.Instance)
-                    NetworkGameManager.Instance.CmdSendDisconnectType((int)MirrorNetwork.Instance.currentDisconnectReason);
-                NetworkGameManager.Instance.CmdReloadServer();
-                if (NetworkServer.active || NetworkClient.active)
                 {
-                    // SceneManager.LoadScene("Home");
+                    NetworkGameManager.Instance.RequestExplicitLeave();
+                    this.Delay(1, () => NetworkManager.singleton.StopClient());
                 }
-                //this.Delay(1, () => NetworkManager.singleton.StopClient());
-                // SceneManager.LoadScene("Home");
+                SceneManager.LoadScene("Home");
                 LudoGame.GameManager.Instance.playfabManager.roomOwner = false;
                 LudoGame.GameManager.Instance.roomOwner = false;
                 LudoGame.GameManager.Instance.resetAllData();

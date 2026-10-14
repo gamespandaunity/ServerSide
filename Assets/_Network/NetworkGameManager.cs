@@ -740,12 +740,25 @@ public class NetworkGameManager : NetworkBehaviour
     public void CmdRiseEvent(int eventCode, string data, NetworkConnectionToClient sender = null)
     {
         Debug.Log($"CmdRiseEvent: Code={eventCode}, Data={data}, Sender={sender?.connectionId}");
+        // F4: while the server runs the Ludo board, a phone may not announce a finish or an exit through the relay
+        // (FinishedGame reached SetFinishGame -> WinnerLossChallenge here). The server decides the result itself.
+        if (IsLudoClientResultEvent(eventCode))
+        {
+            MatchFlow.Flag("Ludo", sender, "client_result_event", $"event {eventCode} ignored - the server runs the board");
+            return;
+        }
         OnEventReceived.Invoke(eventCode, data, sender);
         RiseEventRpc(eventCode, data);
     }
 
     [ClientRpc]
     public void RiseEventRpc(int eventCode, string data) => OnEventReceived.Invoke(eventCode, data, null);
+
+    // Ludo's FinishedGame (178) and ExitGame (180), only while LudoNetworkManager runs the board.
+    static bool IsLudoClientResultEvent(int eventCode) =>
+        (eventCode == 178 || eventCode == 180)
+        && LudoNetworkManager.ServerAuthority
+        && SceneManager.GetActiveScene().name == "LudoGameScene";
 
     [Command(requiresAuthority = false)]
     public void CmdBeginTurn()
@@ -854,7 +867,10 @@ public class NetworkGameManager : NetworkBehaviour
         // Ludo (server authority off) ends here, and this only showed the result screens: a Ludo win was never reported,
         // so both stakes stayed held. Report it once (the settlement latch drops a second result). A loss names the
         // other player. Until LudoNetworkManager.ServerAuthorityEnabled is on, a win is the client's word.
-        if (NetworkServer.active && SceneManager.GetActiveScene().name == "LudoGameScene" && ApiAndRoomManager._instance != null)
+        // With LudoNetworkManager.ServerAuthority on, ServerWin / ServerTimeOver report the result from the server's own
+        // board; every phone then calls this from RpcMatchWon, and a modified phone could call it first - not reported.
+        if (NetworkServer.active && SceneManager.GetActiveScene().name == "LudoGameScene" && ApiAndRoomManager._instance != null
+            && !LudoNetworkManager.ServerAuthority)
         {
             string winner = isWin ? playerId.ToString() : OtherPlayerId(playerId.ToString());
             if (!string.IsNullOrEmpty(winner) && (winner == creatorData?.playerId || winner == joinerData?.playerId))
