@@ -373,7 +373,7 @@ public class NetworkGameManager : NetworkBehaviour
     /// Client-side entry point for an explicit Leave/Quit button.
     /// Other disconnect causes must keep using their own DisconnectReason.
     /// </summary>
-    /// <summary>Server: the player id that sent a Leave (UserRequested) in this match, or null.</summary>
+    /// <summary>Server: the player id that announced it is going (Leave or app quit) in this match, or null.</summary>
     public string ExplicitLeaverId { get; private set; }
 
     public void RequestExplicitLeave()
@@ -401,10 +401,11 @@ public class NetworkGameManager : NetworkBehaviour
         // already be gone, the gates may not line up), and the abandon watch would then finish the
         // match and tell the winner their opponent had LOST CONNECTION -- when that player in fact
         // pressed Leave. The reason the winner reads has to survive that hand-off.
-        if (disconnectReason == DisconnectReason.UserRequested)
+        if (disconnectReason == DisconnectReason.UserRequested) _explicitLeaveAnnounced = true;
+        if (disconnectReason == DisconnectReason.UserRequested || disconnectReason == DisconnectReason.ApplicationQuit)
         {
-            _explicitLeaveAnnounced = true;
-            // Who pressed Leave: their opponent may claim the win before this connection has closed (ClaimedWinGuard).
+            // Who is going (Leave or app quit): their opponent may claim the win before this connection has closed
+            // (ClaimedWinGuard) - Snooker 7ebe75db-c768-1 lost its result that way.
             var leaver = sender != null && sender.identity != null ? sender.identity.GetComponent<MirrorPlayerPrefab>() : null;
             if (leaver != null && !string.IsNullOrEmpty(leaver.playerId)) ExplicitLeaverId = leaver.playerId;
         }

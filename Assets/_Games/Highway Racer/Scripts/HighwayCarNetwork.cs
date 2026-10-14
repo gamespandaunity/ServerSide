@@ -585,7 +585,12 @@ public class HighwayCarNetwork : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdAnnounceVictory(int playerId, string reaosn)
     {
-        if (!ClaimedWinGuard.Allow(playerId, "Highway", reaosn)) return;
+        ClaimedWinGuard.Accept(playerId, "Highway", reaosn, () => ServerAnnounceVictory(playerId, reaosn));
+    }
+
+    [Server]
+    private void ServerAnnounceVictory(int playerId, string reaosn)
+    {
         MatchFlow.Log("Highway Racer", $"victory announced: {MatchFlow.Who(playerId.ToString())} — {reaosn}");
         MatchFlow.SendResult(playerId.ToString(), "victory announced: " + reaosn);
         ApiAndRoomManager._instance.WinnerLossChallenge(playerId.ToString());
