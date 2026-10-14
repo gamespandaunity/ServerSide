@@ -604,6 +604,9 @@ public class MirrorNetwork : NetworkManager
     public override void OnServerDisconnect(NetworkConnectionToClient conn)
     {
         "Disconnected".Show();
+        // Read before base.OnServerDisconnect destroys the player object: the abandon watch needs who left, and when.
+        string droppedPlayerId = conn != null && conn.identity != null && conn.identity.TryGetComponent<MirrorPlayerPrefab>(out var droppedPlayer)
+            ? droppedPlayer.playerId : null;
 
         List<NetworkIdentity> ownedObjects = new List<NetworkIdentity>(conn.owned);
 
@@ -632,7 +635,7 @@ public class MirrorNetwork : NetworkManager
         // A player who drops and does not come back must still settle the match. NetworkGameManager
         // decides whether this particular disconnect qualifies and does nothing when it does not.
         if (NetworkServer.active && NetworkGameManager.Instance != null)
-            NetworkGameManager.Instance.ServerBeginAbandonWatch();
+            NetworkGameManager.Instance.ServerBeginAbandonWatch(droppedPlayerId);
 
         // If a player drops before both have joined, tell the remaining client to show the waiting panel.
         if (!hasJoinedGame && numPlayers < 2 && NetworkGameManager.Instance != null)

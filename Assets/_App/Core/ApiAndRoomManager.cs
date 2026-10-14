@@ -421,18 +421,14 @@ public class ApiAndRoomManager : MonoBehaviour
         //     reaching the request. The value was never used.
         // The path shape now matches what the player build was sending: /session/play/{transactionId}.
         ConstantsData_M.Log($"[Settlement] Server marking session {winLoseChallengeId} as played.");
-        StartCoroutine(GetApiRequest(Start_Bet_Url() + winLoseChallengeId, onsucess =>
+        // The Player API moved this to PATCH /session/play/{tx} (the app already sends PATCH); a GET answers 404.
+        string tx = winLoseChallengeId;
+        StartCoroutine(MatchServerApi.Send("PATCH", Start_Bet_Url() + tx, null, r =>
         {
-            // HTTP 200 only means the request arrived — the backend refuses in the body
-            // ({"status":false,"message":"invalid player"}), and the session then stays "pending".
-            if (IsSettlementBodyFailure(onsucess))
-                ConstantsData_M.LogCritical($"[Settlement] Session {winLoseChallengeId} play-start REFUSED by the backend body: {onsucess}");
-            else
-                ConstantsData_M.Log($"[Settlement] Session {winLoseChallengeId} accepted as played.");
-        }, onFailure =>
-        {
-            ConstantsData_M.Log($"[Settlement] Session {winLoseChallengeId} play-start REJECTED: {onFailure}");
-        }, withSettlementAuth: true));
+            if (r.Ok) ConstantsData_M.Log($"[Settlement] Session {tx} accepted as played.");
+            else if (r.Answered) ConstantsData_M.LogCritical($"[Settlement] Session {tx} play-start REFUSED: HTTP {r.code} {r.body}");
+            else ConstantsData_M.Log($"[Settlement] Session {tx} play-start REJECTED: {r.error}");
+        }));
     }
     public void FetchCurrentTime(Action<DateTime> OnTimeFetched, Action<string> OnFailedFetch)
     {

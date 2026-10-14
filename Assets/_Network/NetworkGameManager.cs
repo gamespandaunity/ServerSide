@@ -1,4 +1,5 @@
-﻿using BEKStudio;
+﻿using System.Collections.Generic;
+using BEKStudio;
 using CarRace;
 using Mirror;
 using NetworkManagement;
@@ -372,6 +373,9 @@ public class NetworkGameManager : NetworkBehaviour
     /// Client-side entry point for an explicit Leave/Quit button.
     /// Other disconnect causes must keep using their own DisconnectReason.
     /// </summary>
+    /// <summary>Server: the player id that sent a Leave (UserRequested) in this match, or null.</summary>
+    public string ExplicitLeaverId { get; private set; }
+
     public void RequestExplicitLeave()
     {
         if (MirrorNetwork.Instance == null)
@@ -397,7 +401,13 @@ public class NetworkGameManager : NetworkBehaviour
         // already be gone, the gates may not line up), and the abandon watch would then finish the
         // match and tell the winner their opponent had LOST CONNECTION -- when that player in fact
         // pressed Leave. The reason the winner reads has to survive that hand-off.
-        if (disconnectReason == DisconnectReason.UserRequested) _explicitLeaveAnnounced = true;
+        if (disconnectReason == DisconnectReason.UserRequested)
+        {
+            _explicitLeaveAnnounced = true;
+            // Who pressed Leave: their opponent may claim the win before this connection has closed (ClaimedWinGuard).
+            var leaver = sender != null && sender.identity != null ? sender.identity.GetComponent<MirrorPlayerPrefab>() : null;
+            if (leaver != null && !string.IsNullOrEmpty(leaver.playerId)) ExplicitLeaverId = leaver.playerId;
+        }
 
         // Only a Leave/Quit button may send UserRequested. App shutdown, backgrounding,
         // transport loss and scene transitions keep their existing non-settlement paths.
@@ -957,9 +967,19 @@ public class NetworkGameManager : NetworkBehaviour
     /// Server: a player just dropped. Wait out the grace period, then award the match to whoever is
     /// still here. Safe to call for every disconnect; each non-qualifying case returns immediately.
     /// </summary>
+    // Players in the order they dropped. When the opponent leaves first, the remaining player's app shows its win
+    // and goes Home - often before the grace period ends - so the watch used to find nobody left and settle
+    // nothing, with both stakes held (Snooker 7ebe75db-c768-1, 14 Oct). Then the player who left last wins.
+    private readonly List<string> _dropOrder = new List<string>();
+
     [Server]
-    public void ServerBeginAbandonWatch()
+    public void ServerBeginAbandonWatch(string droppedPlayerId = null)
     {
+        if (!string.IsNullOrEmpty(droppedPlayerId))
+        {
+            _dropOrder.Remove(droppedPlayerId);
+            _dropOrder.Add(droppedPlayerId);
+        }
         if (_serverMatchSettled || _disconnectWinnerDeclared) return;
         if (!MirrorNetwork.hasJoinedGame) return;
         if (!IsExplicitLeaveSettlementScene(SceneManager.GetActiveScene().name)) return;
@@ -971,6 +991,7 @@ public class NetworkGameManager : NetworkBehaviour
     [Server]
     public void ServerCancelAbandonWatch(string why)
     {
+        _dropOrder.Clear();
         if (_abandonWatchRoutine == null) return;
         StopCoroutine(_abandonWatchRoutine);
         _abandonWatchRoutine = null;
@@ -994,6 +1015,18 @@ public class NetworkGameManager : NetworkBehaviour
         }
 
         string winnerId = ServerFindLoneRemainingPlayerId();
+        if (string.IsNullOrEmpty(winnerId) && NetworkServer.connections.Count == 0 && _dropOrder.Count >= 2)
+        {
+            string lastOut = _dropOrder[_dropOrder.Count - 1], firstOut = _dropOrder[_dropOrder.Count - 2];
+            bool bothPlayers = creatorData != null && joinerData != null
+                && (lastOut == creatorData.playerId || lastOut == joinerData.playerId)
+                && (firstOut == creatorData.playerId || firstOut == joinerData.playerId) && lastOut != firstOut;
+            if (bothPlayers)
+            {
+                winnerId = lastOut;
+                Debug.Log($"[Abandon][SERVER] Both players have gone; {firstOut} left first, so {lastOut} wins.");
+            }
+        }
         if (string.IsNullOrEmpty(winnerId))
         {
             Debug.LogWarning("[Abandon][SERVER] No single remaining player to award; nothing settled.");
