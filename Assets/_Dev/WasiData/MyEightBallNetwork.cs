@@ -4120,6 +4120,10 @@ public class MyEightBallNetwork : NetworkBehaviour
         gameWinnerId = winnerId.ToString();
         MatchFlow.Log("8 Ball", $"game over — {FlowWho(winnerId)} wins");
         MatchFlow.SendResult(gameWinnerId, _flowWinReason ?? "game over");
+        // This only logged the result: an 8 Ball win was never reported to the API, so the session stayed
+        // active and both stakes stayed held (6dca1de7-c763-1, 14 Oct). Report it; the settlement code waits a
+        // few seconds before sending, so the caption and the result panel below still reach both players.
+        ApiAndRoomManager._instance.WinnerLossChallenge(gameWinnerId);
 
         // Two-step reveal, both driven from here: caption now, panel ResultPanelRevealDelay later.
         RpcShowWinLoseText(gameWinnerId);

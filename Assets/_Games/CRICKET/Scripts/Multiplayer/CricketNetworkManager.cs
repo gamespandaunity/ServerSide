@@ -1531,7 +1531,7 @@ public class CricketNetworkManager : NetworkBehaviour
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdAnnounceVictory] CMD received. playerId = {playerId}, reason = '{reaosn}'.");
         MatchFlow.Log("Cricket", $"{FlowWho(playerId)} declared winner — {(string.IsNullOrEmpty(reaosn) ? "opponent disconnected" : reaosn)}");
         MatchFlow.SendResult(playerId.ToString(), "opponent disconnected", FlowScoreSummary());
-        ApiAndRoomManager._instance.WinnerLossChallenge(playerId.ToString());
+        if (!_resultReported) { _resultReported = true; ApiAndRoomManager._instance.WinnerLossChallenge(playerId.ToString()); }
         RpcAnnounceVictory(playerId);
         NetworkGameManager.Instance.creatorData.Scores = 0;
         NetworkGameManager.Instance.joinerData.Scores = 0;
@@ -1871,9 +1871,29 @@ public class CricketNetworkManager : NetworkBehaviour
             this.DelayUntil(() => RoomMenu.Instance != null, () => RoomMenu.Instance.RPC_OnOpponentConnected());
     }
 
+    // A Cricket match that ended on the field was never reported to the API (only a disconnect was), so the
+    // session stayed active and both stakes stayed held. The server reports the endings it can see in
+    // CmdCorrectBallState: target chased, chasing side all out, and the overs used up. Once per match.
+    private int _matchBallLimit = -1;
+    private bool _resultReported;
+
+    [Server]
+    private void ServerReportCricketResult(string winnerId, string why)
+    {
+        if (_resultReported || !NetworkServer.active || string.IsNullOrEmpty(winnerId)) return;
+        _resultReported = true;
+        Debug.Log($"[Cricket][Result] Reporting {(winnerId == "draw" ? "a draw" : "winner " + winnerId)} ({why}).");
+        if (winnerId == "draw")
+            ApiAndRoomManager._instance.DrawChallenge(NetworkGameManager.Instance != null ? NetworkGameManager.Instance.transactionId : ApiAndRoomManager._instance.winLoseChallengeId);
+        else
+            ApiAndRoomManager._instance.WinnerLossChallenge(winnerId);
+    }
+
     [Command(requiresAuthority = false)]
     public void CmdSetOver(int senderId, int selectedTeamIndex)
     {
+        if (CONTROLLER.Overs != null && selectedTeamIndex >= 0 && selectedTeamIndex < CONTROLLER.Overs.Length && CONTROLLER.Overs[selectedTeamIndex] > 0)
+            _matchBallLimit = CONTROLLER.Overs[selectedTeamIndex] * 6;
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdSetOver] CMD received. senderId = {senderId}, selectedTeamIndex = {selectedTeamIndex}.");
         MatchFlow.Log("Cricket", (CONTROLLER.Overs != null && selectedTeamIndex >= 0 && selectedTeamIndex < CONTROLLER.Overs.Length && CONTROLLER.Overs[selectedTeamIndex] > 0)
             ? $"{FlowWho(senderId)} set the match to {CONTROLLER.Overs[selectedTeamIndex]} overs"
@@ -3370,6 +3390,17 @@ public class CricketNetworkManager : NetworkBehaviour
                 MatchFlow.Log("Cricket", $"chasing side all out for {scores} — {FlowOpponent(senderId)} wins by {syncedTeam1Scores - scores} run(s)");
                 MatchFlow.SendResult(FlowOpponentId(senderId), "chasing side all out", $"{syncedTeam1Scores}/{syncedTeam1Wickets} vs {scores}/{wickets} ({FlowOvers(matchBalls)} ov)");
             }
+        }
+        if (syncedCurrentInnings == 1)
+        {
+            string ending = null, winner = null;
+            if (scores > syncedTeam1Scores) { winner = senderId.ToString(); ending = "target chased"; }
+            else if (wickets >= 10 || (_matchBallLimit > 0 && matchBalls >= _matchBallLimit))
+            {
+                ending = wickets >= 10 ? "chasing side all out" : "overs complete";
+                winner = scores == syncedTeam1Scores ? "draw" : FlowOpponentId(senderId);
+            }
+            if (ending != null) ServerReportCricketResult(winner, $"{ending}: {syncedTeam1Scores}/{syncedTeam1Wickets} vs {scores}/{wickets}");
         }
         // Persist to SyncVars — reconnecting clients pick these up automatically.
         syncedMatchScores     = scores;

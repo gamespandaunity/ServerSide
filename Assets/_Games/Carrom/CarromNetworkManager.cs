@@ -86,7 +86,7 @@ public class CarromNetworkManager : NetworkBehaviour
         BEKStudio.GameController.currentHomeScore = 0;
         BEKStudio.GameController.currentAwayScore = 0;
         StopAllTurnLogic();
-        ApiAndRoomManager._instance.WinnerLossChallenge(BEKStudio.GameController.Instance.gameWinner);
+        ServerReportResult(BEKStudio.GameController.Instance.gameWinner, "match time over");
         RpcTimerEnded(BEKStudio.GameController.Instance.gameWinner);
     }
 
@@ -1372,10 +1372,47 @@ public class CarromNetworkManager : NetworkBehaviour
 
     }
     #endregion
+    // A Carrom game that ended on the board (all coins pocketed, a player's game over, a score decision) only
+    // logged the result: nothing reported it to the API, so neither stake was ever settled. Only the timeout and
+    // disconnect paths reported. One report per match; the winner is what the server itself sees.
+    private bool _resultReported;
+
+    [Server]
+    public void ServerReportResult(string winnerId, string why)
+    {
+        if (_resultReported || !NetworkServer.active) return;
+        _resultReported = true;
+        if (winnerId == "draw")
+        {
+            Debug.Log($"[Carrom][Result] Reporting a draw ({why}).");
+            ApiAndRoomManager._instance.DrawChallenge(NetworkGameManager.Instance != null ? NetworkGameManager.Instance.transactionId : ApiAndRoomManager._instance.winLoseChallengeId);
+        }
+        else if (!string.IsNullOrEmpty(winnerId))
+        {
+            Debug.Log($"[Carrom][Result] Reporting winner {winnerId} ({why}).");
+            ApiAndRoomManager._instance.WinnerLossChallenge(winnerId);
+        }
+        else
+        {
+            _resultReported = false;
+            Debug.LogError($"[Carrom][Result] No winner to report ({why}).");
+        }
+    }
+
+    /// <summary>Higher board score wins, equal is a draw - what the result screens show.</summary>
+    private static string ScoreWinner()
+    {
+        if (BEKStudio.GameController.currentHomeScore == BEKStudio.GameController.currentAwayScore) return "draw";
+        return BEKStudio.GameController.currentHomeScore > BEKStudio.GameController.currentAwayScore
+            ? NetworkGameManager.Instance?.creatorData?.playerId
+            : NetworkGameManager.Instance?.joinerData?.playerId;
+    }
+
     [Command(requiresAuthority = false)]
     public void CmdGameOver()
     {
         MatchFlow.SendResult(PlayercurrentTurnId, "game over", BEKStudio.GameController.FlowScores());
+        ServerReportResult(PlayercurrentTurnId, "game over");
         StopAllTurnLogic();
         RpcGameOver(PlayercurrentTurnId);
         this.Delay(5, () =>
@@ -1609,6 +1646,7 @@ public class CarromNetworkManager : NetworkBehaviour
             : BEKStudio.GameController.currentHomeScore > BEKStudio.GameController.currentAwayScore ? NetworkGameManager.Instance?.creatorData?.playerId
             : NetworkGameManager.Instance?.joinerData?.playerId,
             $"game over — {MatchFlow.Who(PlayerId.ToString())} reported a win, higher board score wins", BEKStudio.GameController.FlowScores());
+        ServerReportResult(ScoreWinner(), "game over by board score");
         StopAllTurnLogic();
         RpcGameStateWin(PlayerId);
         this.Delay(5, () =>
@@ -1667,6 +1705,7 @@ public class CarromNetworkManager : NetworkBehaviour
             : BEKStudio.GameController.currentHomeScore > BEKStudio.GameController.currentAwayScore ? NetworkGameManager.Instance?.creatorData?.playerId
             : NetworkGameManager.Instance?.joinerData?.playerId,
             $"game over — {MatchFlow.Who(PlayerId.ToString())} reported a loss, higher board score wins", BEKStudio.GameController.FlowScores());
+        ServerReportResult(ScoreWinner(), "game over by board score");
         StopAllTurnLogic();
         RpcGameStatelose(PlayerId);
         this.Delay(5, () =>

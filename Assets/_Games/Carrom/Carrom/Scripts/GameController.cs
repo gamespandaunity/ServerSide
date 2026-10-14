@@ -1162,6 +1162,7 @@ namespace BEKStudio
                             homePucksCollected.Count == 9 ? $"{FlowOwner("White")} pocketed all white coins + queen"
                             : awayPucksCollected.Count == 9 ? $"{FlowOwner("Black")} pocketed all black coins + queen"
                             : "board cleared", FlowScores());
+                        CarromNetworkManager.instance.ServerReportResult(CarromNetworkManager.instance.PlayercurrentTurnId, "board cleared");
                         CarromNetworkManager.instance.RpcGameOver(CarromNetworkManager.instance.PlayercurrentTurnId);
                     }
                     else
