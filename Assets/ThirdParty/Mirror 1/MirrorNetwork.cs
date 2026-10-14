@@ -297,7 +297,14 @@ public class MirrorNetwork : NetworkManager
             int reconnectAttempts = keyValuePairsPlayerReconnection[reconnectingPlayerId];
             bool reconnectLimitReached = isSnooker ? reconnectAttempts > 6 : reconnectAttempts >= 5;
 
-            if (reconnectLimitReached)
+            string sceneNow = SceneManager.GetActiveScene().name;
+            bool alreadySettled = NetworkGameManager.Instance != null && NetworkGameManager.Instance.ServerMatchAlreadySettled;
+            if (reconnectLimitReached && (alreadySettled || NetworkGameManager.IsCasinoScene(sceneNow)))
+            {
+                // A settled match has nothing left to decide, and a casino table settles per hand, not per match.
+                Debug.Log($"[Reconnect] {reconnectingPlayerId} reached the reconnect limit; no match result sent (settled={alreadySettled}, scene={sceneNow}).");
+            }
+            else if (reconnectLimitReached)
             {
                 Debug.LogWarning($"Player {reconnectingPlayerId} exceeded max reconnect attempts. Declaring opponent {winnerId} as winner.");
                 // Find opponent: any player except the reconnecting one
@@ -344,18 +351,17 @@ public class MirrorNetwork : NetworkManager
                         {
                             if (userModel.data.status.Contains("active") /*|| userModel.data.status.Contains("expired") */|| userModel.data.status.Contains("draw") || userModel.data.status.Contains("pending"))
                             {
-                                Debug.Log("Challenge is still active, starting reconnect timer for player " + reconnectingPlayerId);
-                                PopupMessageManager.instance.waitingPanel.StartTimer();
-
+                                // Opponent gone, match still open: the abandon watch settles it. (This used to call the
+                                // waiting panel, which does not exist on the headless server.)
+                                Debug.Log($"[Reconnect] {reconnectingPlayerId} is back alone; match still {userModel.data.status} - the abandon watch decides it.");
                             }
                             else
                             {
-                                Debug.LogWarning("Challenge is no longer active, not starting reconnect timer.");
+                                // The API already has the result: show it to the returning player. Never report a second
+                                // one here (this used to send a result naming the opponent, whatever the API had).
+                                Debug.Log($"[Reconnect] {reconnectingPlayerId} is back; the match is {userModel.data.status}, winner {userModel.data.winner}.");
                                 if (NetworkGameManager.Instance != null)
-                                {
-                                    NetworkGameManager.Instance.SetDisconnectWinner(winnerId, conn);
-                                    NetworkGameManager.Instance.RpcSendDisconnectType(conn, 0);
-                                }
+                                    NetworkGameManager.Instance.ServerShowRecordedResult(conn, userModel.data.winner);
                             }
                         }
                     });
@@ -607,6 +613,9 @@ public class MirrorNetwork : NetworkManager
         // Read before base.OnServerDisconnect destroys the player object: the abandon watch needs who left, and when.
         string droppedPlayerId = conn != null && conn.identity != null && conn.identity.TryGetComponent<MirrorPlayerPrefab>(out var droppedPlayer)
             ? droppedPlayer.playerId : null;
+        // Teen Patti settles per hand and had no drop handling at all: give the seat a grace period, then it quits.
+        if (NetworkServer.active && TeenPattiNNetworkManager.instance != null)
+            TeenPattiNNetworkManager.instance.ServerSeatDisconnected(conn);
 
         List<NetworkIdentity> ownedObjects = new List<NetworkIdentity>(conn.owned);
 

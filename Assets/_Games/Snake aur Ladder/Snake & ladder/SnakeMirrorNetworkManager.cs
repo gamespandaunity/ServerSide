@@ -357,6 +357,7 @@ namespace Snake_Ladder
         {
             if (!TryResolveConnection(sender, out _, out int forfeitingIndex))
                 return;
+            if (NetworkGameManager.Instance != null && NetworkGameManager.Instance.ServerForfeitAfterOpponentLeft(sender, "Snake")) return;
 
             Debug.Log($"[SnakeServerResult] Player {forfeitingIndex + 1} forfeited.");
             if (!serverResultDeclared) MatchFlow.Log("Snake & Ladder", $"{FlowWho(forfeitingIndex)} left the game (forfeit)");

@@ -3422,6 +3422,7 @@ public class MyEightBallNetwork : NetworkBehaviour
             if (AightBallPoolGameLogic.isBlackBall(ballId))
             {
                 blackBallPocketed = true;
+                _serverSawBlackPocketed = true;   // the frame is over on the server's own table (CmdGameWin)
                 continue;
             }
 
@@ -4090,8 +4091,24 @@ public class MyEightBallNetwork : NetworkBehaviour
         Debug.Log("RpcGameLeave"+ GameUIController.EightballPoolLeaveGame);
 
     }
+    // Set when the server's own pocket check sees the 8-ball go down: the frame really is over.
+    private bool _serverSawBlackPocketed;
+
     [Command(requiresAuthority = false)]
     public void CmdGameWin(int PlayerId)
+    {
+        // Any client could name any winner here, and that result was reported. Without the 8-ball down on the server's
+        // table, accept the claim only when the opponent has gone or announced leaving (ClaimedWinGuard).
+        if (!_serverSawBlackPocketed && !isGameOver)
+        {
+            ClaimedWinGuard.Accept(PlayerId, "8 Ball", "win claim without the 8-ball down", () => CmdGameWinAccepted(PlayerId));
+            return;
+        }
+        CmdGameWinAccepted(PlayerId);
+    }
+
+    [Server]
+    private void CmdGameWinAccepted(int PlayerId)
     {
         if (MatchFlow.Enabled && !isGameOver && _flowWinReason == null)
         {

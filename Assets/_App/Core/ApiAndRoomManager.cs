@@ -532,6 +532,9 @@ public class ApiAndRoomManager : MonoBehaviour
     /// asked for. Every other game must keep submitting exactly the request it always sent, so a fix
     /// made for 12 Beads cannot change how Ludo, Cricket, Snooker or Snake settle.
     /// </summary>
+    private static bool IsCasinoSettlementScene() =>
+        NetworkGameManager.IsCasinoScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
+
     private static bool IsScopedSettlementScene()
     {
         return NetworkGameManager.IsExplicitLeaveSettlementScene(
@@ -554,8 +557,14 @@ public class ApiAndRoomManager : MonoBehaviour
         // No ModifyUserBalance() here: a headless build never logs anyone in. Each player's own client refreshes its balance.
         string tx = winLoseChallengeId, winner = WinnerID;
 
-        // Outside the three scoped games there is no settled latch, as before.
-        if (!IsScopedSettlementScene())
+        // One result per match, in every game: a game's own result arriving after a disconnect result (or the other
+        // way round) used to report twice, sometimes with a different winner. Casino tables settle per hand.
+        if (!IsCasinoSettlementScene() && NetworkGameManager.Instance != null && NetworkGameManager.Instance.ServerMatchAlreadySettled)
+        {
+            ConstantsData_M.Log($"[Settlement] {tx} already has a result; this win/loss for {winner} is not sent.");
+            return;
+        }
+        if (IsCasinoSettlementScene())
         {
             StartCoroutine(SubmitSettlement(done => MatchServerApi.ReportWinner(tx, winner, done), $"Win/loss for {tx} (winner {winner})"));
             return;
@@ -621,8 +630,14 @@ public class ApiAndRoomManager : MonoBehaviour
         // On any failure the transaction is un-marked so a later authoritative attempt may retry.
         string drawTx = transactionId;
 
-        // Same scope as the win/loss path above.
-        if (!IsScopedSettlementScene())
+        // Same latch as the win/loss path above.
+        if (!IsCasinoSettlementScene() && NetworkGameManager.Instance != null && NetworkGameManager.Instance.ServerMatchAlreadySettled)
+        {
+            ConstantsData_M.Log($"[Settlement] {drawTx} already has a result; this draw is not sent.");
+            submittedDrawTransactions.Remove(drawTx);
+            return;
+        }
+        if (IsCasinoSettlementScene())
         {
             // On failure the transaction is un-marked so a later authoritative attempt may retry.
             StartCoroutine(SubmitSettlement(done => MatchServerApi.ReportDraw(drawTx, done), $"Draw for {drawTx}",

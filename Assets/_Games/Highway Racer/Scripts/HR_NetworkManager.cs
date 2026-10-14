@@ -123,6 +123,7 @@ public class HR_NetworkManager : NetworkBehaviour //Photon Removal : MonoBehavio
             Debug.LogWarning("[HighwayServerResult] Forfeit rejected: sender connection is missing.");
             return;
         }
+        if (NetworkGameManager.Instance != null && NetworkGameManager.Instance.ServerForfeitAfterOpponentLeft(sender, "Highway")) return;
 
         for (int i = 0; i < HighwayCarNetwork.Cars.Count; i++)
         {

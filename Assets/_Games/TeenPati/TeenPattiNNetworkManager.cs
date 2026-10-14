@@ -930,6 +930,34 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
         ServerPlayerQuit(seat);
     }
 
+    /// <summary>Seconds a dropped seat has to come back before it is treated as having quit.</summary>
+    const float DropGraceSeconds = 30f;
+
+    /// <summary>
+    /// Server: a connection dropped. Nothing called ServerPlayerQuit on a drop or an app quit, so the hand (and both
+    /// stakes in it) stayed open for good. If the seat has not come back within DropGraceSeconds, it quits.
+    /// Called from MirrorNetwork.OnServerDisconnect before the player object is destroyed.
+    /// </summary>
+    [Server]
+    public void ServerSeatDisconnected(NetworkConnectionToClient conn)
+    {
+        TPSeat seat = SeatForConnection(conn);
+        if (seat == TPSeat.None) return;
+        TPLog.Change("TeenPattiNNetworkManager", "drop", seat + " dropped; quits in " + DropGraceSeconds + " s unless it comes back");
+        StartCoroutine(QuitIfNotBack(seat, conn));
+    }
+
+    private System.Collections.IEnumerator QuitIfNotBack(TPSeat seat, NetworkConnectionToClient dropped)
+    {
+        yield return new WaitForSecondsRealtime(DropGraceSeconds);
+        NetworkGameManager ngm = NetworkGameManager.Instance;
+        if (ngm == null || quitSeat != (int)TPSeat.None) yield break;
+        var current = seat == TPSeat.Creator ? ngm.CreatorRef : ngm.JoinerRef;
+        bool back = current != null && current != dropped && NetworkServer.connections.ContainsKey(current.connectionId);
+        if (back) { TPLog.Change("TeenPattiNNetworkManager", "drop", seat + " came back"); yield break; }
+        ServerPlayerQuit(seat);
+    }
+
     /// <summary>Ends the match and tells the table who walked out. [Server] and deliberately OUTSIDE
     /// the Command wrapper (the Carrom ServerSwitchTurnFrom pattern) so the server's own disconnect
     /// handling can call it directly.</summary>

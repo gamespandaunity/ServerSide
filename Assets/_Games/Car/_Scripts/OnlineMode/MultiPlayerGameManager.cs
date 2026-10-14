@@ -337,6 +337,7 @@ namespace CarRace
             Debug.LogWarning("[CarServerResult] Forfeit rejected: sender connection is missing.");
             return;
         }
+        if (NetworkGameManager.Instance != null && NetworkGameManager.Instance.ServerForfeitAfterOpponentLeft(sender, "Car")) return;
 
         PlayerSetup[] players = FindObjectsOfType<PlayerSetup>();
         for (int i = 0; i < players.Length; i++)

@@ -376,6 +376,69 @@ public class NetworkGameManager : NetworkBehaviour
     /// <summary>Server: the player id that announced it is going (Leave or app quit) in this match, or null.</summary>
     public string ExplicitLeaverId { get; private set; }
 
+    /// <summary>The other player of this match, or null.</summary>
+    public string OtherPlayerId(string playerId)
+    {
+        if (string.IsNullOrEmpty(playerId) || creatorData == null || joinerData == null) return null;
+        if (playerId == creatorData.playerId) return joinerData.playerId;
+        if (playerId == joinerData.playerId) return creatorData.playerId;
+        return null;
+    }
+
+    /// <summary>
+    /// Server: before something wipes the match (CmdReloadServer from a result screen's Leave or Ludo's Leave), settle a
+    /// match that is still open. Returns true when the wipe may go ahead. Used to throw away 12 Beads / Carrom / Ludo
+    /// matches whose remaining player tapped Leave on the result screen before the 30 s abandon watch ended.
+    /// </summary>
+    [Server]
+    public bool ServerSettleBeforeWipe(string why)
+    {
+        string scene = SceneManager.GetActiveScene().name;
+        if (!MirrorNetwork.hasJoinedGame || _serverMatchSettled || _disconnectWinnerDeclared || IsCasinoScene(scene)) return true;
+
+        string winner = OtherPlayerId(ExplicitLeaverId);
+        if (string.IsNullOrEmpty(winner) && NetworkServer.connections.Count == 1) winner = ServerFindLoneRemainingPlayerId();
+        if (string.IsNullOrEmpty(winner) && NetworkServer.connections.Count == 0 && _dropOrder.Count >= 2)
+            winner = _dropOrder[_dropOrder.Count - 1];
+
+        if (string.IsNullOrEmpty(winner))
+        {
+            Debug.LogWarning($"[Settlement] {why}: refused — match {transactionId} is still open and both players are here.");
+            return false;
+        }
+        Debug.Log($"[Settlement] {why}: match {transactionId} was still open; settling it for {winner} instead of wiping it.");
+        SetDisconnectWinner(winner, null, _explicitLeaveAnnounced ? DISCONNECT_WIN_EXPLICIT_LEAVE : DISCONNECT_WIN_ABANDONED);
+        return false;
+    }
+
+    /// <summary>
+    /// Server: a player pressed a game's Leave/forfeit. When their opponent had already gone (or announced leaving),
+    /// the player still here is the winner, not the one who quit - Car, Horse, Snake and Highway forfeits always
+    /// awarded the other seat. Returns true when it settled the match for the sender (skip the forfeit then).
+    /// </summary>
+    [Server]
+    public bool ServerForfeitAfterOpponentLeft(NetworkConnectionToClient sender, string game)
+    {
+        var me = sender != null && sender.identity != null ? sender.identity.GetComponent<MirrorPlayerPrefab>() : null;
+        string myId = me != null ? me.playerId : null;
+        string other = OtherPlayerId(myId);
+        if (string.IsNullOrEmpty(other)) return false;
+        bool opponentGone = ExplicitLeaverId == other || ServerFindLoneRemainingPlayerId() == myId;
+        if (!opponentGone) return false;
+        Debug.Log($"[{game}][Forfeit] {myId} pressed Leave after {other} had already gone - {myId} wins, not the player who quit.");
+        SetDisconnectWinner(myId, null, DISCONNECT_WIN_ABANDONED);
+        return true;
+    }
+
+    /// <summary>Server: show a returning player the result the API already holds, without reporting anything.</summary>
+    [Server]
+    public void ServerShowRecordedResult(NetworkConnectionToClient conn, string winnerId)
+    {
+        if (conn == null || string.IsNullOrEmpty(winnerId)) return;
+        ServerSendDisconnectWinCause(conn);
+        TargetDeclareDisconnectWinner(conn, winnerId);
+    }
+
     public void RequestExplicitLeave()
     {
         if (MirrorNetwork.Instance == null)
@@ -406,8 +469,11 @@ public class NetworkGameManager : NetworkBehaviour
         {
             // Who is going (Leave or app quit): their opponent may claim the win before this connection has closed
             // (ClaimedWinGuard) - Snooker 7ebe75db-c768-1 lost its result that way.
+            // The FIRST player to announce wins nothing: when the remaining player then quits too, their own announcement
+            // must not overwrite it (that would hand the match to the one who left first).
             var leaver = sender != null && sender.identity != null ? sender.identity.GetComponent<MirrorPlayerPrefab>() : null;
-            if (leaver != null && !string.IsNullOrEmpty(leaver.playerId)) ExplicitLeaverId = leaver.playerId;
+            if (leaver != null && !string.IsNullOrEmpty(leaver.playerId) && string.IsNullOrEmpty(ExplicitLeaverId))
+                ExplicitLeaverId = leaver.playerId;
         }
 
         // Only a Leave/Quit button may send UserRequested. App shutdown, backgrounding,
@@ -497,8 +563,19 @@ public class NetworkGameManager : NetworkBehaviour
     {
         return scene == "12OnlineGameScene"   // 12 Beads
             || scene == "CarromOnline"        // Carrom
-            || scene == "AightBallPool";      // 8 Ball Pool
+            || scene == "AightBallPool"       // 8 Ball Pool
+            // Added 14 Oct 2026: these settled nothing when a player quit/dropped and the other then left too.
+            || scene == "LudoGameScene"
+            || scene == "SnakeMultiplayer"
+            || scene == "SnokkerMultiplayer"
+            || scene == "Ground"              // Cricket match
+            || scene == "Map2"                // Car race
+            || scene == "HorseRacingMultiPlayer"
+            || scene == "HighwayNight";
     }
+
+    /// <summary>Casino tables settle per hand, not per match: no match-level result from the shared code.</summary>
+    public static bool IsCasinoScene(string scene) => scene == "GameplayTeenPatti" || scene == "PokerGameplay";
 
     /// <summary>The active scene is one of the three games this work is scoped to.</summary>
     private static bool IsScopedScene()
@@ -627,6 +704,7 @@ public class NetworkGameManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdReloadServer()
     {
+        if (!ServerSettleBeforeWipe("server reload")) return;
         Debug.Log("Reloading server and returning to home scene.");
         ServerResetMatchSettlementState("server reload");
         MirrorNetwork.Instance.cleanup();
@@ -773,6 +851,19 @@ public class NetworkGameManager : NetworkBehaviour
     public void CmdPlayerFinished(bool isWin, int playerId)
     {
         Debug.Log("CmdPlayerFinished");
+        // Ludo (server authority off) ends here, and this only showed the result screens: a Ludo win was never reported,
+        // so both stakes stayed held. Report it once (the settlement latch drops a second result). A loss names the
+        // other player. Until LudoNetworkManager.ServerAuthorityEnabled is on, a win is the client's word.
+        if (NetworkServer.active && SceneManager.GetActiveScene().name == "LudoGameScene" && ApiAndRoomManager._instance != null)
+        {
+            string winner = isWin ? playerId.ToString() : OtherPlayerId(playerId.ToString());
+            if (!string.IsNullOrEmpty(winner) && (winner == creatorData?.playerId || winner == joinerData?.playerId))
+            {
+                MatchFlow.Log("Ludo", $"result reported by a player: {(isWin ? "win" : "loss")} for {playerId} — winner {winner}");
+                ApiAndRoomManager._instance.WinnerLossChallenge(winner);
+            }
+            else Debug.LogWarning($"[Ludo][Result] CmdPlayerFinished({isWin}, {playerId}) names no player of this match; not reported.");
+        }
         RpcActivateUIAndHandleResult(isWin, playerId.ToString());
         this.Delay(1, () => MirrorNetwork.Instance.edgegapAPIClient.CleanupServer(currentServerRequestId));
     }
@@ -918,7 +1009,10 @@ public class NetworkGameManager : NetworkBehaviour
     [Server]
     public void ServerResetMatchSettlementState(string why)
     {
-        if (!IsScopedScene()) return;
+        // Every game now settles through the same latch, so every game resets it (a rematch used to keep the last
+        // match's "winner declared" flag outside the first three games, which silenced all disconnect relays).
+        ExplicitLeaverId = null;
+        _dropOrder.Clear();
 
         if (_checkGameStatusRoutine != null)
         {
@@ -993,6 +1087,7 @@ public class NetworkGameManager : NetworkBehaviour
     public void ServerCancelAbandonWatch(string why)
     {
         _dropOrder.Clear();
+        ExplicitLeaverId = null;   // they came back: their announced departure no longer counts
         if (_abandonWatchRoutine == null) return;
         StopCoroutine(_abandonWatchRoutine);
         _abandonWatchRoutine = null;
@@ -1016,6 +1111,13 @@ public class NetworkGameManager : NetworkBehaviour
         }
 
         string winnerId = ServerFindLoneRemainingPlayerId();
+        // Both have gone. The player who first announced leaving (app quit / Leave) loses; without an announcement, the
+        // order the server noticed the drops (a killed app is noticed late, after the transport timeout).
+        if (string.IsNullOrEmpty(winnerId) && NetworkServer.connections.Count == 0 && !string.IsNullOrEmpty(OtherPlayerId(ExplicitLeaverId)))
+        {
+            winnerId = OtherPlayerId(ExplicitLeaverId);
+            Debug.Log($"[Abandon][SERVER] Both players have gone; {ExplicitLeaverId} announced leaving first, so {winnerId} wins.");
+        }
         if (string.IsNullOrEmpty(winnerId) && NetworkServer.connections.Count == 0 && _dropOrder.Count >= 2)
         {
             string lastOut = _dropOrder[_dropOrder.Count - 1], firstOut = _dropOrder[_dropOrder.Count - 2];

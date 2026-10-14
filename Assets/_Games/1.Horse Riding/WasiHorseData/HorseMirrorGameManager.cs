@@ -310,6 +310,7 @@ public class HorseMirrorGameManager : NetworkBehaviour
             Debug.LogWarning("[HorseServerResult] Forfeit rejected: sender connection is missing.");
             return;
         }
+        if (NetworkGameManager.Instance != null && NetworkGameManager.Instance.ServerForfeitAfterOpponentLeft(sender, "Horse")) return;
 
         HorseAnimationSync[] horses = FindObjectsOfType<HorseAnimationSync>();
         for (int i = 0; i < horses.Length; i++)

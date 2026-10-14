@@ -147,6 +147,16 @@ public class CarromNetworkManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdAnnounceDisconnectWin(string winnerId)
     {
+        // Any client could freeze a live match with this. Accept it only when the opponent really is gone (or announced
+        // leaving), and report the result so the match is settled, not just shown.
+        if (!int.TryParse(winnerId, out int claimed)) return;
+        ClaimedWinGuard.Accept(claimed, "Carrom", "opponent disconnected", () => ServerAnnounceDisconnectWin(winnerId));
+    }
+
+    [Server]
+    private void ServerAnnounceDisconnectWin(string winnerId)
+    {
+        ServerReportResult(winnerId, "opponent disconnected");
         MatchFlow.Log("Carrom", $"opponent of {MatchFlow.Who(winnerId)} disconnected and did not return");
         MatchFlow.SendResult(winnerId, "opponent disconnected", BEKStudio.GameController.FlowScores());
         StopAllTurnLogic();
