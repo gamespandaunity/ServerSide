@@ -113,6 +113,11 @@ public class LudoNetworkManager : NetworkBehaviour
     {
         GameGUIController.insta.countDownGameTimer.text = "00:00";
         GameGUIController.insta.countDownGameTimer.color = Color.red;
+        if (IsMultiSeat)
+        {
+            LudoFourPlayerResult.Show(winnerID, "Time over - most tokens home wins");
+            return;
+        }
 
         NetworkGameManager.Instance.CmdPlayerFinished(true, int.Parse(winnerID));
     }
@@ -466,6 +471,13 @@ public class LudoNetworkManager : NetworkBehaviour
     [ClientRpc]
     void RpcMatchWon(string winnerId)
     {
+        if (IsMultiSeat)
+        {
+            int othersPlaying = 0;
+            foreach (var seat in seatList) if (seat.playerId != winnerId && seat.state == SeatPlaying) othersPlaying++;
+            LudoFourPlayerResult.Show(winnerId, othersPlaying == 0 ? "Last player at the table" : "All 4 tokens home");
+            return;
+        }
         NetworkGameManager.Instance.CmdPlayerFinished(true, int.Parse(winnerId));
     }
 
