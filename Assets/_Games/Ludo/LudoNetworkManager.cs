@@ -39,7 +39,7 @@ public class LudoNetworkManager : NetworkBehaviour
             // players are present again before ticking. Without this, the timer keeps
             // draining while one side is in the reconnect window and can end the game
             // even though the disconnected player still has time to come back.
-            while (NetworkGameManager.Instance != null && NetworkGameManager.Instance.currentPlayerCount < 2)
+            while (TableShort())
             {
                 yield return new WaitForSeconds(0.5f);
             }
@@ -135,15 +135,17 @@ public class LudoNetworkManager : NetworkBehaviour
         if (NetworkServer.active)
         {
             Debug.Log("🔄 Waiting for players to connect...");
-            this.DelayUntil(() => NetworkServer.connections.Count >= 2, () =>
+            this.DelayUntil(() => NetworkServer.connections.Count >= SeatCount, () =>
             {
 
                 Debug.Log($"✅ {NetworkServer.connections.Count} players connected, setting players...");
                 GameGUIController.FlowMatchStarted();
                 if (ServerAuthorityEnabled)
-                    this.DelayUntil(() => NetworkGameManager.Instance != null
-                                          && !string.IsNullOrEmpty(NetworkGameManager.Instance.creatorData.playerId)
-                                          && !string.IsNullOrEmpty(NetworkGameManager.Instance.joinerData.playerId),
+                    this.DelayUntil(() => MatchSeats.Active
+                                          ? MatchSeats.Current.AllConnected
+                                          : NetworkGameManager.Instance != null
+                                            && !string.IsNullOrEmpty(NetworkGameManager.Instance.creatorData.playerId)
+                                            && !string.IsNullOrEmpty(NetworkGameManager.Instance.joinerData.playerId),
                                     ServerStartBoard);
                 this.Delay(4, () =>
                 {
@@ -191,20 +193,47 @@ public class LudoNetworkManager : NetworkBehaviour
     [Server]
     void ServerStartBoard()
     {
-        var ngm = NetworkGameManager.Instance;
-        // Phones bubble-sort playerObjects with string.Compare(a, b) == 1 → swap; the first one starts (firstPlayerInGame = 0).
-        creatorPl = string.Compare(ngm.creatorData.playerId, ngm.joinerData.playerId) == 1 ? 1 : 0;
-        board = new LudoServerBoard(0, System.Environment.TickCount);
+        if (MatchSeats.Active)
+        {
+            // N players: player index = seat (MatchSeats, from the deployment's Seats list); seat 0 starts.
+            creatorPl = 0;
+            board = new LudoServerBoard(0, System.Environment.TickCount, MatchSeats.Current.Count);
+        }
+        else
+        {
+            var ngm = NetworkGameManager.Instance;
+            // Phones bubble-sort playerObjects with string.Compare(a, b) == 1 → swap; the first one starts (firstPlayerInGame = 0).
+            creatorPl = string.Compare(ngm.creatorData.playerId, ngm.joinerData.playerId) == 1 ? 1 : 0;
+            board = new LudoServerBoard(0, System.Environment.TickCount);
+        }
         serverAuthority = true;
         ServerPublishBoard();
         turnDeadline = Time.time + TurnSeconds + 10f;   // first turn: the phones are still setting up
         if (turnClock != null) StopCoroutine(turnClock);
         turnClock = StartCoroutine(ServerTurnClock());
-        MatchFlow.Log("Ludo", $"server runs the board — {FlowName(0)} vs {FlowName(1)}, {FlowName(board.Turn)} starts");
+        MatchFlow.Log("Ludo", $"server runs the board — {FlowPlayers()}, {FlowName(board.Turn)} starts");
+    }
+
+    /// <summary>Players this match waits for: the deployment's seat count, else 2.</summary>
+    static int SeatCount => MatchSeats.Active ? MatchSeats.Current.Count : 2;
+
+    /// <summary>Fewer than 2 players connected: the clocks wait (2 players: one of them dropped).</summary>
+    static bool TableShort()
+    {
+        if (MatchSeats.Active) return MatchSeats.Current.ConnectedCount < 2;
+        return NetworkGameManager.Instance != null && NetworkGameManager.Instance.currentPlayerCount < 2;
+    }
+
+    string FlowPlayers()
+    {
+        var names = new List<string>();
+        for (int s = 0; s < board.Seats; s++) names.Add(FlowName(s));
+        return string.Join(" vs ", names);
     }
 
     string IdOfPl(int pl)
     {
+        if (MatchSeats.Active) return MatchSeats.Current.IdOf(pl);
         var ngm = NetworkGameManager.Instance;
         return pl == creatorPl ? ngm.creatorData.playerId : ngm.joinerData.playerId;
     }
@@ -213,6 +242,7 @@ public class LudoNetworkManager : NetworkBehaviour
 
     int PlOf(NetworkConnectionToClient conn)
     {
+        if (MatchSeats.Active) return conn == null ? -1 : MatchSeats.Current.SeatOfConnection(conn.connectionId);
         var ngm = NetworkGameManager.Instance;
         string id = MatchFlow.IdOf(conn);
         if (ngm == null || string.IsNullOrEmpty(id)) return -1;
@@ -290,8 +320,8 @@ public class LudoNetworkManager : NetworkBehaviour
         board.PendingSteps = 0;
         MatchFlow.Log("Ludo", $"{FlowName(pl)} moved token {pawn + 1} by {steps}: {(r.From < 0 ? "base" : "square " + r.From)} → " +
                               (r.ReachedHome ? "home" : "square " + r.To));
-        if (r.Captured >= 0)
-            MatchFlow.Log("Ludo", $"{FlowName(1 - pl)}'s token {r.Captured + 1} was captured by {FlowName(pl)} — back to base");
+        foreach (var c in r.Captures)
+            MatchFlow.Log("Ludo", $"{FlowName(c.Seat)}'s token {c.Pawn + 1} was captured by {FlowName(pl)} — back to base");
         if (r.ReachedHome)
             MatchFlow.Log("Ludo", $"{FlowName(pl)}'s token {pawn + 1} is home ({board.HomeCount(pl)}/4)");
         RpcServerMove(pl, pawn, steps);
@@ -323,7 +353,8 @@ public class LudoNetworkManager : NetworkBehaviour
         this.Delay(delay, () =>
         {
             if (matchOver) return;
-            board.Turn = 1 - board.Turn;
+            int next = board.NextTurn();
+            if (next >= 0) board.Turn = next;
             board.PendingSteps = 0;
             board.SixesThisTurn = 0;
             passingTurn = false;
@@ -343,8 +374,7 @@ public class LudoNetworkManager : NetworkBehaviour
         while (!matchOver)
         {
             yield return wait;
-            var ngm = NetworkGameManager.Instance;
-            if (ngm != null && ngm.currentPlayerCount < 2) { turnDeadline += 0.5f; continue; }
+            if (TableShort()) { turnDeadline += 0.5f; continue; }
             if (passingTurn || Time.time < turnDeadline) continue;
             MatchFlow.Log("Ludo", $"turn timer ran out for {FlowName(board.Turn)}" + (board.PendingSteps > 0 ? $" (rolled a {board.PendingSteps}, no move)" : " (did not roll)"));
             ServerPassTurn(0f);
@@ -355,7 +385,8 @@ public class LudoNetworkManager : NetworkBehaviour
     [Server]
     void ServerPublishBoard()
     {
-        if (GameGUIController.insta != null) GameGUIController.insta.reconnectSnapshot = board.Snapshot(creatorPl);
+        if (GameGUIController.insta != null)
+            GameGUIController.insta.reconnectSnapshot = board.Seats > 2 ? board.SnapshotV2() : board.Snapshot(creatorPl);
     }
 
     [Server]
@@ -374,6 +405,18 @@ public class LudoNetworkManager : NetworkBehaviour
     [Server]
     void ServerTimeOver()
     {
+        if (board.Seats > 2)
+        {
+            // Rule A: the best-placed player wins (tokens home, then progress; a full tie keeps seat order).
+            var ranking = board.Ranking();
+            matchOver = true;
+            string topId = IdOfPl(ranking[0]);
+            MatchFlow.SendResult(topId, "match time over — ranking " + string.Join(", ", ranking.ConvertAll(s =>
+                $"{FlowName(s)} {board.HomeCount(s)} home / {board.Progress(s)}")) + " (server board)", ServerBoardScore());
+            ApiAndRoomManager._instance.WinnerLossChallenge(topId);
+            RpcTimerEnded(topId);
+            return;
+        }
         int c = creatorPl, j = 1 - creatorPl;
         int ch = board.HomeCount(c), jh = board.HomeCount(j), cp = board.Progress(c), jp = board.Progress(j);
         int winnerPl = ch != jh ? (ch > jh ? c : j) : cp != jp ? (cp > jp ? c : j) : c;   // level → creator, as before
@@ -385,8 +428,16 @@ public class LudoNetworkManager : NetworkBehaviour
         RpcTimerEnded(winnerId);
     }
 
-    string ServerBoardScore() =>
-        $"tokens home {FlowName(creatorPl)} {board.HomeCount(creatorPl)} – {board.HomeCount(1 - creatorPl)} {FlowName(1 - creatorPl)}";
+    string ServerBoardScore()
+    {
+        if (board.Seats > 2)
+        {
+            var parts = new List<string>();
+            for (int s = 0; s < board.Seats; s++) parts.Add($"{FlowName(s)} {board.HomeCount(s)}");
+            return "tokens home " + string.Join(" – ", parts);
+        }
+        return $"tokens home {FlowName(creatorPl)} {board.HomeCount(creatorPl)} – {board.HomeCount(1 - creatorPl)} {FlowName(1 - creatorPl)}";
+    }
 
     [ClientRpc]
     void RpcServerDice(int pl, int steps)

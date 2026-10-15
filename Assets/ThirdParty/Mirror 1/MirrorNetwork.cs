@@ -616,6 +616,12 @@ public class MirrorNetwork : NetworkManager
         // Teen Patti settles per hand and had no drop handling at all: give the seat a grace period, then it quits.
         if (NetworkServer.active && TeenPattiNNetworkManager.instance != null)
             TeenPattiNNetworkManager.instance.ServerSeatDisconnected(conn);
+        // More than 2 players: free the seat (a reconnect binds it again in CmdSetPlayerData).
+        if (NetworkServer.active && conn != null && MatchSeats.Active)
+        {
+            int seat = MatchSeats.Current.Unbind(conn.connectionId);
+            if (seat >= 0) Debug.Log($"[Seats] seat {seat} ({MatchSeats.Current.IdOf(seat)}) disconnected ({MatchSeats.Current.ConnectedCount}/{MatchSeats.Current.Count} connected)");
+        }
 
         List<NetworkIdentity> ownedObjects = new List<NetworkIdentity>(conn.owned);
 

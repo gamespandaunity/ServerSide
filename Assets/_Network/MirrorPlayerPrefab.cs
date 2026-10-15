@@ -20,6 +20,26 @@ public class MirrorPlayerPrefab : NetworkBehaviour
         if (string.IsNullOrEmpty(NetworkGameManager.Instance.creatorUserId))
             NetworkGameManager.Instance.LoadLocalConfig();
 
+        // More than 2 players: the seat comes from the deployment's Seats list (F2: a third player no longer
+        // overwrites the joiner). Seats 0 and 1 still fill creator / joiner so the shared 2-player code keeps working.
+        if (MatchSeats.Active)
+        {
+            int seat = MatchSeats.Current.Bind(sender.connectionId, playerData.playerId, playerData.playerName);
+            JoinTicketGate.OnClaim(sender, playerData.playerId);
+            if (seat < 0)
+            {
+                Debug.LogError($"[Seats] conn={sender.connectionId} says it is {playerData.playerId}, who has no seat in this match - disconnecting.");
+                MatchFlow.Flag(MatchFlow.CurrentGame, playerData.playerId, "unknown_user", "not in the match's Seats");
+                sender.Disconnect();
+                return;
+            }
+            Debug.Log($"[Seats] conn={sender.connectionId} {playerData.playerName} ({playerData.playerId}) -> seat {seat} ({MatchSeats.Current.ConnectedCount}/{MatchSeats.Current.Count} connected)");
+            playerData.isCreator = seat == 0;
+            if (seat <= 1) AssignPlayerRole(sender, playerData, seat == 0);
+            TargetConfirmRole(sender, seat == 0);
+            return;
+        }
+
         string envCreatorId = NetworkGameManager.Instance.creatorUserId;
         bool isCreator;
 

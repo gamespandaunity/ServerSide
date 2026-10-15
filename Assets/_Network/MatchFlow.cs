@@ -45,6 +45,8 @@ public static class MatchFlow
     static FlowLog _match;
     static float _matchStart;
     static string _game = "Match";
+    /// <summary>The game the current match log belongs to (a Flag for another game would start a new log).</summary>
+    public static string CurrentGame => _game;
 
     /// <summary>A new match of <paramref name="game"/> starts (drops any unsent lines of an earlier one).</summary>
     public static void Begin(string game, string message = null)
@@ -145,6 +147,11 @@ public static class MatchFlow
     public static string IdOf(NetworkConnectionToClient conn)
     {
         if (conn == null) return "?";
+        if (MatchSeats.Active)
+        {
+            string seated = MatchSeats.Current.IdOf(MatchSeats.Current.SeatOfConnection(conn.connectionId));
+            if (seated != null) return seated;
+        }
         var ngm = NetworkGameManager.Instance;
         if (ngm != null)
         {
@@ -164,6 +171,11 @@ public static class MatchFlow
         {
             if (ngm.creatorData != null && ngm.creatorData.playerId == id) return Named(ngm.creatorData.playerName, id);
             if (ngm.joinerData != null && ngm.joinerData.playerId == id) return Named(ngm.joinerData.playerName, id);
+        }
+        if (MatchSeats.Active)
+        {
+            int seat = MatchSeats.Current.SeatOf(id);
+            if (seat >= 0) return Named(MatchSeats.Current.NameOf(seat), id);
         }
         return id;
     }
