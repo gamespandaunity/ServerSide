@@ -37,6 +37,7 @@ public class MirrorPlayerPrefab : NetworkBehaviour
             playerData.isCreator = seat == 0;
             if (seat <= 1) AssignPlayerRole(sender, playerData, seat == 0);
             TargetConfirmRole(sender, seat == 0);
+            LudoNetworkManager.ServerSeatConnected(seat);
             return;
         }
 

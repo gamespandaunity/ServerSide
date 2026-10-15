@@ -258,6 +258,9 @@ public class MirrorNetwork : NetworkManager
     public override void OnPlayerReconnected(NetworkConnectionToClient conn)
     {
         base.OnPlayerReconnected(conn);
+        // More than 2 players: CmdSetPlayerData binds the seat again and LudoNetworkManager counts the reconnects
+        // per seat. The rest of this method is the 2-player rule ("the other player wins").
+        if (MatchSeats.Active) return;
 
         // Player who reconnected
         // Resolve the reconnecting player from data the SERVER actually owns.
@@ -379,11 +382,15 @@ public class MirrorNetwork : NetworkManager
         NetworkGameManager.Instance.currentPlayerCount = numPlayers;
         NetworkGameManager.Instance.ServerCancelAbandonWatch("a player joined or rejoined");
         Debug.Log("Changing Scene~!" + numPlayers);
-        if (numPlayers == 2)
+        // 2 players, or every seat of a bigger table (MatchSeats).
+        int needed = MatchSeats.Active ? MatchSeats.Current.Count : 2;
+        if (numPlayers == needed)
         {
             hasJoinedGame = true; // both players joined — reconnect logic now allowed
             NetworkGameManager.Instance.RpcShowWaitingPanel(false);
-            this.DelayUntil(() => !string.IsNullOrEmpty(NetworkGameManager.Instance.creatorData.playerId) && !string.IsNullOrEmpty(NetworkGameManager.Instance.joinerData.playerId), () =>
+            this.DelayUntil(() => MatchSeats.Active
+                ? MatchSeats.Current.AllConnected
+                : !string.IsNullOrEmpty(NetworkGameManager.Instance.creatorData.playerId) && !string.IsNullOrEmpty(NetworkGameManager.Instance.joinerData.playerId), () =>
             {
                 NetworkGameManager.Instance?.RpcAnnouncePlayerJoined(conn.address, numPlayers);
 
@@ -620,7 +627,11 @@ public class MirrorNetwork : NetworkManager
         if (NetworkServer.active && conn != null && MatchSeats.Active)
         {
             int seat = MatchSeats.Current.Unbind(conn.connectionId);
-            if (seat >= 0) Debug.Log($"[Seats] seat {seat} ({MatchSeats.Current.IdOf(seat)}) disconnected ({MatchSeats.Current.ConnectedCount}/{MatchSeats.Current.Count} connected)");
+            if (seat >= 0)
+            {
+                Debug.Log($"[Seats] seat {seat} ({MatchSeats.Current.IdOf(seat)}) disconnected ({MatchSeats.Current.ConnectedCount}/{MatchSeats.Current.Count} connected)");
+                LudoNetworkManager.ServerSeatDisconnected(seat);
+            }
         }
 
         List<NetworkIdentity> ownedObjects = new List<NetworkIdentity>(conn.owned);

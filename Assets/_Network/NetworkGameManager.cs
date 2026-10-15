@@ -133,6 +133,9 @@ public class NetworkGameManager : NetworkBehaviour
         ResultManager.isGameFinished.Show("Is Game Finished On Player Count Change");
         Debug.Log("Scene : " + SceneManager.GetActiveScene().name);
 
+        // More than 2 seats: a dropped seat gets its own badge (LudoNetworkManager.seatList); the table never pauses.
+        if (LudoNetworkManager.IsMultiSeat) return;
+
         if (newVal == 2)
         {
             // Don't resume a match that has already been decided (e.g. opponent
@@ -458,6 +461,9 @@ public class NetworkGameManager : NetworkBehaviour
         // notifications so they don't re-open the waiting panel behind the result UI.
         if (_disconnectWinnerDeclared) return;
         DisconnectReason disconnectReason = (DisconnectReason)reason;
+        // More than 2 players: the leaver's seat goes out and the others play on (LudoNetworkManager); the 2-player
+        // settlement below ("the other player wins") must not run.
+        if (LudoNetworkManager.ServerTakesSeatLeave(sender, disconnectReason)) return;
         MirrorNetwork.Instance.currentDisconnectReason = disconnectReason;
 
         // Record the intent before anything else. The settlement below can decline (the seat may
@@ -704,6 +710,9 @@ public class NetworkGameManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdReloadServer()
     {
+        // A table of more than 2 keeps playing when one player goes; each match has its own server, which the API
+        // stops after the result, so there is nothing to reload.
+        if (MatchSeats.Active) { Debug.Log("[Seats] CmdReloadServer ignored on an N-player table."); return; }
         if (!ServerSettleBeforeWipe("server reload")) return;
         Debug.Log("Reloading server and returning to home scene.");
         ServerResetMatchSettlementState("server reload");
@@ -1086,6 +1095,8 @@ public class NetworkGameManager : NetworkBehaviour
     [Server]
     public void ServerBeginAbandonWatch(string droppedPlayerId = null)
     {
+        // More than 2 players: each seat has its own drop timer (LudoNetworkManager), not this 2-player watch.
+        if (MatchSeats.Active) return;
         if (!string.IsNullOrEmpty(droppedPlayerId))
         {
             _dropOrder.Remove(droppedPlayerId);

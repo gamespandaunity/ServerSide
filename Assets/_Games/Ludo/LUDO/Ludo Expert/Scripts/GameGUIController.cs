@@ -1653,6 +1653,15 @@ public class GameGUIController : NetworkBehaviour
         return false;
     }
 
+    /// <summary>N-player table: seat <paramref name="seat"/> left or was abandoned (LudoNetworkManager.RpcSeatState). Its
+    /// tokens go home, its dice hide and the others play on. playerObjects are in seat order on such a table.</summary>
+    public void ApplySeatState(int seat, int state)
+    {
+        if (!LudoNetworkManager.IsMultiSeat || playerObjects == null || seat < 0 || seat >= playerObjects.Count) return;
+        if (state == LudoNetworkManager.SeatLeft || state == LudoNetworkManager.SeatAbandoned)
+            setPlayerDisconnected(seat);
+    }
+
     public void setPlayerDisconnected(int i)
     {
         requiredToStart--;

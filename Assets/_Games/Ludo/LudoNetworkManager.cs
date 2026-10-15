@@ -131,6 +131,7 @@ public class LudoNetworkManager : NetworkBehaviour
     {
         base.OnStartServer();
         Debug.Log("✅ OnStartServer called - Server started");
+        ServerInitSeats();
 
         if (NetworkServer.active)
         {
@@ -207,6 +208,9 @@ public class LudoNetworkManager : NetworkBehaviour
             board = new LudoServerBoard(0, System.Environment.TickCount);
         }
         serverAuthority = true;
+        boardStarted = true;
+        if (MatchSeats.Active)
+            for (int s = 0; s < board.Seats; s++) ServerSetSeat(s, connected: MatchSeats.Current.IsConnected(s));
         ServerPublishBoard();
         turnDeadline = Time.time + TurnSeconds + 10f;   // first turn: the phones are still setting up
         if (turnClock != null) StopCoroutine(turnClock);
@@ -464,5 +468,163 @@ public class LudoNetworkManager : NetworkBehaviour
     {
         NetworkGameManager.Instance.CmdPlayerFinished(true, int.Parse(winnerId));
     }
-}
 
+    // ═══════════════════════ N-PLAYER SEATS (MaxPlayers > 2, ludo-4-player plan §4.2–4.4) ═══════════════════════
+    // Every phone sees the table through seatList (who sits where, playing / finished / left / abandoned, connected).
+    // A seat that leaves or is abandoned is skipped and its tokens go home; the others play on. The match is reported
+    // once, when one seat is left playing (rule A: that seat wins) or someone gets all 4 tokens home.
+
+    public const int SeatPlaying = 0, SeatFinished = 1, SeatLeft = 2, SeatAbandoned = 3;
+
+    [System.Serializable]
+    public struct SeatInfo
+    {
+        public int seat;
+        public string playerId;
+        public string name;
+        public int state;
+        public bool connected;
+    }
+
+    /// <summary>2 for a normal match; 3–4 when the deployment seats more players.</summary>
+    [SyncVar] public int seatCount = 2;
+    public readonly SyncList<SeatInfo> seatList = new SyncList<SeatInfo>();
+
+    /// <summary>This table has more than 2 seats (readable on phones and on the server).</summary>
+    public static bool IsMultiSeat => instance != null && instance.seatCount > 2;
+
+    const float SeatDropGraceSeconds = 30f;   // same grace as the 2-player abandon watch
+    const int SeatReconnectLimit = 5;         // same limit as the 2-player reconnect rule
+    readonly Dictionary<int, Coroutine> seatDropTimers = new Dictionary<int, Coroutine>();
+    readonly Dictionary<int, int> seatReconnects = new Dictionary<int, int>();
+    bool boardStarted;
+
+    [Server]
+    void ServerInitSeats()
+    {
+        if (!MatchSeats.Active) return;
+        var t = MatchSeats.Current;
+        seatCount = t.Count;
+        seatList.Clear();
+        for (int s = 0; s < t.Count; s++)
+            seatList.Add(new SeatInfo { seat = s, playerId = t.IdOf(s), name = t.NameOf(s) ?? "", state = SeatPlaying, connected = t.IsConnected(s) });
+        var who = new List<string>();
+        for (int s = 0; s < t.Count; s++) who.Add($"seat {s} {MatchFlow.Who(t.IdOf(s))}");
+        MatchFlow.Log("Ludo", $"{t.Count}-player table: {string.Join(", ", who)}");
+    }
+
+    [Server]
+    void ServerSetSeat(int seat, int? state = null, bool? connected = null)
+    {
+        if (seat < 0 || seat >= seatList.Count) return;
+        var info = seatList[seat];
+        if (state.HasValue) info.state = state.Value;
+        if (connected.HasValue) info.connected = connected.Value;
+        string name = MatchSeats.Current.NameOf(seat);
+        if (!string.IsNullOrEmpty(name)) info.name = name;
+        seatList[seat] = info;
+    }
+
+    /// <summary>Server: a connection took seat <paramref name="seat"/> (MirrorPlayerPrefab.CmdSetPlayerData).</summary>
+    public static void ServerSeatConnected(int seat)
+    {
+        if (instance == null || !NetworkServer.active || !MatchSeats.Active) return;
+        instance.ServerSeatBack(seat);
+    }
+
+    /// <summary>Server: the connection holding <paramref name="seat"/> dropped (MirrorNetwork.OnServerDisconnect).</summary>
+    public static void ServerSeatDisconnected(int seat)
+    {
+        if (instance == null || !NetworkServer.active || !MatchSeats.Active) return;
+        instance.ServerSeatDrop(seat);
+    }
+
+    /// <summary>Server: a phone pressed Leave (or quit) in an N-player match (NetworkGameManager.CmdSendDisconnectType).
+    /// Returns true when the N-player table handled it, so the 2-player leave settlement must not run.</summary>
+    public static bool ServerTakesSeatLeave(NetworkConnectionToClient sender, DisconnectReason reason)
+    {
+        if (!NetworkServer.active || !MatchSeats.Active) return false;
+        if (reason != DisconnectReason.UserRequested && reason != DisconnectReason.ApplicationQuit) return true;
+        int seat = sender == null ? -1 : MatchSeats.Current.SeatOfConnection(sender.connectionId);
+        if (instance == null || seat < 0)
+        {
+            Debug.LogWarning($"[Seats] Leave from conn={sender?.connectionId} ignored (seat {seat}, table {(instance == null ? "not ready" : "ready")}).");
+            return true;
+        }
+        instance.ServerSeatGone(seat, SeatLeft, reason == DisconnectReason.UserRequested ? "pressed Leave" : "quit the app");
+        return true;
+    }
+
+    [Server]
+    void ServerSeatBack(int seat)
+    {
+        if (seatDropTimers.TryGetValue(seat, out Coroutine timer) && timer != null) StopCoroutine(timer);
+        bool wasDropped = seatDropTimers.Remove(seat);
+        ServerSetSeat(seat, connected: true);
+        if (!boardStarted) return;
+
+        int n = seatReconnects.TryGetValue(seat, out int c) ? c + 1 : 1;
+        seatReconnects[seat] = n;
+        MatchFlow.Log("Ludo", $"{FlowName(seat)} is back (reconnect {n}{(wasDropped ? "" : ", no drop seen")})");
+        if (n >= SeatReconnectLimit)
+            ServerSeatGone(seat, SeatAbandoned, $"reconnected {n} times");
+        else if (GameGUIController.insta != null && board != null)
+            ServerPublishBoard();   // the returning phone asks for ReconnectGame and gets the server board
+    }
+
+    [Server]
+    void ServerSeatDrop(int seat)
+    {
+        ServerSetSeat(seat, connected: false);
+        if (matchOver || board == null || seat >= board.Seats || board.State[seat] != LudoServerBoard.SeatState.Playing) return;
+        MatchFlow.Log("Ludo", $"{FlowName(seat)} dropped — seat kept for {SeatDropGraceSeconds:0} s");
+        if (seatDropTimers.TryGetValue(seat, out Coroutine old) && old != null) StopCoroutine(old);
+        seatDropTimers[seat] = StartCoroutine(SeatDropTimer(seat));
+    }
+
+    IEnumerator SeatDropTimer(int seat)
+    {
+        yield return new WaitForSecondsRealtime(SeatDropGraceSeconds);
+        seatDropTimers.Remove(seat);
+        if (!MatchSeats.Current.IsConnected(seat))
+            ServerSeatGone(seat, SeatAbandoned, $"did not come back within {SeatDropGraceSeconds:0} s");
+    }
+
+    /// <summary>Seat <paramref name="seat"/> is out of the match: its tokens go home, its turns are skipped, the others
+    /// play on. One seat left playing wins (rule A).</summary>
+    [Server]
+    void ServerSeatGone(int seat, int state, string why)
+    {
+        if (matchOver) return;
+        if (board == null)
+        {
+            // Before the board starts nobody has moved: the backend refunds a leaver before the start (plan §5.3).
+            MatchFlow.Log("Ludo", $"{MatchFlow.Who(MatchSeats.Current.IdOf(seat))} {why} before the start");
+            ServerSetSeat(seat, state: state);
+            RpcSeatState(seat, state);
+            return;
+        }
+        if (seat < 0 || seat >= board.Seats || board.State[seat] != LudoServerBoard.SeatState.Playing) return;
+
+        bool hadTurn = board.Turn == seat;
+        board.Leave(seat);
+        ServerSetSeat(seat, state: state);
+        RpcSeatState(seat, state);
+        MatchFlow.Log("Ludo", $"{FlowName(seat)} {why} — {(state == SeatLeft ? "left" : "abandoned")}, tokens back to base ({board.PlayingCount} still playing)");
+        ServerPublishBoard();
+
+        if (board.PlayingCount == 1)
+        {
+            for (int s = 0; s < board.Seats; s++)
+                if (board.State[s] == LudoServerBoard.SeatState.Playing) { ServerWin(s, "the last player still playing"); return; }
+        }
+        if (board.PlayingCount == 0) return;   // cannot happen: the match ends at one
+        if (hadTurn) ServerPassTurn(0f);
+    }
+
+    [ClientRpc]
+    void RpcSeatState(int seat, int state)
+    {
+        if (GameGUIController.insta != null) GameGUIController.insta.ApplySeatState(seat, state);
+    }
+}
