@@ -8,7 +8,7 @@ using UnityExtensions;
 
 namespace Snake_Ladder
 {
-    public class SnakeMirrorNetworkManager : NetworkBehaviour
+    public class SnakeMirrorNetworkManager : NetworkBehaviour, IMultiSeatTable
     {
         public static SnakeMirrorNetworkManager Instance;
 
@@ -109,7 +109,9 @@ namespace Snake_Ladder
                 // players are present again before ticking. Without this, the timer keeps
                 // draining while one side is in the reconnect window and can end the game
                 // even though the disconnected player still has time to come back.
-                while (NetworkGameManager.Instance != null && NetworkGameManager.Instance.currentPlayerCount < 2)
+                while (IsMultiSeatTable
+                       ? MatchSeats.Current.ConnectedCount == 0
+                       : NetworkGameManager.Instance != null && NetworkGameManager.Instance.currentPlayerCount < 2)
                 {
                     yield return new WaitForSeconds(0.5f);
                 }
@@ -119,9 +121,16 @@ namespace Snake_Ladder
             }
             // The overall game clock never selects a winner by token position/score.
             // Reaching EndNode is still the only normal win condition.
+            RpcTimerDisplayEnded();
+            if (IsMultiSeatTable && seatRules != null)
+            {
+                // N seats (product selection): the token furthest ahead wins; a tie goes to whoever got there first.
+                int leader = seatRules.Leader();
+                MatchFlow.Log("Snake & Ladder", $"match clock ran out — {FlowWho(leader)} is furthest ahead (square {(leader >= 0 ? seatRules.Square[leader] : 0)})");
+                if (leader >= 0) { ServerSubmitWinner(MatchSeats.Current.IdOf(leader)); yield break; }
+            }
             Debug.Log("[SnakeServerResult] Timer ended: server declared a draw.");
             MatchFlow.Log("Snake & Ladder", "match clock ran out — draw");
-            RpcTimerDisplayEnded();
             ServerDeclareDraw();
         }
 
@@ -131,6 +140,13 @@ namespace Snake_Ladder
         {
             playerId = string.Empty;
             playerIndex = -1;
+            if (IsMultiSeatTable)
+            {
+                if (connection == null) return false;
+                playerIndex = MatchSeats.Current.SeatOfConnection(connection.connectionId);
+                playerId = MatchSeats.Current.IdOf(playerIndex) ?? string.Empty;
+                return playerIndex >= 0 && !string.IsNullOrEmpty(playerId);
+            }
             NetworkGameManager networkManager = NetworkGameManager.Instance;
             if (networkManager == null || connection == null ||
                 networkManager.creatorData == null || networkManager.joinerData == null)
@@ -164,6 +180,11 @@ namespace Snake_Ladder
         private bool TryResolvePlayerIndex(string playerId, out int playerIndex)
         {
             playerIndex = -1;
+            if (IsMultiSeatTable)
+            {
+                playerIndex = MatchSeats.Current.SeatOf(playerId);
+                return playerIndex >= 0;
+            }
             NetworkGameManager networkManager = NetworkGameManager.Instance;
             if (networkManager == null || networkManager.creatorData == null || networkManager.joinerData == null)
                 return false;
@@ -184,9 +205,11 @@ namespace Snake_Ladder
                 GameControllerNew.instance == null)
                 return false;
 
-            Node playerNode = playerIndex == 0
-                ? GameControllerNew.instance.CurrentNodePlayer1
-                : GameControllerNew.instance.CurrentNodePlayer2;
+            Node playerNode = IsMultiSeatTable
+                ? GameControllerNew.instance.SeatNode(playerIndex)
+                : playerIndex == 0
+                    ? GameControllerNew.instance.CurrentNodePlayer1
+                    : GameControllerNew.instance.CurrentNodePlayer2;
             if (playerNode == null || playerNode != GameControllerNew.instance.EndNode)
             {
                 Debug.LogWarning($"[SnakeServerResult] Finish rejected for player={playerId}: server board is not at EndNode.");
@@ -324,6 +347,7 @@ namespace Snake_Ladder
         /// <summary>Name of player 1 (creator, index 0) or player 2 (joiner, index 1) for the match log.</summary>
         public static string FlowWho(int playerIndex)
         {
+            if (IsMultiSeatTable) return MatchFlow.Who(MatchSeats.Current.IdOf(playerIndex));
             NetworkGameManager ngm = NetworkGameManager.Instance;
             if (ngm != null)
             {
@@ -339,7 +363,10 @@ namespace Snake_Ladder
             GameControllerNew gc = GameControllerNew.instance;
             if (gc == null || !TryResolvePlayerIndex(winnerId, out int idx))
                 return "game over";
-            Node node = idx == 0 ? gc.CurrentNodePlayer1 : gc.CurrentNodePlayer2;
+            Node node = IsMultiSeatTable ? gc.SeatNode(idx) : idx == 0 ? gc.CurrentNodePlayer1 : gc.CurrentNodePlayer2;
+            if (IsMultiSeatTable)
+                return node != null && node == gc.EndNode ? "reached 100"
+                     : remainingTime <= 0 ? "furthest ahead at time-out" : "last player still playing";
             return node != null && node == gc.EndNode ? "reached 100" : "opponent forfeited";
         }
 
@@ -357,6 +384,12 @@ namespace Snake_Ladder
         {
             if (!TryResolveConnection(sender, out _, out int forfeitingIndex))
                 return;
+            if (IsMultiSeatTable)
+            {
+                // N seats: the leaver is out and forfeits; the others play on (never "the other player wins").
+                ServerSeatOut(forfeitingIndex, SeatLeft, "pressed Leave");
+                return;
+            }
             if (NetworkGameManager.Instance != null && NetworkGameManager.Instance.ServerForfeitAfterOpponentLeft(sender, "Snake")) return;
 
             Debug.Log($"[SnakeServerResult] Player {forfeitingIndex + 1} forfeited.");
@@ -376,6 +409,7 @@ namespace Snake_Ladder
         [Command(requiresAuthority = false)]
         private void CmdRequestExistingDisconnectResult(NetworkConnectionToClient sender = null)
         {
+            if (IsMultiSeatTable) return;   // N seats: the server's seat timers decide, never a phone's claim
             NetworkGameManager networkManager = NetworkGameManager.Instance;
             if (sender == null || networkManager == null || !hasGameStarted ||
                 networkManager.currentPlayerCount != 1 ||
@@ -458,6 +492,11 @@ namespace Snake_Ladder
 
         public void ShowServerWinner(string winnerId)
         {
+            if (IsMultiSeatTable)
+            {
+                ShowSeatResult(winnerId);
+                return;
+            }
             if (ResultManager.GameSpawnedFinished || !ResultManager.TryCommitResultLatch())
                 return;
 
@@ -687,6 +726,7 @@ namespace Snake_Ladder
         #region Timer
         private bool IsTurnTimerPaused()
         {
+            if (IsMultiSeatTable) return false;   // N seats: a dropped seat is skipped, the table never waits
             return NetworkGameManager.Instance != null
                 && (NetworkGameManager.Instance.IsPaused
                     || NetworkGameManager.Instance.currentPlayerCount < 2);
@@ -710,6 +750,11 @@ namespace Snake_Ladder
                 {
                     Debug.Log($"⏰ [Server] Player {currentTurnPlayerNumber + 1}'s time is up!");
                     MatchFlow.Log("Snake & Ladder", $"turn timer ran out for {FlowWho(currentTurnPlayerNumber)} — turn skipped, no roll");
+                    if (IsMultiSeatTable)
+                    {
+                        ServerTurnMissed();
+                        return;
+                    }
 
                     // ✅ Switch turn
                     currentTurnPlayerNumber = currentTurnPlayerNumber == 0 ? 1 : 0;
@@ -789,6 +834,7 @@ namespace Snake_Ladder
             if (Instance == null)
             {
                 Instance = this;
+                MultiSeatTable.Register(this);
                 Debug.Log("✅ SnakeMirrorNetworkManager Instance created");
             }
             else
@@ -875,7 +921,10 @@ namespace Snake_Ladder
             Debug.Log($"🎲 [Server] Player assignment request from connectionId: {connectionId}");
 
             // Check if already assigned
-            if ((NetworkGameManager.Instance.creatorData.playerId == playerID && networkPlayer1) || (NetworkGameManager.Instance.joinerData.playerId == playerID && networkPlayer2))
+            bool assigned = IsMultiSeatTable
+                ? SeatToken(MatchSeats.Current.SeatOf(playerID)) != null
+                : (NetworkGameManager.Instance.creatorData.playerId == playerID && networkPlayer1) || (NetworkGameManager.Instance.joinerData.playerId == playerID && networkPlayer2);
+            if (assigned)
             {
                 MatchFlow.Log("Snake & Ladder", $"{MatchFlow.Who(playerID)} reconnected");
                 if (hasGameStarted && currentEnvironmentIndex >= 0)
@@ -926,6 +975,12 @@ namespace Snake_Ladder
 
             controller.timer = syncedTime;
             controller.timerRunning = running;
+            if (IsMultiSeatTable)
+            {
+                controller.ApplySeatTurn(firstPlayerNumber);
+                FirstTurnPlayer?.Invoke(firstPlayerNumber);
+                return;
+            }
 
             // ❌ Sab timers band
             controller.Player1TimerImage.gameObject.SetActive(false);
@@ -967,6 +1022,11 @@ namespace Snake_Ladder
         {
             Debug.Log($"🎮 [Server] Spawning network player {playerID} for connection {connection.connectionId}");
 
+            if (IsMultiSeatTable)
+            {
+                ServerSpawnSeatToken(MatchSeats.Current.SeatOf(playerID), playerID);
+                return;
+            }
             GameObject playerPrefab = (NetworkGameManager.Instance.creatorData.playerId == playerID) ? player1NetworkPrefab : player2NetworkPrefab;
 
             if (playerPrefab != null)
@@ -1002,10 +1062,16 @@ namespace Snake_Ladder
         [Server]
         void CheckAllPlayersReadyAndStartGame()
         {
+            // N seats: start only when every seat has its token (plan N1: the first request used to start the game).
+            if (IsMultiSeatTable && !AllSeatTokensSpawned())
+            {
+                Debug.Log($"[Seats] Waiting for every seat ({SpawnedSeatTokens()}/{seatCount} tokens).");
+                return;
+            }
             if (!hasGameStarted)
             {
                 Debug.Log("🎬 [Server] Both players connected! Starting game...");
-                MatchFlow.Begin("Snake & Ladder", $"game started — {FlowWho(0)} vs {FlowWho(1)}");
+                MatchFlow.Begin("Snake & Ladder", IsMultiSeatTable ? $"game started — {FlowPlayers()}" : $"game started — {FlowWho(0)} vs {FlowWho(1)}");
                 hasGameStarted = true;
                 StartCoroutine(ServerGameStartSequence());
                 if (countdownCoroutine != null)
@@ -1042,6 +1108,13 @@ namespace Snake_Ladder
             // Decide who goes first
             //  int firstPlayer = UnityEngine.Random.Range(0, 2);
             int firstPlayer = 1;
+            if (IsMultiSeatTable)
+            {
+                // N seats (product selection): a random first seat, then seat order.
+                firstPlayer = UnityEngine.Random.Range(0, seatCount);
+                seatRules = new SnakeSeatRules(seatCount, firstPlayer);
+                GameControllerNew.instance.ServerPlaceSeatTokensAtStart();
+            }
             Debug.Log($"🎲 [Server] Decided: Player {firstPlayer + 1} goes first");
             MatchFlow.Log("Snake & Ladder", $"board {randomEnvIndex}, {FlowWho(firstPlayer)} starts");
             currentTurnPlayerNumber = firstPlayer;
@@ -1077,6 +1150,12 @@ namespace Snake_Ladder
         public void RpcNotifyFirstTurn(int firstPlayerNumber)
         {
             Debug.Log($"🎯 [Client] Player {firstPlayerNumber + 1}'s turn");
+            if (IsMultiSeatTable)
+            {
+                GameControllerNew.instance.ApplySeatTurn(firstPlayerNumber);
+                FirstTurnPlayer?.Invoke(firstPlayerNumber);
+                return;
+            }
 
             // Reset timers on all clients
             GameControllerNew.instance.Player1TimerImage.gameObject.SetActive(false);
@@ -1136,6 +1215,7 @@ namespace Snake_Ladder
             playerID = authoritativePlayerId;
             diceNumber = UnityEngine.Random.Range(1, 7);
             serverMoveInProgress = true;
+            if (IsMultiSeatTable && seatRules != null) seatRules.Rolled(playerIndex);
             Debug.Log($"[SnakeServerResult] Server rolled {diceNumber} for Player {playerIndex + 1}.");
 
             // Stop server timer while move animation is in progress to prevent double-turn
@@ -1149,6 +1229,12 @@ namespace Snake_Ladder
         [ClientRpc]
         public void RollDiceNetwork(string playernumber, int turnNumber)
         {
+            if (IsMultiSeatTable)
+            {
+                // N seats: one shared dice (mine, the bottom panel) shows every roll.
+                GameControllerNew.instance.player1Dice.AnimateDice(turnNumber);
+                return;
+            }
             bool isfirstplayer = playernumber == NetworkGameManager.Instance.creatorData.playerId;
             Debug.Log("RollDiceNetwork " + playernumber + "  " + turnNumber + " isfirstplayer " + isfirstplayer);
             if (isfirstplayer)
@@ -1189,6 +1275,268 @@ namespace Snake_Ladder
         public void RpcTimerEnd(bool didWin, string playerId)
         {
             ShowServerWinner(playerId);
+        }
+
+        // ═══════════════════════ N-PLAYER SEATS (MaxPlayers 3–4, snake-ladder-4-player plan) ═══════════════════════
+        // Seat = the deployment's Seats order (MatchSeats). One token per seat (player-1 prefab on even seats, player-2 on
+        // odd seats; phones tint seats 2–3), a random first seat, turns in seat order, 3 missed turns in a row = out,
+        // Leave = out and forfeit, a drop gets 30 s then out, 5 reconnects = out, the last seat playing wins, reaching
+        // 100 wins, at time-out the furthest token wins. One result, through ServerSubmitWinner.
+
+        public const int SeatPlaying = 0, SeatLeft = 1, SeatAbandoned = 2, SeatEliminated = 3;
+
+        [System.Serializable]
+        public struct SnakeSeatInfo
+        {
+            public int seat;
+            public string playerId;
+            public string name;
+            public int state;
+            public bool connected;
+        }
+
+        /// <summary>2 for a normal match; 3–4 when the deployment seats more players.</summary>
+        [SyncVar] public int seatCount = 2;
+        public readonly SyncList<SnakeSeatInfo> seatList = new SyncList<SnakeSeatInfo>();
+
+        /// <summary>This table has more than 2 seats (phones and server).</summary>
+        public static bool IsMultiSeatTable => Instance != null && Instance.seatCount > 2;
+        bool IMultiSeatTable.IsMultiSeat => seatCount > 2;
+
+        const float SeatDropGraceSeconds = 30f;
+        const int SeatReconnectLimit = 5;
+        SnakeSeatRules seatRules;
+        readonly GameObject[] seatTokens = new GameObject[4];
+        readonly Dictionary<int, Coroutine> seatDropTimers = new Dictionary<int, Coroutine>();
+        readonly Dictionary<int, int> seatReconnects = new Dictionary<int, int>();
+
+        public override void OnStartServer()
+        {
+            base.OnStartServer();
+            if (!MatchSeats.Active) return;
+            var t = MatchSeats.Current;
+            seatCount = t.Count;
+            seatList.Clear();
+            for (int s = 0; s < t.Count; s++)
+                seatList.Add(new SnakeSeatInfo { seat = s, playerId = t.IdOf(s), name = t.NameOf(s) ?? "", state = SeatPlaying, connected = t.IsConnected(s) });
+            Debug.Log($"[Seats] Snake & Ladder table for {t.Count} players.");
+        }
+
+        void OnDestroy() => MultiSeatTable.Unregister(this);
+
+        GameObject SeatToken(int seat) => seat >= 0 && seat < seatTokens.Length ? seatTokens[seat] : null;
+
+        int SpawnedSeatTokens()
+        {
+            int n = 0;
+            for (int s = 0; s < seatCount; s++) if (seatTokens[s] != null) n++;
+            return n;
+        }
+
+        bool AllSeatTokensSpawned() => SpawnedSeatTokens() == seatCount;
+
+        string FlowPlayers()
+        {
+            var names = new List<string>();
+            for (int s = 0; s < seatCount; s++) names.Add($"{FlowWho(s)} (seat {s + 1})");
+            return string.Join(", ", names);
+        }
+
+        [Server]
+        void ServerSpawnSeatToken(int seat, string playerID)
+        {
+            if (seat < 0 || seat >= seatCount || seatTokens[seat] != null) return;
+            GameObject prefab = seat % 2 == 0 ? player1NetworkPrefab : player2NetworkPrefab;
+            if (prefab == null) { Debug.LogError($"[Seats] Token prefab missing for seat {seat}."); return; }
+            GameObject token = Instantiate(prefab);
+            NetworkServer.Spawn(token);
+            token.GetComponent<SnakePlayerRef>().playerID = playerID;
+            seatTokens[seat] = token;
+            GameControllerNew.instance.SetSeatToken(seat, token.transform);
+            ServerSetSeat(seat, connected: true);
+            Debug.Log($"[Seats] Token for seat {seat} ({playerID}) spawned ({SpawnedSeatTokens()}/{seatCount}).");
+        }
+
+        [Server]
+        void ServerSetSeat(int seat, int? state = null, bool? connected = null)
+        {
+            if (seat < 0 || seat >= seatList.Count) return;
+            var info = seatList[seat];
+            if (state.HasValue) info.state = state.Value;
+            if (connected.HasValue) info.connected = connected.Value;
+            string name = MatchSeats.Current.NameOf(seat);
+            if (!string.IsNullOrEmpty(name)) info.name = name;
+            seatList[seat] = info;
+        }
+
+        /// <summary>Server: the token of <paramref name="seat"/> now stands on <paramref name="square"/>.</summary>
+        [Server]
+        public void ServerSeatMoved(int seat, int square)
+        {
+            if (seatRules != null && seat >= 0 && seat < seatRules.Seats) seatRules.Moved(seat, square);
+        }
+
+        /// <summary>Server: the move is over; the next seat still playing (and connected) gets the turn.</summary>
+        [Server]
+        public void ServerPassSeatTurn()
+        {
+            serverMoveInProgress = false;
+            if (seatRules == null || serverResultDeclared) return;
+            int next = NextConnectedSeat();
+            if (next < 0) return;
+            seatRules.Turn = next;
+            currentTurnPlayerNumber = next;
+            currentTimer = timerDuration;
+            isTimerRunning = true;
+            MatchFlow.Log("Snake & Ladder", $"turn → {FlowWho(next)}");
+            RpcNotifyFirstTurn(next);
+        }
+
+        // The next seat still playing; a disconnected seat is skipped while another is connected (its 30 s grace runs).
+        int NextConnectedSeat()
+        {
+            int fallback = -1;
+            for (int i = 1; i <= seatRules.Seats; i++)
+            {
+                int s = (seatRules.Turn + i) % seatRules.Seats;
+                if (!seatRules.IsPlaying(s)) continue;
+                if (MatchSeats.Current.IsConnected(s)) return s;
+                if (fallback < 0) fallback = s;
+            }
+            return fallback;
+        }
+
+        [Server]
+        void ServerTurnMissed()
+        {
+            if (seatRules == null) return;
+            int seat = currentTurnPlayerNumber;
+            if (seatRules.Miss(seat))
+            {
+                ServerSeatOut(seat, SeatEliminated, $"missed {SnakeSeatRules.MissLimit} turns in a row", alreadyOut: true);
+                return;
+            }
+            ServerPassSeatTurn();
+        }
+
+        /// <summary>Seat <paramref name="seat"/> is out: its token leaves the board, its turns are skipped, the others
+        /// play on. The last seat still playing wins.</summary>
+        [Server]
+        void ServerSeatOut(int seat, int state, string why, bool alreadyOut = false)
+        {
+            if (serverResultDeclared || seat < 0 || seat >= seatCount) return;
+            if (seatRules == null)
+            {
+                MatchFlow.Log("Snake & Ladder", $"{FlowWho(seat)} {why} before the start");
+                ServerSetSeat(seat, state: state);
+                RpcSeatState(seat, state);
+                return;
+            }
+            SnakeSeatRules.State rule = state == SeatLeft ? SnakeSeatRules.State.Left
+                                      : state == SeatAbandoned ? SnakeSeatRules.State.Abandoned : SnakeSeatRules.State.Eliminated;
+            if (!alreadyOut && !seatRules.Out(seat, rule)) return;
+
+            bool hadTurn = currentTurnPlayerNumber == seat;
+            ServerSetSeat(seat, state: state);
+            RpcSeatState(seat, state);
+            MatchFlow.Log("Snake & Ladder", $"{FlowWho(seat)} {why} — out ({seatRules.PlayingCount} still playing)");
+            if (seatTokens[seat] != null)
+            {
+                GameControllerNew.instance.SetSeatToken(seat, null);
+                NetworkServer.Destroy(seatTokens[seat]);
+                seatTokens[seat] = null;
+                GameControllerNew.instance.ServerLayoutSeatTokens();
+            }
+
+            int last = seatRules.LastPlaying();
+            if (last >= 0)
+            {
+                ServerSubmitWinner(MatchSeats.Current.IdOf(last));
+                return;
+            }
+            if (hadTurn && !serverMoveInProgress) ServerPassSeatTurn();
+        }
+
+        // IMultiSeatTable: shared networking reports seat events here while the Snake scene runs.
+        public void ServerSeatConnected(int seat)
+        {
+            if (seatDropTimers.TryGetValue(seat, out Coroutine timer) && timer != null) StopCoroutine(timer);
+            bool wasDropped = seatDropTimers.Remove(seat);
+            ServerSetSeat(seat, connected: true);
+            if (!hasGameStarted || seatRules == null || !seatRules.IsPlaying(seat)) return;
+            int n = seatReconnects.TryGetValue(seat, out int c) ? c + 1 : 1;
+            seatReconnects[seat] = n;
+            MatchFlow.Log("Snake & Ladder", $"{FlowWho(seat)} is back (reconnect {n}{(wasDropped ? "" : ", no drop seen")})");
+            if (n >= SeatReconnectLimit) ServerSeatOut(seat, SeatAbandoned, $"reconnected {n} times");
+        }
+
+        public void ServerSeatDisconnected(int seat)
+        {
+            ServerSetSeat(seat, connected: false);
+            if (serverResultDeclared || seatRules == null || !seatRules.IsPlaying(seat)) return;
+            MatchFlow.Log("Snake & Ladder", $"{FlowWho(seat)} dropped — seat kept for {SeatDropGraceSeconds:0} s");
+            if (seatDropTimers.TryGetValue(seat, out Coroutine old) && old != null) StopCoroutine(old);
+            seatDropTimers[seat] = StartCoroutine(SeatDropTimer(seat));
+            if (currentTurnPlayerNumber == seat && !serverMoveInProgress) ServerPassSeatTurn();
+        }
+
+        public void ServerSeatLeft(int seat, string why) => ServerSeatOut(seat, SeatLeft, why);
+
+        IEnumerator SeatDropTimer(int seat)
+        {
+            yield return new WaitForSecondsRealtime(SeatDropGraceSeconds);
+            seatDropTimers.Remove(seat);
+            if (!MatchSeats.Current.IsConnected(seat))
+                ServerSeatOut(seat, SeatAbandoned, $"did not come back within {SeatDropGraceSeconds:0} s");
+        }
+
+        [ClientRpc]
+        void RpcSeatState(int seat, int state)
+        {
+            if (GameControllerNew.instance != null) GameControllerNew.instance.RefreshSeatBar();
+        }
+
+        /// <summary>Phones: the N-seat result panel (place, colour, name, square, state, coins).</summary>
+        void ShowSeatResult(string winnerId)
+        {
+            ResultManager.isGameFinished = true;
+            var gc = GameControllerNew.instance;
+            var rows = new List<(MultiSeatResult.Row row, int square, bool gone)>();
+            for (int s = 0; s < seatList.Count; s++)
+            {
+                var info = seatList[s];
+                int square = gc != null ? gc.SeatSquareOnScreen(s) : 0;
+                bool gone = info.state != SeatPlaying;
+                rows.Add((new MultiSeatResult.Row
+                {
+                    seat = s,
+                    id = info.playerId,
+                    name = string.IsNullOrEmpty(info.name) ? "Player " + (s + 1) : info.name,
+                    detail = gone ? "" : $"square {square}",
+                    state = info.playerId == winnerId ? "winner"
+                          : info.state == SeatLeft ? "left"
+                          : info.state == SeatAbandoned ? "disconnected"
+                          : info.state == SeatEliminated ? "out (missed turns)" : "playing",
+                }, square, gone));
+            }
+            rows.Sort((a, b) =>
+            {
+                if (a.row.id == winnerId) return -1;
+                if (b.row.id == winnerId) return 1;
+                if (a.gone != b.gone) return a.gone ? 1 : -1;
+                int c = b.square.CompareTo(a.square);
+                return c != 0 ? c : a.row.seat.CompareTo(b.row.seat);
+            });
+            string reason = gc != null && gc.SeatSquareOnScreen(MatchSeatIndex(winnerId)) >= 100 ? "Reached 100"
+                          : remainingTime <= 0 ? "Time over - furthest token wins" : "Last player at the table";
+            MultiSeatResult.Show(rows.ConvertAll(r => r.row), winnerId, reason, GameControllerNew.SeatColours);
+        }
+
+        /// <summary>Seat of <paramref name="playerId"/> from the synced seat list (phones), or -1.</summary>
+        public int MatchSeatIndex(string playerId)
+        {
+            for (int s = 0; s < seatList.Count; s++) if (seatList[s].playerId == playerId) return s;
+            return -1;
         }
     }
 }

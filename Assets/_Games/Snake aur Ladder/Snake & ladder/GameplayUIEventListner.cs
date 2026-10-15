@@ -89,6 +89,12 @@ namespace Twelve
         void SetOnlineModeUI()
         {
             Debug.Log($"🌐 Setting ONLINE mode UI for Player {myPlayerNumber + 1}");
+            if (SnakeMirrorNetworkManager.IsMultiSeatTable)
+            {
+                // N seats: one opponent slot cannot show three players; the seat bar shows every seat.
+                if (opponentAvatarImage != null) opponentAvatarImage.gameObject.SetActive(false);
+                if (opponentNameText != null) opponentNameText.gameObject.SetActive(false);
+            }
 
             // ========== MY INFO (Always same for me) ==========
 

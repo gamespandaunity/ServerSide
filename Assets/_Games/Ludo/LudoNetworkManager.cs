@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityExtensions;
 
-public class LudoNetworkManager : NetworkBehaviour
+public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
 {
 
 
@@ -125,6 +125,7 @@ public class LudoNetworkManager : NetworkBehaviour
     void Awake()
     {
         instance = this;
+        MultiSeatTable.Register(this);
 
     }
 
@@ -537,35 +538,13 @@ public class LudoNetworkManager : NetworkBehaviour
         seatList[seat] = info;
     }
 
-    /// <summary>Server: a connection took seat <paramref name="seat"/> (MirrorPlayerPrefab.CmdSetPlayerData).</summary>
-    public static void ServerSeatConnected(int seat)
-    {
-        if (instance == null || !NetworkServer.active || !MatchSeats.Active) return;
-        instance.ServerSeatBack(seat);
-    }
+    // IMultiSeatTable: the shared networking reports seat events here while the Ludo scene runs (MultiSeatTable).
+    public void ServerSeatConnected(int seat) => ServerSeatBack(seat);
+    public void ServerSeatDisconnected(int seat) => ServerSeatDrop(seat);
+    public void ServerSeatLeft(int seat, string why) => ServerSeatGone(seat, SeatLeft, why);
+    bool IMultiSeatTable.IsMultiSeat => seatCount > 2;
 
-    /// <summary>Server: the connection holding <paramref name="seat"/> dropped (MirrorNetwork.OnServerDisconnect).</summary>
-    public static void ServerSeatDisconnected(int seat)
-    {
-        if (instance == null || !NetworkServer.active || !MatchSeats.Active) return;
-        instance.ServerSeatDrop(seat);
-    }
-
-    /// <summary>Server: a phone pressed Leave (or quit) in an N-player match (NetworkGameManager.CmdSendDisconnectType).
-    /// Returns true when the N-player table handled it, so the 2-player leave settlement must not run.</summary>
-    public static bool ServerTakesSeatLeave(NetworkConnectionToClient sender, DisconnectReason reason)
-    {
-        if (!NetworkServer.active || !MatchSeats.Active) return false;
-        if (reason != DisconnectReason.UserRequested && reason != DisconnectReason.ApplicationQuit) return true;
-        int seat = sender == null ? -1 : MatchSeats.Current.SeatOfConnection(sender.connectionId);
-        if (instance == null || seat < 0)
-        {
-            Debug.LogWarning($"[Seats] Leave from conn={sender?.connectionId} ignored (seat {seat}, table {(instance == null ? "not ready" : "ready")}).");
-            return true;
-        }
-        instance.ServerSeatGone(seat, SeatLeft, reason == DisconnectReason.UserRequested ? "pressed Leave" : "quit the app");
-        return true;
-    }
+    void OnDestroy() => MultiSeatTable.Unregister(this);
 
     [Server]
     void ServerSeatBack(int seat)

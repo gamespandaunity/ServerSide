@@ -134,7 +134,7 @@ public class NetworkGameManager : NetworkBehaviour
         Debug.Log("Scene : " + SceneManager.GetActiveScene().name);
 
         // More than 2 seats: a dropped seat gets its own badge (LudoNetworkManager.seatList); the table never pauses.
-        if (LudoNetworkManager.IsMultiSeat) return;
+        if (MultiSeatTable.IsMultiSeat) return;
 
         if (newVal == 2)
         {
@@ -463,7 +463,7 @@ public class NetworkGameManager : NetworkBehaviour
         DisconnectReason disconnectReason = (DisconnectReason)reason;
         // More than 2 players: the leaver's seat goes out and the others play on (LudoNetworkManager); the 2-player
         // settlement below ("the other player wins") must not run.
-        if (LudoNetworkManager.ServerTakesSeatLeave(sender, disconnectReason)) return;
+        if (MultiSeatTable.ServerTakesSeatLeave(sender, disconnectReason)) return;
         MirrorNetwork.Instance.currentDisconnectReason = disconnectReason;
 
         // Record the intent before anything else. The settlement below can decline (the seat may

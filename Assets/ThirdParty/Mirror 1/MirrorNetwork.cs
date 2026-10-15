@@ -630,7 +630,7 @@ public class MirrorNetwork : NetworkManager
             if (seat >= 0)
             {
                 Debug.Log($"[Seats] seat {seat} ({MatchSeats.Current.IdOf(seat)}) disconnected ({MatchSeats.Current.ConnectedCount}/{MatchSeats.Current.Count} connected)");
-                LudoNetworkManager.ServerSeatDisconnected(seat);
+                MultiSeatTable.ServerSeatDisconnected(seat);
             }
         }
 

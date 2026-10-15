@@ -208,6 +208,11 @@ namespace Snake_Ladder
         public void SetupPlayerProfiles()
         {
             Debug.Log($"🎭 Setting up player profiles - My Player Number: {myPlayerNumber}");
+            if (SnakeMirrorNetworkManager.IsMultiSeatTable)
+            {
+                SetUpSeatPanels();
+                return;
+            }
 
             if (myPlayerNumber == 0)
             {
@@ -290,6 +295,7 @@ namespace Snake_Ladder
 
         void OnFirstTurnPlayer(int firstPlayerNumber)
         {
+            if (SnakeMirrorNetworkManager.IsMultiSeatTable) return;   // ApplySeatTurn already set the N-seat table up
             count=0;
              if (myPlayerNumber == -1)
             {
@@ -471,8 +477,8 @@ namespace Snake_Ladder
         void StartGame()
         {
             Debug.Log("🎯 Starting game..." + currentGameMode);
-            // ✅ MULTIPLAYER: Setup positions after instantiation
-            if (currentGameMode != GameMode.Against_Ai)
+            // ✅ MULTIPLAYER: Setup positions after instantiation (an N-seat table is placed by the server)
+            if (currentGameMode != GameMode.Against_Ai && !SnakeMirrorNetworkManager.IsMultiSeatTable)
             {
                 // Setup positions for instantiated players
 
@@ -884,6 +890,11 @@ namespace Snake_Ladder
         // ========== MOVEMENT ==========
         public IEnumerator MovePlayer(string playerNum, int turnNumber)
         {
+            if (SnakeMirrorNetworkManager.IsMultiSeatTable)
+            {
+                yield return StartCoroutine(MoveSeatToken(playerNum, turnNumber));
+                yield break;
+            }
             yield return new WaitForSeconds(2f);
             Debug.Log("PLayerNum" + playerNum);
             Debug.Log($"🏃 Moving Player {playerNum}: {turnNumber} steps");
@@ -1215,7 +1226,11 @@ namespace Snake_Ladder
                 StopTimer();
 
             // Switch turn on server
-            if (isServer)
+            if (isServer && SnakeMirrorNetworkManager.IsMultiSeatTable)
+            {
+                SnakeMirrorNetworkManager.Instance.ServerPassSeatTurn();
+            }
+            else if (isServer)
             {
                 SnakeMirrorNetworkManager.Instance.ServerCompleteMove();
                 SnakeMirrorNetworkManager.Instance.currentTurnPlayerNumber =
@@ -1672,7 +1687,7 @@ namespace Snake_Ladder
                         Debug.Log("GOLD");
                         staticVariables.currentPrize = NetworkGameManager.Instance.Prize;
                         staticVariables.isgoldcoins = NetworkGameManager.Instance.IsGoldCoin;
-                        challengeAmount.text = (NetworkGameManager.Instance.Prize * 2).ToString();
+                        challengeAmount.text = (NetworkGameManager.Instance.Prize * PotSeats()).ToString();
                         if (NetworkGameManager.Instance.IsGoldCoin)
                         {
                             challengeAmount.color = new Color(1f, 0.84f, 0f); // Golden color
@@ -1713,5 +1728,337 @@ namespace Snake_Ladder
             public int EnvironmentIndex;
         }
 
+        // ═══════════════════════ N-PLAYER TABLE (3–4 seats, snake-ladder-4-player plan) ═══════════════════════
+        // Server: one token and one node per seat, the same walk / exact roll / snakes and ladders as 2 players, tokens
+        // sharing a square laid out side by side (2) or in a 2×2 grid (3–4). Phones: I always play from the bottom
+        // panel (Player 1 UI, its dice shows every roll), the Player 2 panel is hidden, a seat bar on top shows every
+        // seat's colour, name, turn and state, and seats 2–3 get a tinted token.
+
+        public static readonly Color[] SeatColours =
+        {
+            new Color(0.93f, 0.26f, 0.26f), new Color(0.25f, 0.50f, 1f), new Color(0.20f, 0.78f, 0.32f), new Color(1f, 0.82f, 0.10f)
+        };
+
+        readonly Transform[] seatTokenTransforms = new Transform[4];
+        readonly Node[] seatNodes = new Node[4];
+        readonly Dictionary<Node, int> squareOfNode = new Dictionary<Node, int>();
+        int seatTurnOnScreen = -1;
+
+        int PotSeats()
+        {
+            if (SnakeMirrorNetworkManager.IsMultiSeatTable) return SnakeMirrorNetworkManager.Instance.seatCount;
+            return MatchRoster.IsMultiSeat ? MatchRoster.ExpectedSeats : 2;
+        }
+
+        /// <summary>Token tint: seats 0–1 keep the two token sprites, seats 2–3 reuse them tinted.</summary>
+        public static Color TokenTint(int seat) => seat == 2 ? new Color(0.45f, 1f, 0.5f) : seat == 3 ? new Color(1f, 0.92f, 0.35f) : Color.white;
+
+        public void SetSeatToken(int seat, Transform token)
+        {
+            if (seat < 0 || seat >= seatTokenTransforms.Length) return;
+            seatTokenTransforms[seat] = token;
+            if (token != null && seatNodes[seat] == null) seatNodes[seat] = StartingNode;
+        }
+
+        public Node SeatNode(int seat) => seat >= 0 && seat < seatNodes.Length ? seatNodes[seat] : null;
+
+        /// <summary>Square number of a node: steps from the start (start = 0, home = 100).</summary>
+        int SquareOf(Node node)
+        {
+            if (node == null) return 0;
+            if (squareOfNode.Count == 0)
+            {
+                int i = 0;
+                for (Node n = StartingNode; n != null && i <= 200; n = n.GetNextNode(), i++)
+                    if (!squareOfNode.ContainsKey(n)) squareOfNode[n] = i;
+            }
+            return squareOfNode.TryGetValue(node, out int square) ? square : 0;
+        }
+
+        /// <summary>Server: every token on the start square when the match begins.</summary>
+        public void ServerPlaceSeatTokensAtStart()
+        {
+            for (int s = 0; s < seatTokenTransforms.Length; s++)
+            {
+                if (seatTokenTransforms[s] == null) continue;
+                seatNodes[s] = StartingNode;
+                var t = seatTokenTransforms[s];
+                t.position = new Vector3(StartingNode.transform.position.x, StartingNode.transform.position.y, t.position.z);
+            }
+            ServerLayoutSeatTokens();
+        }
+
+        /// <summary>Server: tokens that share a square stand side by side (2) or in a 2×2 grid (3–4), shrunk.</summary>
+        public void ServerLayoutSeatTokens()
+        {
+            var groups = new Dictionary<Node, List<int>>();
+            for (int s = 0; s < seatTokenTransforms.Length; s++)
+            {
+                if (seatTokenTransforms[s] == null || seatNodes[s] == null) continue;
+                if (!groups.TryGetValue(seatNodes[s], out var list)) groups[seatNodes[s]] = list = new List<int>();
+                list.Add(s);
+            }
+            float d = Mathf.Abs(yShrinkOffset) > 0.0001f ? Mathf.Abs(yShrinkOffset) : 0.15f;
+            foreach (var pair in groups)
+            {
+                Vector3 c = pair.Key.transform.position;
+                var seats = pair.Value;
+                for (int i = 0; i < seats.Count; i++)
+                {
+                    var t = seatTokenTransforms[seats[i]];
+                    Vector2 offset = Vector2.zero;
+                    if (seats.Count == 2) offset = new Vector2(i == 0 ? -d : d, 0f);
+                    else if (seats.Count > 2) offset = new Vector2(i % 2 == 0 ? -d : d, i < 2 ? d : -d);
+                    t.DOScale(seats.Count > 1 ? ShrinkScale : Vector3.one, 0.5f);
+                    t.DOMove(new Vector3(c.x + offset.x, c.y + offset.y, t.position.z), 0.5f);
+                }
+            }
+        }
+
+        /// <summary>Server: walk the seat's token by the server's roll (exact roll to 100), then a snake or ladder, then
+        /// the next seat's turn. Reaching 100 ends the match.</summary>
+        IEnumerator MoveSeatToken(string playerId, int roll)
+        {
+            yield return new WaitForSeconds(2f);
+            int seat = MatchSeats.Current.SeatOf(playerId);
+            Transform token = seat >= 0 ? seatTokenTransforms[seat] : null;
+            Node node = SeatNode(seat);
+            if (token == null || node == null)
+            {
+                SwitchTurn();
+                yield break;
+            }
+            string from = node.name;
+            var path = new List<Vector3>();
+            float z = token.position.z;
+            bool overshoot = false;
+            for (int i = 0; i < roll; i++)
+            {
+                if (node == EndNode) { overshoot = true; break; }
+                Node next = node.GetNextNode();
+                if (next == null) { overshoot = true; break; }
+                node = next;
+                path.Add(new Vector3(node.transform.position.x, node.transform.position.y, z));
+            }
+            MatchFlow.Log("Snake & Ladder", overshoot
+                ? $"{MatchFlow.Who(playerId)} rolled a {roll} — {from} + {roll} overshoots 100, no move"
+                : $"{MatchFlow.Who(playerId)} rolled a {roll} — {from} → {node.name}");
+            if (overshoot || path.Count == 0)
+            {
+                SwitchTurn();
+                yield break;
+            }
+            token.DOScale(Vector3.one, 0.2f);
+            Node landed = node;
+            token.DOPath(path.ToArray(), DurationToNextNode * path.Count, PathType.Linear).SetEase(Ease.Linear).OnComplete(() =>
+            {
+                seatNodes[seat] = landed;
+                if (landed == EndNode)
+                {
+                    SnakeMirrorNetworkManager.Instance.ServerSeatMoved(seat, SquareOf(landed));
+                    MatchFlow.Log("Snake & Ladder", $"{MatchFlow.Who(playerId)} reached 100!");
+                    SnakeMirrorNetworkManager.Instance.ServerCompleteMove();
+                    SnakeMirrorNetworkManager.Instance.ServerDeclareBoardWinner(playerId);
+                    return;
+                }
+                SeatTransition(seat, playerId, token);
+            });
+        }
+
+        void SeatTransition(int seat, string playerId, Transform token)
+        {
+            Node node = seatNodes[seat];
+            foreach (var entry in Environment.ListOfSnakesAndLadder)
+            {
+                if (entry.TriggerNode != node) continue;
+                MatchFlow.Log("Snake & Ladder", (entry.type == SnakesAndLadderEntry.Type.Ladder
+                    ? $"{MatchFlow.Who(playerId)} climbed a ladder "
+                    : $"{MatchFlow.Who(playerId)} bitten by a snake ")
+                    + $"{(entry.TriggerNode != null ? entry.TriggerNode.name : "?")} → {(entry.TargetNode != null ? entry.TargetNode.name : "?")}");
+                TweenCallback done = () =>
+                {
+                    seatNodes[seat] = entry.TargetNode;
+                    FinishSeatMove(seat);
+                };
+                if (token == null) { done(); return; }
+                if (entry.PathPoints.Count > 0)
+                {
+                    var points = new List<Vector3>();
+                    foreach (var point in entry.PathPoints) points.Add(new Vector3(point.position.x, point.position.y, token.position.z));
+                    token.DOPath(points.ToArray(), DurationToNextNode * points.Count, PathType.Linear).SetEase(Ease.Linear).OnComplete(done);
+                }
+                else
+                {
+                    Vector3 target = entry.TargetNode.transform.position;
+                    token.DOMove(new Vector3(target.x, target.y, token.position.z), DurationToNextNode * 3).SetEase(Ease.Linear).OnComplete(done);
+                }
+                return;
+            }
+            FinishSeatMove(seat);
+        }
+
+        void FinishSeatMove(int seat)
+        {
+            SnakeMirrorNetworkManager.Instance.ServerSeatMoved(seat, SquareOf(seatNodes[seat]));
+            ServerLayoutSeatTokens();
+            SwitchTurn();
+        }
+
+        // ── phones ──────────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>Phones: square of a seat's token as shown (nearest square), for the result panel.</summary>
+        public int SeatSquareOnScreen(int seat)
+        {
+            var net = SnakeMirrorNetworkManager.Instance;
+            if (net == null || seat < 0 || seat >= net.seatList.Count) return 0;
+            string id = net.seatList[seat].playerId;
+            SnakePlayerRef token = null;
+            foreach (var r in FindObjectsByType<SnakePlayerRef>(FindObjectsSortMode.None)) if (r.playerID == id) { token = r; break; }
+            if (token == null) return 0;
+            SquareOf(StartingNode);
+            Node best = null;
+            float bestDistance = float.MaxValue;
+            foreach (var n in squareOfNode.Keys)
+            {
+                float distance = ((Vector2)(n.transform.position - token.transform.position)).sqrMagnitude;
+                if (distance < bestDistance) { bestDistance = distance; best = n; }
+            }
+            return SquareOf(best);
+        }
+
+        void SetUpSeatPanels()
+        {
+            if (player1NameText != null)
+                player1NameText.text = staticVariables.UserProfiledata.user.first_name + " " + staticVariables.UserProfiledata.user.last_name;
+            if (player1AvatarImage != null && staticVariables.ProfilePicture != null)
+                player1AvatarImage.sprite = Sprite.Create(staticVariables.ProfilePicture,
+                    new Rect(0, 0, staticVariables.ProfilePicture.width, staticVariables.ProfilePicture.height), Vector2.zero);
+            // The second panel stands for one opponent; on an N-seat table the seat bar shows everyone instead.
+            foreach (var go in new GameObject[] { player2Arrow,
+                         player2Dice != null ? player2Dice.gameObject : null,
+                         Player2DiceButton != null ? Player2DiceButton.gameObject : null,
+                         Player2Button != null ? Player2Button.gameObject : null,
+                         Player2TimerImage != null ? Player2TimerImage.gameObject : null,
+                         player2NameText != null ? player2NameText.gameObject : null,
+                         player2AvatarImage != null ? player2AvatarImage.gameObject : null })
+                if (go != null) go.SetActive(false);
+            RefreshSeatBar();
+        }
+
+        /// <summary>Phones: seat <paramref name="seat"/> has the turn. My dice (the bottom panel) works only on my turn.</summary>
+        public void ApplySeatTurn(int seat)
+        {
+            if (myPlayerNumber < 0)
+            {
+                StartCoroutine(ApplySeatTurnWhenReady(seat));
+                return;
+            }
+            seatTurnOnScreen = seat;
+            bool mine = seat == myPlayerNumber;
+            count = 0;
+            Player1DiceButton.interactable = mine;
+            Player1Button.interactable = mine;
+            if (player1Arrow != null) player1Arrow.SetActive(mine);
+            Player1TimerImage.gameObject.SetActive(true);
+            Player1TimerImage.fillAmount = 0;
+            if (Player2TimerImage != null) Player2TimerImage.gameObject.SetActive(false);
+            RefreshSeatBar();
+        }
+
+        IEnumerator ApplySeatTurnWhenReady(int seat)
+        {
+            yield return new WaitUntil(() => myPlayerNumber >= 0);
+            ApplySeatTurn(seat);
+        }
+
+        // Seat bar (built in code: no scene change needed)
+        RectTransform seatBar;
+        readonly Image[] seatChips = new Image[4];
+        readonly TextMeshProUGUI[] seatNames = new TextMeshProUGUI[4];
+        readonly TextMeshProUGUI[] seatStates = new TextMeshProUGUI[4];
+
+        public void RefreshSeatBar()
+        {
+            var net = SnakeMirrorNetworkManager.Instance;
+            if (net == null || net.seatCount <= 2 || net.seatList.Count == 0) return;
+            if (seatBar == null) BuildSeatBar(net.seatList.Count);
+            foreach (var r in FindObjectsByType<SnakePlayerRef>(FindObjectsSortMode.None))
+            {
+                int s = net.MatchSeatIndex(r.playerID);
+                var sr = r.GetComponent<SpriteRenderer>();
+                if (s >= 0 && sr != null) sr.color = TokenTint(s);
+            }
+            for (int s = 0; s < net.seatList.Count && s < 4; s++)
+            {
+                var info = net.seatList[s];
+                bool turn = s == seatTurnOnScreen && info.state == SnakeMirrorNetworkManager.SeatPlaying;
+                bool me = s == myPlayerNumber;
+                seatChips[s].color = new Color(1f, 1f, 1f, turn ? 0.30f : 0.10f);
+                seatNames[s].text = (string.IsNullOrEmpty(info.name) ? "Player " + (s + 1) : info.name) + (me ? " (you)" : "");
+                seatStates[s].text = info.state == SnakeMirrorNetworkManager.SeatLeft ? "Left"
+                                   : info.state == SnakeMirrorNetworkManager.SeatAbandoned ? "Disconnected"
+                                   : info.state == SnakeMirrorNetworkManager.SeatEliminated ? "Out (missed turns)"
+                                   : !info.connected ? "Reconnecting…"
+                                   : turn ? (me ? "Your turn" : "Rolling…") : "";
+            }
+        }
+
+        void BuildSeatBar(int seats)
+        {
+            TMP_FontAsset font = challengeAmount != null ? challengeAmount.font : TMP_Settings.defaultFontAsset;
+            var root = new GameObject("SeatBar", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler));
+            var canvas = root.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 300;
+            var scaler = root.GetComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1080, 1920);
+            scaler.matchWidthOrHeight = 0.5f;
+            seatBar = root.GetComponent<RectTransform>();
+            float width = 1f / seats;
+            for (int s = 0; s < seats && s < 4; s++)
+            {
+                var chip = new GameObject("Seat" + (s + 1), typeof(RectTransform), typeof(Image));
+                chip.transform.SetParent(root.transform, false);
+                var rt = chip.GetComponent<RectTransform>();
+                rt.anchorMin = new Vector2(width * s + 0.01f, 0.905f);
+                rt.anchorMax = new Vector2(width * (s + 1) - 0.01f, 0.965f);
+                rt.offsetMin = rt.offsetMax = Vector2.zero;
+                seatChips[s] = chip.GetComponent<Image>();
+                seatChips[s].raycastTarget = false;
+
+                var dot = new GameObject("Colour", typeof(RectTransform), typeof(Image));
+                dot.transform.SetParent(chip.transform, false);
+                var drt = dot.GetComponent<RectTransform>();
+                drt.anchorMin = new Vector2(0.03f, 0.25f);
+                drt.anchorMax = new Vector2(0.11f, 0.75f);
+                drt.offsetMin = drt.offsetMax = Vector2.zero;
+                dot.GetComponent<Image>().color = SeatColours[s];
+                dot.GetComponent<Image>().raycastTarget = false;
+
+                seatNames[s] = SeatLabel(chip.transform, font, 26, new Vector2(0.14f, 0.45f), new Vector2(0.98f, 1f));
+                seatStates[s] = SeatLabel(chip.transform, font, 20, new Vector2(0.14f, 0f), new Vector2(0.98f, 0.5f));
+                seatStates[s].color = new Color(1f, 0.9f, 0.55f);
+            }
+        }
+
+        static TextMeshProUGUI SeatLabel(Transform parent, TMP_FontAsset font, float size, Vector2 min, Vector2 max)
+        {
+            var go = new GameObject("Text", typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var t = go.AddComponent<TextMeshProUGUI>();
+            if (font != null) t.font = font;
+            t.fontSize = size;
+            t.color = Color.white;
+            t.alignment = TextAlignmentOptions.MidlineLeft;
+            t.textWrappingMode = TextWrappingModes.NoWrap;
+            t.overflowMode = TextOverflowModes.Ellipsis;
+            t.raycastTarget = false;
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = min;
+            rt.anchorMax = max;
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
+            return t;
+        }
     }
 }

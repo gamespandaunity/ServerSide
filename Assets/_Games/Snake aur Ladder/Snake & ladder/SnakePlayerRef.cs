@@ -27,6 +27,20 @@ public class SnakePlayerRef : NetworkBehaviour
     {
         yield return new WaitUntil(() => !string.IsNullOrEmpty(playerID));
         IsMine = playerID == staticVariables.UserProfiledata.user._id.ToString();
+        if (SnakeMirrorNetworkManager.IsMultiSeatTable)
+        {
+            // N seats: my seat from the server's seat list; tokens are moved by the server only.
+            yield return new WaitUntil(() => SnakeMirrorNetworkManager.Instance.seatList.Count > 0);
+            int seat = SnakeMirrorNetworkManager.Instance.MatchSeatIndex(playerID);
+            var sr = GetComponent<SpriteRenderer>();
+            if (sr != null && seat >= 0) sr.color = GameControllerNew.TokenTint(seat);
+            if (IsMine)
+            {
+                GameControllerNew.myPlayerNumber = seat;
+                GameControllerNew.instance.SetupPlayerProfiles();
+            }
+            yield break;
+        }
         if (IsMine)
         {
             GameControllerNew.myPlayerNumber = NetworkGameManager.Instance.creatorData.playerId == playerID ? 0 : 1;
