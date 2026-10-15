@@ -172,7 +172,7 @@ public class LudoFourPlayerResult : MonoBehaviour
         t.fontSize = size;
         t.color = color;
         t.alignment = align;
-        t.enableWordWrapping = false;
+        t.textWrappingMode = TextWrappingModes.NoWrap;
         t.overflowMode = TextOverflowModes.Ellipsis;
         t.raycastTarget = false;
         return go.GetComponent<RectTransform>();
