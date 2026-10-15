@@ -5,7 +5,9 @@ using UnityEngine.UI;
 using TMPro;
 namespace Snake_Ladder
 {
-    public class SetPlayerInfo //: MonoBehaviourPun
+    // Still a component on Snake & Ladder's PlayerAvatar.prefab; Photon removal had dropped the base class, which
+    // Unity reports as "missing the class attribute ExtensionOfNativeClass".
+    public class SetPlayerInfo : MonoBehaviour //: MonoBehaviourPun
     {
         [SerializeField] TextMeshProUGUI PlayerName;
         [SerializeField] Image Avatar;
