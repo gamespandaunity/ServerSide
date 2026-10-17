@@ -89,5 +89,25 @@ namespace LudoGame.Tests
             MatchSeats.Override(t);
             Assert.IsTrue(MatchSeats.Active);
         }
+
+        [Test]
+        public void NegativeConnectionIdsCountAsConnected()
+        {
+            // The ids KCP gave the four players of room 014aafc4-ca0e-1 (17 Oct): three are negative.
+            var t = MatchSeats.Parse("4", "10498,10499,10215,10363");
+            Assert.AreEqual(3, t.Bind(-875039474, "10363", "Wasi khan1"));
+            Assert.AreEqual(0, t.Bind(-1061978277, "10498", "donald trump"));
+            Assert.AreEqual(2, t.Bind(-875039476, "10215", "Player Champ"));
+            Assert.AreEqual(1, t.Bind(1765878189, "10499", "Narendra Modi"));
+            Assert.AreEqual(4, t.ConnectedCount);
+            Assert.IsTrue(t.AllConnected);
+            Assert.AreEqual(0, t.SeatOfConnection(-1061978277));
+            Assert.IsTrue(t.IsConnected(3));
+
+            Assert.AreEqual(0, t.Unbind(-1061978277));
+            Assert.AreEqual(3, t.ConnectedCount);
+            Assert.IsFalse(t.IsConnected(0));
+            Assert.AreEqual(-1, t.SeatOfConnection(-1061978277));
+        }
     }
 }

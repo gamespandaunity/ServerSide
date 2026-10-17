@@ -26,8 +26,12 @@ public static class MatchSeats
             ids = seatIds;
             names = new string[seatIds.Length];
             connection = new int[seatIds.Length];
-            for (int s = 0; s < connection.Length; s++) connection[s] = -1;
+            for (int s = 0; s < connection.Length; s++) connection[s] = NoConnection;
         }
+
+        /// <summary>An empty seat. Not -1 or "below 0": KCP connection ids are hashes and are often negative (17 Oct: three
+        /// of four players had negative ids, so the table counted 1/4 connected and the match never started).</summary>
+        public const int NoConnection = int.MinValue;
 
         public int Count => ids.Length;
 
@@ -46,18 +50,19 @@ public static class MatchSeats
 
         public int SeatOfConnection(int connectionId)
         {
+            if (connectionId == NoConnection) return -1;
             for (int s = 0; s < connection.Length; s++) if (connection[s] == connectionId) return s;
             return -1;
         }
 
-        public bool IsConnected(int seat) => seat >= 0 && seat < connection.Length && connection[seat] >= 0;
+        public bool IsConnected(int seat) => seat >= 0 && seat < connection.Length && connection[seat] != NoConnection;
 
         public int ConnectedCount
         {
             get
             {
                 int n = 0;
-                for (int s = 0; s < connection.Length; s++) if (connection[s] >= 0) n++;
+                for (int s = 0; s < connection.Length; s++) if (connection[s] != NoConnection) n++;
                 return n;
             }
         }
@@ -71,7 +76,7 @@ public static class MatchSeats
             int seat = SeatOf(userId);
             if (seat < 0) return -1;
             int old = SeatOfConnection(connectionId);
-            if (old >= 0 && old != seat) connection[old] = -1;   // the same connection claimed another seat before
+            if (old >= 0 && old != seat) connection[old] = NoConnection;   // the same connection claimed another seat before
             connection[seat] = connectionId;
             if (!string.IsNullOrEmpty(name)) names[seat] = name;
             return seat;
@@ -81,7 +86,7 @@ public static class MatchSeats
         public int Unbind(int connectionId)
         {
             int seat = SeatOfConnection(connectionId);
-            if (seat >= 0) connection[seat] = -1;
+            if (seat >= 0) connection[seat] = NoConnection;
             return seat;
         }
     }
