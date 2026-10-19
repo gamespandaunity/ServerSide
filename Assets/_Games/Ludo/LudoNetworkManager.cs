@@ -520,6 +520,7 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
     const int SeatReconnectLimit = 5;         // same limit as the 2-player reconnect rule
     readonly Dictionary<int, Coroutine> seatDropTimers = new Dictionary<int, Coroutine>();
     readonly Dictionary<int, int> seatReconnects = new Dictionary<int, int>();
+    readonly HashSet<int> seatFirstSeen = new HashSet<int>();
     bool boardStarted;
 
     [Server]
@@ -562,8 +563,18 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
         if (seatDropTimers.TryGetValue(seat, out Coroutine timer) && timer != null) StopCoroutine(timer);
         bool wasDropped = seatDropTimers.Remove(seat);
         ServerSetSeat(seat, connected: true);
+        bool first = seatFirstSeen.Add(seat);   // before or after the start: either way not a reconnect
         if (!boardStarted) return;
 
+        // A seat's first connection is not a reconnect. Every phone's first one after the board started was counted
+        // as "reconnect 1, no drop seen" (QA 19 Oct), so the limit hit at the 4th real reconnect. A real one can also
+        // come with no drop seen (the old connection had not timed out yet), so only the first is skipped.
+        if (first)
+        {
+            MatchFlow.Log("Ludo", $"{FlowName(seat)} connected");
+            if (GameGUIController.insta != null && board != null) ServerPublishBoard();
+            return;
+        }
         int n = seatReconnects.TryGetValue(seat, out int c) ? c + 1 : 1;
         seatReconnects[seat] = n;
         MatchFlow.Log("Ludo", $"{FlowName(seat)} is back (reconnect {n}{(wasDropped ? "" : ", no drop seen")})");
