@@ -28,10 +28,13 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
 
     private Coroutine countdownCoroutine;
 
+    // 15 minutes for 2 players; a table of 3-4 gets 25 (QA 19 Oct: 15 minutes was too short for 4 players).
+    static int MatchSeconds => MatchSeats.Active && MatchSeats.Current.Count > 2 ? 25 * 60 : 15 * 60;
+
     [Server]
     private IEnumerator ServerCountdown()
     {
-        remainingTime = 900;
+        remainingTime = MatchSeconds;
         Debug.Log("Server Countdown Started." + remainingTime);
         while (remainingTime > 0)
         {
@@ -54,7 +57,7 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
 
         //    yield return new WaitForSeconds(1f);
         //}
-        MatchFlow.Log("Ludo", "match timer ran out (15:00) — winner by tokens home");
+        MatchFlow.Log("Ludo", $"match timer ran out ({MatchSeconds / 60}:00) — winner by tokens home");
         if (serverAuthority && board != null)
         {
             ServerTimeOver();
@@ -160,7 +163,7 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
                     if (countdownCoroutine != null)
                         StopCoroutine(countdownCoroutine);
                     countdownCoroutine = StartCoroutine(ServerCountdown());
-                    MatchFlow.Log("Ludo", $"match timer started (15:00) — {GameGUIController.FlowWho(0)} vs {GameGUIController.FlowWho(1)}");
+                    MatchFlow.Log("Ludo", $"match timer started ({MatchSeconds / 60}:00) — {GameGUIController.FlowWho(0)} vs {GameGUIController.FlowWho(1)}");
                 });
             });
         }
@@ -190,6 +193,7 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
 
     const float TurnSeconds = 24f;          // the phone's own turn bar is 20 s; the server waits a little longer
     const float AfterDiceSeconds = 1.6f;    // dice animation (0.6 s) + the 1 s the phone waits before passing
+    const float MoveSecondsPerSquare = 0.13f;   // LudoPawnController.singlePathSpeed
 
     LudoServerBoard board;
     int creatorPl;                          // creator's index in the phones' playerObjects (sorted by user id)
@@ -342,8 +346,9 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
             ServerWin(pl, "all 4 tokens home");
             return;
         }
-        // The phone animates step by step (MoveBySteps), then runs its own extra-roll / turn-end.
-        float moveSeconds = 1f + steps * 0.35f;
+        // The phone animates step by step (MoveBySteps: 0.13 s a square), then runs its own extra-roll / turn-end.
+        // Was 1 + 0.35 a square and another 1 s before the turn passed: up to 4 s of nothing after a 6 (QA 19 Oct).
+        float moveSeconds = 0.4f + steps * MoveSecondsPerSquare;
         if (r.ExtraRoll)
         {
             MatchFlow.Log("Ludo", $"{FlowName(pl)} rolls again ({(r.Captured >= 0 ? "capture" : r.ReachedHome ? "token home" : "rolled a 6")})");
@@ -351,7 +356,7 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
         }
         else
         {
-            ServerPassTurn(moveSeconds + 1f);
+            ServerPassTurn(moveSeconds + 0.3f);
         }
     }
 
@@ -488,6 +493,11 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
     // once, when one seat is left playing (rule A: that seat wins) or someone gets all 4 tokens home.
 
     public const int SeatPlaying = 0, SeatFinished = 1, SeatLeft = 2, SeatAbandoned = 3;
+    /// <summary>Out for reconnecting too often (<see cref="SeatReconnectLimit"/>); SeatAbandoned is the 30 s drop.</summary>
+    public const int SeatKicked = 4;
+
+    /// <summary>The seat no longer plays: it left, dropped for too long, or reconnected too often.</summary>
+    public static bool IsOut(int state) => state == SeatLeft || state == SeatAbandoned || state == SeatKicked;
 
     [System.Serializable]
     public struct SeatInfo
@@ -558,7 +568,7 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
         seatReconnects[seat] = n;
         MatchFlow.Log("Ludo", $"{FlowName(seat)} is back (reconnect {n}{(wasDropped ? "" : ", no drop seen")})");
         if (n >= SeatReconnectLimit)
-            ServerSeatGone(seat, SeatAbandoned, $"reconnected {n} times");
+            ServerSeatGone(seat, SeatKicked, $"reconnected {n} times");
         else if (GameGUIController.insta != null && board != null)
             ServerPublishBoard();   // the returning phone asks for ReconnectGame and gets the server board
     }
@@ -601,7 +611,7 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
         board.Leave(seat);
         ServerSetSeat(seat, state: state);
         RpcSeatState(seat, state);
-        MatchFlow.Log("Ludo", $"{FlowName(seat)} {why} — {(state == SeatLeft ? "left" : "abandoned")}, tokens back to base ({board.PlayingCount} still playing)");
+        MatchFlow.Log("Ludo", $"{FlowName(seat)} {why} — {(state == SeatLeft ? "left" : state == SeatKicked ? "removed" : "abandoned")}, tokens back to base ({board.PlayingCount} still playing)");
         ServerPublishBoard();
 
         if (board.PlayingCount == 1)

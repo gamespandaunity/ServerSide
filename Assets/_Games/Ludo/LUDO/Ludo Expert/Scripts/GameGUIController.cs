@@ -1658,7 +1658,7 @@ public class GameGUIController : NetworkBehaviour
     public void ApplySeatState(int seat, int state)
     {
         if (!LudoNetworkManager.IsMultiSeat || playerObjects == null || seat < 0 || seat >= playerObjects.Count) return;
-        if (state == LudoNetworkManager.SeatLeft || state == LudoNetworkManager.SeatAbandoned)
+        if (LudoNetworkManager.IsOut(state))
             setPlayerDisconnected(seat);
     }
 

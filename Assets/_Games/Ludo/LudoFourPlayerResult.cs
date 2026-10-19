@@ -25,7 +25,7 @@ public static class LudoFourPlayerResult
                     if (p >= LudoServerBoard.Home) home++;
                     if (p > 0) progress += p;
                 }
-            bool gone = info.state == LudoNetworkManager.SeatLeft || info.state == LudoNetworkManager.SeatAbandoned;
+            bool gone = LudoNetworkManager.IsOut(info.state);
             rows.Add((new MultiSeatResult.Row
             {
                 seat = s,
@@ -34,7 +34,8 @@ public static class LudoFourPlayerResult
                 detail = $"{home}/4 home",
                 state = info.playerId == winnerId ? "winner"
                       : info.state == LudoNetworkManager.SeatLeft ? "left"
-                      : info.state == LudoNetworkManager.SeatAbandoned ? "disconnected" : "playing",
+                      : info.state == LudoNetworkManager.SeatAbandoned ? "disconnected"
+                      : info.state == LudoNetworkManager.SeatKicked ? "removed" : "playing",
             }, home, progress, gone));
         }
         rows.Sort((a, b) =>
