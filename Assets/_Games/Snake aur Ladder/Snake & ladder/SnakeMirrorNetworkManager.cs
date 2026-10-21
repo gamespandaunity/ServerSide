@@ -93,10 +93,18 @@ namespace Snake_Ladder
         // 10 minutes for 2 players; a table of 3-4 gets 20 (QA 21 Oct: 10 minutes was too short for 4 players).
         static int MatchSeconds => MatchSeats.Active && MatchSeats.Current.Count > 2 ? 20 * 60 : 10 * 60;
 
+        // The API stops a match server 25 minutes after it started, result or not. Waiting for the seats and the pauses
+        // below come on top of the clock, so it could still be running then (as 4-player Ludo's did, QA 22 Oct: board
+        // frozen, no winner reported). The clock ends at least 2 minutes before that, pauses included.
+        const float ServerLifetimeSeconds = 25 * 60, LifetimeMarginSeconds = 120;
+
+        /// <summary>Seconds of server life left for the match clock (measured from this server's start).</summary>
+        static int LifetimeLeft => Mathf.Max(0, Mathf.FloorToInt(ServerLifetimeSeconds - LifetimeMarginSeconds - Time.realtimeSinceStartup));
+
         [Server]
         private IEnumerator ServerCountdown()
         {
-            remainingTime = MatchSeconds;
+            remainingTime = Mathf.Min(MatchSeconds, LifetimeLeft);
             Debug.Log("Server Countdown Started." + remainingTime);
 
             //while (remainingTime > 0)
@@ -112,14 +120,16 @@ namespace Snake_Ladder
                 // players are present again before ticking. Without this, the timer keeps
                 // draining while one side is in the reconnect window and can end the game
                 // even though the disconnected player still has time to come back.
-                while (IsMultiSeatTable
-                       ? MatchSeats.Current.ConnectedCount == 0
-                       : NetworkGameManager.Instance != null && NetworkGameManager.Instance.currentPlayerCount < 2)
+                // ...but never past the server's lifetime: a pause eats into the clock once the end of that is near.
+                while ((IsMultiSeatTable
+                        ? MatchSeats.Current.ConnectedCount == 0
+                        : NetworkGameManager.Instance != null && NetworkGameManager.Instance.currentPlayerCount < 2)
+                       && LifetimeLeft > remainingTime)
                 {
                     yield return new WaitForSeconds(0.5f);
                 }
 
-                remainingTime--; // SyncVar updates all clients automatically
+                remainingTime = Mathf.Min(remainingTime - 1, LifetimeLeft); // SyncVar updates all clients automatically
                 yield return new WaitForSeconds(1f);
             }
             // The overall game clock never selects a winner by token position/score.
