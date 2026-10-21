@@ -31,10 +31,19 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
     // 15 minutes for 2 players; a table of 3-4 gets 25 (QA 19 Oct: 15 minutes was too short for 4 players).
     static int MatchSeconds => MatchSeats.Active && MatchSeats.Current.Count > 2 ? 25 * 60 : 15 * 60;
 
+    // The API stops a match server 25 minutes after it started (MatchServerApi), result or not. The clock must run out
+    // before that, with time left to send the result (MatchServerApi.ResultDelaySeconds) - QA 22 Oct: a 4-player
+    // clock of 25 minutes that only started once all seats had joined never reached 0; the server was stopped first,
+    // the phones sat on the board and no winner was reported (everyone was charged).
+    const float ServerLifetimeSeconds = 25 * 60, LifetimeMarginSeconds = 120;
+
+    /// <summary>Seconds of server life left for the match clock (measured from this server's start).</summary>
+    static int LifetimeLeft => Mathf.Max(0, Mathf.FloorToInt(ServerLifetimeSeconds - LifetimeMarginSeconds - Time.realtimeSinceStartup));
+
     [Server]
     private IEnumerator ServerCountdown()
     {
-        remainingTime = MatchSeconds;
+        remainingTime = Mathf.Min(MatchSeconds, LifetimeLeft);
         Debug.Log("Server Countdown Started." + remainingTime);
         while (remainingTime > 0)
         {
@@ -42,12 +51,13 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
             // players are present again before ticking. Without this, the timer keeps
             // draining while one side is in the reconnect window and can end the game
             // even though the disconnected player still has time to come back.
-            while (TableShort())
+            // ...but never past the server's lifetime: a pause eats into the clock once the end of that is near.
+            while (TableShort() && LifetimeLeft > remainingTime)
             {
                 yield return new WaitForSeconds(0.5f);
             }
 
-            remainingTime--; // SyncVar updates all clients automatically
+            remainingTime = Mathf.Min(remainingTime - 1, LifetimeLeft); // SyncVar updates all clients automatically
             yield return new WaitForSeconds(1f);
         }
         //while (remainingTime > 0)
@@ -57,7 +67,7 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
 
         //    yield return new WaitForSeconds(1f);
         //}
-        MatchFlow.Log("Ludo", $"match timer ran out ({MatchSeconds / 60}:00) — winner by tokens home");
+        MatchFlow.Log("Ludo", $"match timer ran out ({MatchSeconds / 60}:00 or the server's lifetime) — winner by tokens home");
         if (serverAuthority && board != null)
         {
             ServerTimeOver();
@@ -145,14 +155,14 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
         if (NetworkServer.active)
         {
             Debug.Log("🔄 Waiting for players to connect...");
-            this.DelayUntil(() => NetworkServer.connections.Count >= SeatCount, () =>
+            this.DelayUntil(() => NetworkServer.connections.Count >= SeatCount || JoinWindowOver, () =>
             {
 
                 Debug.Log($"✅ {NetworkServer.connections.Count} players connected, setting players...");
                 GameGUIController.FlowMatchStarted();
                 if (ServerAuthorityEnabled)
                     this.DelayUntil(() => MatchSeats.Active
-                                          ? MatchSeats.Current.AllConnected
+                                          ? MatchSeats.Current.AllConnected || JoinWindowOver
                                           : NetworkGameManager.Instance != null
                                             && !string.IsNullOrEmpty(NetworkGameManager.Instance.creatorData.playerId)
                                             && !string.IsNullOrEmpty(NetworkGameManager.Instance.joinerData.playerId),
@@ -163,7 +173,7 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
                     if (countdownCoroutine != null)
                         StopCoroutine(countdownCoroutine);
                     countdownCoroutine = StartCoroutine(ServerCountdown());
-                    MatchFlow.Log("Ludo", $"match timer started ({MatchSeconds / 60}:00) — {GameGUIController.FlowWho(0)} vs {GameGUIController.FlowWho(1)}");
+                    MatchFlow.Log("Ludo", $"match timer started ({remainingTime / 60}:{remainingTime % 60:00}) — {GameGUIController.FlowWho(0)} vs {GameGUIController.FlowWho(1)}");
                 });
             });
         }
@@ -222,6 +232,11 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
         if (MatchSeats.Active)
             for (int s = 0; s < board.Seats; s++) ServerSetSeat(s, connected: MatchSeats.Current.IsConnected(s));
         ServerPublishBoard();
+        if (MatchSeats.Active)
+            for (int s = 0; s < board.Seats; s++)
+                if (!seatFirstSeen.Contains(s))
+                    ServerSeatGone(s, SeatAbandoned, $"did not join within {JoinWindowSeconds:0} s");
+        if (matchOver) return;   // only one player ever joined: they won
         turnDeadline = Time.time + TurnSeconds + 10f;   // first turn: the phones are still setting up
         if (turnClock != null) StopCoroutine(turnClock);
         turnClock = StartCoroutine(ServerTurnClock());
@@ -517,6 +532,16 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
     public static bool IsMultiSeat => instance != null && instance.seatCount > 2;
 
     const float SeatDropGraceSeconds = 30f;   // same grace as the 2-player abandon watch
+
+    // A seat that never connects (QA 22 Oct: a phone that came in ~30 s late sat on a blank screen; one that never
+    // comes kept the others waiting until the API stopped the server). Once the first player is in, the others have
+    // this long; then the match starts with whoever is there (at least 2) and the missing seats are out
+    // (SeatAbandoned) - a phone arriving after that is told so (ShowRemoved) instead of waiting on an empty board.
+    const float JoinWindowSeconds = 45f;
+    float firstJoinAt = -1;
+
+    bool JoinWindowOver => MatchSeats.Active && firstJoinAt >= 0 && MatchSeats.Current.ConnectedCount >= 2 &&
+                           Time.realtimeSinceStartup - firstJoinAt > JoinWindowSeconds;
     const int SeatReconnectLimit = 5;         // same limit as the 2-player reconnect rule
     readonly Dictionary<int, Coroutine> seatDropTimers = new Dictionary<int, Coroutine>();
     readonly Dictionary<int, int> seatReconnects = new Dictionary<int, int>();
@@ -564,6 +589,7 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
         bool wasDropped = seatDropTimers.Remove(seat);
         ServerSetSeat(seat, connected: true);
         bool first = seatFirstSeen.Add(seat);   // before or after the start: either way not a reconnect
+        if (firstJoinAt < 0) firstJoinAt = Time.realtimeSinceStartup;
         if (!boardStarted) return;
 
         // A seat's first connection is not a reconnect. Every phone's first one after the board started was counted
