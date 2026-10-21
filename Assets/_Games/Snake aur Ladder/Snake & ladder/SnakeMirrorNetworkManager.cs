@@ -90,10 +90,13 @@ namespace Snake_Ladder
 
         private Coroutine countdownCoroutine;
 
+        // 10 minutes for 2 players; a table of 3-4 gets 20 (QA 21 Oct: 10 minutes was too short for 4 players).
+        static int MatchSeconds => MatchSeats.Active && MatchSeats.Current.Count > 2 ? 20 * 60 : 10 * 60;
+
         [Server]
         private IEnumerator ServerCountdown()
         {
-            remainingTime = 600;
+            remainingTime = MatchSeconds;
             Debug.Log("Server Countdown Started." + remainingTime);
 
             //while (remainingTime > 0)
@@ -1284,6 +1287,11 @@ namespace Snake_Ladder
         // 100 wins, at time-out the furthest token wins. One result, through ServerSubmitWinner.
 
         public const int SeatPlaying = 0, SeatLeft = 1, SeatAbandoned = 2, SeatEliminated = 3;
+        /// <summary>Out for reconnecting too often (<see cref="SeatReconnectLimit"/>); SeatAbandoned is the 30 s drop.</summary>
+        public const int SeatKicked = 4;
+
+        /// <summary>The seat no longer plays (left, away too long, out on missed turns, reconnected too often).</summary>
+        public static bool IsOut(int state) => state != SeatPlaying;
 
         [System.Serializable]
         public struct SnakeSeatInfo
@@ -1305,6 +1313,7 @@ namespace Snake_Ladder
 
         const float SeatDropGraceSeconds = 30f;
         const int SeatReconnectLimit = 5;
+        readonly HashSet<int> seatFirstSeen = new HashSet<int>();
         SnakeSeatRules seatRules;
         readonly GameObject[] seatTokens = new GameObject[4];
         readonly Dictionary<int, Coroutine> seatDropTimers = new Dictionary<int, Coroutine>();
@@ -1433,7 +1442,8 @@ namespace Snake_Ladder
                 return;
             }
             SnakeSeatRules.State rule = state == SeatLeft ? SnakeSeatRules.State.Left
-                                      : state == SeatAbandoned ? SnakeSeatRules.State.Abandoned : SnakeSeatRules.State.Eliminated;
+                                      : state == SeatAbandoned || state == SeatKicked ? SnakeSeatRules.State.Abandoned
+                                      : SnakeSeatRules.State.Eliminated;
             if (!alreadyOut && !seatRules.Out(seat, rule)) return;
 
             bool hadTurn = currentTurnPlayerNumber == seat;
@@ -1463,11 +1473,13 @@ namespace Snake_Ladder
             if (seatDropTimers.TryGetValue(seat, out Coroutine timer) && timer != null) StopCoroutine(timer);
             bool wasDropped = seatDropTimers.Remove(seat);
             ServerSetSeat(seat, connected: true);
+            bool first = seatFirstSeen.Add(seat);   // a seat's first connection is not a reconnect (QA 19-21 Oct)
             if (!hasGameStarted || seatRules == null || !seatRules.IsPlaying(seat)) return;
+            if (first) return;
             int n = seatReconnects.TryGetValue(seat, out int c) ? c + 1 : 1;
             seatReconnects[seat] = n;
             MatchFlow.Log("Snake & Ladder", $"{FlowWho(seat)} is back (reconnect {n}{(wasDropped ? "" : ", no drop seen")})");
-            if (n >= SeatReconnectLimit) ServerSeatOut(seat, SeatAbandoned, $"reconnected {n} times");
+            if (n >= SeatReconnectLimit) ServerSeatOut(seat, SeatKicked, $"reconnected {n} times");
         }
 
         public void ServerSeatDisconnected(int seat)
@@ -1516,6 +1528,7 @@ namespace Snake_Ladder
                     state = info.playerId == winnerId ? "winner"
                           : info.state == SeatLeft ? "left"
                           : info.state == SeatAbandoned ? "disconnected"
+                          : info.state == SeatKicked ? "removed (reconnects)"
                           : info.state == SeatEliminated ? "out (missed turns)" : "playing",
                 }, square, gone));
             }
