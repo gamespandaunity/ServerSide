@@ -64,7 +64,9 @@ public static class MatchServerApi
     {
         if (!IsMatchServer) return false;
         request.SetRequestHeader(MatchKeyHeader, matchKey);
-        if (!string.IsNullOrEmpty(transactionId) && path != null && path.StartsWith("/match-server/", StringComparison.Ordinal))
+        // Table games (Teen Patti 5 / Poker 6): every /casinos call carries the table's transaction too (22 Oct contract).
+        if (!string.IsNullOrEmpty(transactionId) && path != null &&
+            (path.StartsWith("/match-server/", StringComparison.Ordinal) || path.StartsWith("/casinos/", StringComparison.Ordinal)))
             request.SetRequestHeader(MatchTransactionHeader, transactionId);
         return true;
     }
