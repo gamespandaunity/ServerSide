@@ -258,6 +258,8 @@ public class MirrorNetwork : NetworkManager
     public override void OnPlayerReconnected(NetworkConnectionToClient conn)
     {
         base.OnPlayerReconnected(conn);
+        // Teen Patti 5 / Poker 6 table: the table keeps the seat (TableRunner); nobody wins anything by a reconnect.
+        if (TableEnv.IsTable) return;
         // More than 2 players: CmdSetPlayerData binds the seat again and LudoNetworkManager counts the reconnects
         // per seat. The rest of this method is the 2-player rule ("the other player wins").
         if (MatchSeats.Active) return;
@@ -380,6 +382,20 @@ public class MirrorNetwork : NetworkManager
     {
         base.OnServerAddPlayer(conn);
         NetworkGameManager.Instance.currentPlayerCount = numPlayers;
+        // Teen Patti 5 / Poker 6 table: players come and go; the table scene opens with the first one and the table
+        // (TableServer) seats each player from their ticket. None of the 2-player start below applies.
+        if (TableEnv.IsTable)
+        {
+            hasJoinedGame = true;
+            string tableScene = TableEnv.IsPoker ? "PokerTable" : "TeenPattiTable";
+            string active = SceneManager.GetActiveScene().name;
+            if (active != tableScene && (active == "Home" || active == "LoadingScene"))
+            {
+                Debug.Log($"[Table] first player in - opening {tableScene}");
+                ServerChangeScene(tableScene);
+            }
+            return;
+        }
         NetworkGameManager.Instance.ServerCancelAbandonWatch("a player joined or rejoined");
         Debug.Log("Changing Scene~!" + numPlayers);
         // 2 players, or every seat of a bigger table (MatchSeats).
@@ -617,6 +633,14 @@ public class MirrorNetwork : NetworkManager
     public override void OnServerDisconnect(NetworkConnectionToClient conn)
     {
         "Disconnected".Show();
+        if (TableEnv.IsTable)
+        {
+            // The seat stays; the table stands the player up if they stay away (TableSeats). No match result.
+            if (NetworkServer.active && TableServer.Instance != null) TableServer.Instance.Disconnected(conn);
+            base.OnServerDisconnect(conn);
+            NetworkGameManager.Instance.currentPlayerCount = numPlayers;
+            return;
+        }
         // Read before base.OnServerDisconnect destroys the player object: the abandon watch needs who left, and when.
         string droppedPlayerId = conn != null && conn.identity != null && conn.identity.TryGetComponent<MirrorPlayerPrefab>(out var droppedPlayer)
             ? droppedPlayer.playerId : null;

@@ -148,6 +148,65 @@ public static class ServerConnection
         }
 
     }
+    /// <summary>
+    /// One request for the Player API, in any verb, whose FAILURE callback gets the response
+    /// BODY rather than "HTTP/1.1 400 Bad Request".
+    ///
+    /// That matters because the Player API documents its refusals as HTTP 400 with a sentence
+    /// worth reading - "agent is not available in your country", "gold_coin must be a whole
+    /// number", "idempotency_key is required" - and every other method here throws the body
+    /// away on a non-2xx, so those never reached the player. Existing callers are left alone;
+    /// this is additive, and only the agent module uses it.
+    ///
+    /// A transport failure with no body still hands over UnityWebRequest.error, so a caller can
+    /// tell "the server said no, and here is why" from "the request never landed".
+    /// </summary>
+    /// <param name="method">GET, POST or DELETE.</param>
+    /// <param name="json">The request body, or null for GET/DELETE.</param>
+    public static IEnumerator PlayerApiRequest(string method, string url, string json,
+        Action<string> onSuccess = null, Action<string> onFailure = null)
+    {
+        if (staticVariables.isGuest || staticVariables.UserProfiledata == null ||
+            string.IsNullOrEmpty(staticVariables.UserProfiledata.access_token))
+        {
+            // isGuest short-circuits every other method here without ever calling back, which
+            // strands a loading overlay. Say so instead.
+            onFailure?.Invoke("Please sign in to continue.");
+            yield break;
+        }
+
+        using (UnityWebRequest webRequest = new UnityWebRequest(Main_URL() + url, method))
+        {
+            webRequest.timeout = 30;
+            if (!string.IsNullOrEmpty(json))
+            {
+                webRequest.uploadHandler = new UploadHandlerRaw(System.Text.Encoding.UTF8.GetBytes(json));
+                webRequest.SetRequestHeader("Content-Type", "application/json");
+            }
+            webRequest.downloadHandler = new DownloadHandlerBuffer();
+            webRequest.SetRequestHeader("accept", "*/*");
+            if (staticVariables.UserProfiledata != null && !string.IsNullOrEmpty(staticVariables.UserProfiledata.access_token))
+                webRequest.SetRequestHeader("Authorization", "Bearer " + staticVariables.UserProfiledata.access_token);
+            AttachAppCheck(webRequest);
+
+            yield return webRequest.SendWebRequest();
+
+            string body = webRequest.downloadHandler != null ? webRequest.downloadHandler.text : null;
+            (method + " " + Main_URL() + url + " -> HTTP " + webRequest.responseCode).Show();
+
+            if (webRequest.responseCode == 401)
+            {
+                onFailure?.Invoke("Please sign in to continue.");
+                PlayerPrefs.DeleteKey("userModel");
+                if (!Utils.IsHeadless()) SceneRouter.LoadScene(1);
+                yield break;
+            }
+
+            if (webRequest.result == UnityWebRequest.Result.Success) onSuccess?.Invoke(body);
+            else onFailure?.Invoke(string.IsNullOrWhiteSpace(body) ? webRequest.error : body);
+        }
+    }
+
     public static IEnumerator DeleteApiRequest(string url, Action<string> onSuccess = null, Action<string> onFailure = null)
     {
         if (staticVariables.isAppCheckVerified && !staticVariables.isGuest)
