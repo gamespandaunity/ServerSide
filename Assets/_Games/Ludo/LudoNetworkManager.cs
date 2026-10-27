@@ -232,9 +232,12 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
         if (MatchSeats.Active)
             for (int s = 0; s < board.Seats; s++) ServerSetSeat(s, connected: MatchSeats.Current.IsConnected(s));
         ServerPublishBoard();
+        // Only a seat that is not connected now never came. seatFirstSeen fills from the Ludo scene's seat events, and
+        // phones that connected before the server changed to the Ludo scene are not in it yet: testing it here put
+        // three connected players out at the start and handed the 4th the win (Ludo 4P, 27 Oct, 77ec5602).
         if (MatchSeats.Active)
             for (int s = 0; s < board.Seats; s++)
-                if (!seatFirstSeen.Contains(s))
+                if (!MatchSeats.Current.IsConnected(s) && !seatFirstSeen.Contains(s))
                     ServerSeatGone(s, SeatAbandoned, $"did not join within {JoinWindowSeconds:0} s");
         if (matchOver) return;   // only one player ever joined: they won
         turnDeadline = Time.time + TurnSeconds + 10f;   // first turn: the phones are still setting up
