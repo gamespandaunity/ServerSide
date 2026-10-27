@@ -200,6 +200,10 @@ public class StickManager : NetworkBehaviour
             //StartCoroutine(CheckGameStatus());
             RpcSyncAllPlayerData(SnokerGameManager.currentTurn, SnokerGameManager.bBallInHand, SnokerNetwork.Instance._SnokerGameManager.ballIsStanding, SnokerNetwork.Instance._SnokerGameManager.bTossDone, SnokerGameManager.snookerRedPottedCount, (int)SnokerGameManager.snookerTargetBall, mainScript.foulInThisTurn);
             AssignStickAuthority();
+            // A reconnected phone reloads the scene with a fresh rack and used to keep it until the next turn change
+            // (27 Oct: black and cue ball in other places after a reconnect). The balls stand between shots, so the
+            // other phone's snap to the same positions changes nothing there.
+            if (SnokerNetwork.Instance._SnokerGameManager.ballIsStanding) RpcOnTurnChanged(BallsSnapshot());
         });
 
         // NextTurn(SnokerGameManager.currentTurn);
@@ -232,14 +236,26 @@ public class StickManager : NetworkBehaviour
 
         SnokerNetwork.Instance.NextTurn(nextTurn);
         AssignStickAuthority();
-        Vector3[] BallsPositons = new Vector3[SnokerNetwork.Instance._SnokerGameManager.ballsArray.Length];
-        int i = 0;
-        foreach (GameObject pos in SnokerNetwork.Instance._SnokerGameManager.ballsArray)
+        RpcOnTurnChanged(BallsSnapshot());
+    }
+
+    /// <summary>Below the table: where a potted ball goes in the snapshot (y below this = potted, on the phones).</summary>
+    public const float PottedBelowY = -10f;
+
+    // Every ball where the server has it. Potting is decided on the server only, and the phones never heard of it: a ball
+    // potted here stayed on their tables at the pocket (27 Oct emulator test). A potted ball is sent below the table, so
+    // even an app that does not know this rule shows it nowhere.
+    [Server]
+    Vector3[] BallsSnapshot()
+    {
+        var balls = SnokerNetwork.Instance._SnokerGameManager.ballsArray;
+        var positions = new Vector3[balls.Length];
+        for (int i = 0; i < balls.Length; i++)
         {
-            BallsPositons[i] = pos.transform.position;
-            i++;
+            Vector3 p = balls[i].transform.position;
+            positions[i] = balls[i].activeSelf ? p : new Vector3(p.x, PottedBelowY, p.z);
         }
-        RpcOnTurnChanged(BallsPositons);
+        return positions;
     }
     [ClientRpc]
     void RpcOnTurnChanged(Vector3[] ballspos)
