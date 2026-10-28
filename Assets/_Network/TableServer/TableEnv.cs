@@ -11,6 +11,7 @@ using System.Globalization;
 public static class TableEnv
 {
     public const int TeenPattiBoard = 3, PokerBoard = 8;
+    public const int TeenPattiTableGame = 60, PokerTableGame = 61;
 
     /// <summary>No hand starts this close to CloseAt (the backend refuses create-new-round then too).</summary>
     public static readonly TimeSpan NoNewHandBefore = TimeSpan.FromMinutes(3);
@@ -27,7 +28,13 @@ public static class TableEnv
         if (read) return;
         read = true;
         gameId = Int("GameId");
+        // The table's own game id (60 Teen Patti 5, 61 Poker 6) instead of the board it plays: the table then ran the
+        // 2-player scene with three people at it (28 Oct). Both mean the same table.
+        if (gameId == TeenPattiTableGame) gameId = TeenPattiBoard;
+        else if (gameId == PokerTableGame) gameId = PokerBoard;
         maxPlayers = Int("MaxPlayers");
+        if (maxPlayers <= 2 && (Int("GameId") == TeenPattiTableGame || Int("GameId") == PokerTableGame))
+            maxPlayers = Int("GameId") == PokerTableGame ? 6 : 5;
         tier = Env("Tier");
         boot = Long("Boot");
         smallBlind = Long("SmallBlind");
@@ -40,6 +47,9 @@ public static class TableEnv
         if (!DateTime.TryParse(Env("CloseAt"), CultureInfo.InvariantCulture,
                                DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out closeAt))
             closeAt = DateTime.MaxValue;
+        // Once per server: what the deployment said, so a table that came up as a 2-player match shows why.
+        UnityEngine.Debug.Log($"[TableEnv] GameId='{Env("GameId")}' MaxPlayers='{Env("MaxPlayers")}' Tier='{tier}' -> " +
+                              (maxPlayers > 2 && (gameId == TeenPattiBoard || gameId == PokerBoard) ? "table" : "2-player match"));
     }
 
     static string Env(string name)
