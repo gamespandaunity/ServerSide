@@ -296,11 +296,10 @@ public class MirrorNetwork : NetworkManager
             Debug.Log(reconnectingPlayerId + " = Recoonect Attpemt Overall :" + keyValuePairsPlayerReconnection[reconnectingPlayerId]);
             string winnerId = NetworkGameManager.Instance.joinerData.playerId == reconnectingPlayerId ? NetworkGameManager.Instance.creatorData.playerId : NetworkGameManager.Instance.joinerData.playerId;
 
-            // Snooker keeps its original 5-attempt limit; all other games declare the
-            // opponent the winner on the player's 3rd reconnect attempt.
-            bool isSnooker = StickManager.instance != null;
-            int reconnectAttempts = keyValuePairsPlayerReconnection[reconnectingPlayerId];
-            bool reconnectLimitReached = isSnooker ? reconnectAttempts > 6 : reconnectAttempts >= 5;
+            // The disconnection limit is AwayClock's now: Mirror calls this only for a second AddPlayer on the same
+            // connection (a scene reload), never for a phone that lost the network and came back on a new one, so the
+            // limit here was never reached in a real reconnect (QA 28 Oct). Every time away counts there instead.
+            bool reconnectLimitReached = false;
 
             string sceneNow = SceneManager.GetActiveScene().name;
             bool alreadySettled = NetworkGameManager.Instance != null && NetworkGameManager.Instance.ServerMatchAlreadySettled;
@@ -404,6 +403,7 @@ public class MirrorNetwork : NetworkManager
         {
             hasJoinedGame = true; // both players joined — reconnect logic now allowed
             NetworkGameManager.Instance.RpcShowWaitingPanel(false);
+            AwayClock.Back("player added again");
             this.DelayUntil(() => MatchSeats.Active
                 ? MatchSeats.Current.AllConnected
                 : !string.IsNullOrEmpty(NetworkGameManager.Instance.creatorData.playerId) && !string.IsNullOrEmpty(NetworkGameManager.Instance.joinerData.playerId), () =>
@@ -552,6 +552,9 @@ public class MirrorNetwork : NetworkManager
 
         base.OnServerConnect(conn);
 
+        // A player is away and a connection arrives: they are coming back (the phone now reloads the game scene).
+        if (hasJoinedGame && !TableEnv.IsTable && !MatchSeats.Active && numPlayers < 2) AwayClock.ConnectionArrived();
+
         // If someone connects, cancel any pending shutdown
         if (shutdownCoroutine != null)
         {
@@ -644,6 +647,15 @@ public class MirrorNetwork : NetworkManager
         // Read before base.OnServerDisconnect destroys the player object: the abandon watch needs who left, and when.
         string droppedPlayerId = conn != null && conn.identity != null && conn.identity.TryGetComponent<MirrorPlayerPrefab>(out var droppedPlayer)
             ? droppedPlayer.playerId : null;
+        // 2-player match: the away clock (it is usually running already, from 5 s of silence). A connection without a
+        // player that drops is a reconnect that did not make it.
+        if (NetworkServer.active && conn != null && !MatchSeats.Active)
+        {
+            string awayId = MatchFlow.IdOf(conn);
+            if (conn.identity == null) AwayClock.ReconnectFailed();
+            else if (!awayId.StartsWith("connection ")) AwayClock.Away(awayId, "connection dropped");
+            else if (!string.IsNullOrEmpty(droppedPlayerId)) AwayClock.Away(droppedPlayerId, "connection dropped");
+        }
         // Teen Patti settles per hand and had no drop handling at all: give the seat a grace period, then it quits.
         if (NetworkServer.active && TeenPattiNNetworkManager.instance != null)
             TeenPattiNNetworkManager.instance.ServerSeatDisconnected(conn);

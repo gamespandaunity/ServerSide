@@ -583,6 +583,18 @@ public class NetworkGameManager : NetworkBehaviour
     /// <summary>Casino tables settle per hand, not per match: no match-level result from the shared code.</summary>
     public static bool IsCasinoScene(string scene) => scene == "GameplayTeenPatti" || scene == "PokerGameplay";
 
+    /// <summary>
+    /// 2-player match scenes whose player who stays away loses on the server (abandon watch, AwayClock): the three
+    /// above plus Snooker, Ludo 2P and Snake 2P, which used to leave that to the waiting phone's own countdown (QA 28 Oct).
+    /// </summary>
+    public static bool IsTwoPlayerMatchScene(string scene)
+    {
+        return IsExplicitLeaveSettlementScene(scene)
+            || scene == "SnokkerMultiplayer"
+            || scene == "LudoGameScene"
+            || scene == "SnakeMultiplayer";
+    }
+
     /// <summary>The active scene is one of the three games this work is scoped to.</summary>
     private static bool IsScopedScene()
     {
@@ -867,6 +879,13 @@ public class NetworkGameManager : NetworkBehaviour
         ShowPausePanel(val);
     }
 
+    /// <summary>
+    /// The away clock (AwayClock): seconds until the away player loses, -1 when nobody is away; reconnecting = a new
+    /// connection is loading the game. Same signature in the app's copy, which counts its waiting panel down from it.
+    /// </summary>
+    [ClientRpc]
+    public void RpcAwayClock(float secondsLeft, bool reconnecting) { }
+
     // ─── Result ────────────────────────────────────────────────────────────────
 
     [Command(requiresAuthority = false)]
@@ -1038,6 +1057,7 @@ public class NetworkGameManager : NetworkBehaviour
         // match's "winner declared" flag outside the first three games, which silenced all disconnect relays).
         ExplicitLeaverId = null;
         _dropOrder.Clear();
+        AwayClock.Stop(newMatch: true);
 
         if (_checkGameStatusRoutine != null)
         {
@@ -1104,7 +1124,7 @@ public class NetworkGameManager : NetworkBehaviour
         }
         if (_serverMatchSettled || _disconnectWinnerDeclared) return;
         if (!MirrorNetwork.hasJoinedGame) return;
-        if (!IsExplicitLeaveSettlementScene(SceneManager.GetActiveScene().name)) return;
+        if (!IsTwoPlayerMatchScene(SceneManager.GetActiveScene().name)) return;
 
         if (_abandonWatchRoutine != null) StopCoroutine(_abandonWatchRoutine);
         _abandonWatchRoutine = StartCoroutine(AbandonWatch());
@@ -1131,7 +1151,14 @@ public class NetworkGameManager : NetworkBehaviour
 
     private IEnumerator AbandonWatch()
     {
-        yield return new WaitForSecondsRealtime(ABANDON_GRACE_SECONDS);
+        // The away clock started when the player went silent, usually 15 s before the transport dropped them: wait for
+        // the same seconds the waiting phone is counting down, not another 30 from the drop.
+        float until = Time.realtimeSinceStartup + (AwayClock.Running ? AwayClock.SecondsLeft : ABANDON_GRACE_SECONDS);
+        while (Time.realtimeSinceStartup < until) yield return new WaitForSecondsRealtime(0.25f);
+        // A phone that is reconnecting is reloading the game scene before its player is added: give it a little longer.
+        float hold = until + AwayClock.ReconnectHoldSeconds;
+        while (Time.realtimeSinceStartup < hold && currentPlayerCount < 2 && NetworkServer.connections.Count > 1)
+            yield return new WaitForSecondsRealtime(0.25f);
         _abandonWatchRoutine = null;
 
         // Something else decided the match while we were waiting.
@@ -1228,6 +1255,8 @@ public class NetworkGameManager : NetworkBehaviour
         _disconnectWinnerId = winnerId;
         _disconnectWinnerDeclared = true;
         _disconnectWinCause = cause;
+        AwayClock.Stop(newMatch: false);
+        RpcAwayClock(-1f, false);
         creatorData.Scores = 0;
         joinerData.Scores = 0;
         ApiAndRoomManager._instance.WinnerLossChallenge(_disconnectWinnerId);

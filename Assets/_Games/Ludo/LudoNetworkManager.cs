@@ -511,7 +511,7 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
     // once, when one seat is left playing (rule A: that seat wins) or someone gets all 4 tokens home.
 
     public const int SeatPlaying = 0, SeatFinished = 1, SeatLeft = 2, SeatAbandoned = 3;
-    /// <summary>Out for reconnecting too often (<see cref="SeatReconnectLimit"/>); SeatAbandoned is the 90 s drop.</summary>
+    /// <summary>Out for reconnecting too often (<see cref="SeatReconnectLimit"/>); SeatAbandoned is the 30 s drop.</summary>
     public const int SeatKicked = 4;
 
     /// <summary>The seat no longer plays: it left, dropped for too long, or reconnected too often.</summary>
@@ -534,9 +534,9 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
     /// <summary>This table has more than 2 seats (readable on phones and on the server).</summary>
     public static bool IsMultiSeat => instance != null && instance.seatCount > 2;
 
-    // 90 s, not the 2-player 30 s: a phone that was killed needs ~20-30 s to open again before MatchResume takes it back
-    // to this table (28 Oct: Alex came back on the board after the 30 s were up and was removed).
-    const float SeatDropGraceSeconds = 90f;
+    // 30 s, the same as 2 players: QA asked for a player away longer than that to be out (29 Oct), after a day at 90 s.
+    // A killed phone that takes longer to open again is out by the time MatchResume brings it back.
+    const float SeatDropGraceSeconds = 30f;
 
     // A seat that never connects (QA 22 Oct: a phone that came in ~30 s late sat on a blank screen; one that never
     // comes kept the others waiting until the API stopped the server). Once the first player is in, the others have

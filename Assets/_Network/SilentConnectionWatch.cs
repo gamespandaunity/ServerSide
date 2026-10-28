@@ -49,11 +49,13 @@ public class SilentConnectionWatch : MonoBehaviour
             {
                 Debug.Log($"[SilentWatch] conn {conn.connectionId} silent for {quiet:0.0} s - waiting panel for the other player");
                 changed = true;
+                AwayClock.Away(MatchFlow.IdOf(conn), $"silent {quiet:0} s");
             }
             else if (quiet <= SilentSeconds && silent.Remove(conn.connectionId))
             {
                 Debug.Log($"[SilentWatch] conn {conn.connectionId} is back - waiting panel off");
                 changed = true;
+                if (silent.Count == 0 && NetworkServer.connections.Count >= 2) AwayClock.Back("network back");
             }
         }
         // Connections that left meanwhile (the transport dropped them: the usual disconnect path takes over).
