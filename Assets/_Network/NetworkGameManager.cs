@@ -993,6 +993,10 @@ public class NetworkGameManager : NetworkBehaviour
     private string _disconnectWinnerId = null;
     private bool _disconnectWinnerDeclared = false;
     private int _disconnectWinCause = DISCONNECT_WIN_GENERIC;
+    /// <summary>The winner SetDisconnectWinner declared for this match (null if none) and why: Snake's board takes it
+    /// over as its own result (QA 29 Oct).</summary>
+    public string ServerDisconnectWinnerId => _disconnectWinnerDeclared ? _disconnectWinnerId : null;
+    public int ServerDisconnectWinCause => _disconnectWinCause;
 
     // Why the disconnect win was declared. The result popup used to be hardcoded to the
     // reconnect-limit sentence, so a player who deliberately tapped Leave was told they had
@@ -1164,9 +1168,10 @@ public class NetworkGameManager : NetworkBehaviour
         // Something else decided the match while we were waiting.
         if (_serverMatchSettled || _disconnectWinnerDeclared) yield break;
 
-        // They are back, or a reconnect is mid-flight: a returning client holds a connection well
-        // before its player object is spawned, so raw connections are counted too, not just seats.
-        if (currentPlayerCount >= 2 || NetworkServer.connections.Count > 1)
+        // They are back. A reconnect mid-flight already had the 15 s hold above; a connection that still has no player
+        // after it (a reconnect that never finished loading, Snake 12:54 / 13:01, QA 29 Oct) used to keep the match open
+        // and settle nothing.
+        if (currentPlayerCount >= 2)
         {
             Debug.Log("[Abandon][SERVER] Player returned inside the grace period; nothing settled.");
             yield break;

@@ -110,15 +110,18 @@ namespace BallPool
                 return;
             }
             gameState.cueBallHasHitSomeBall = true;
-            CircularTimeController.instance.audioSource.Stop();
-            CircularTimeController.isSoundPlaying = false;
 
-            CircularTimeController.instance.ToggleBallGlowEffects(false);
-
-
+            // QA 29 Oct ("turn shifted even though the player potted their own ball"): the first-contact
+            // rule is judged against the player who STARTED this shot on the server (as the black-ball
+            // rule in OnEndShot already is), not BallPoolPlayer.currentPlayer, which follows turnId and can
+            // lag or be unset around a reconnect. A null currentPlayer would throw here AFTER cueBallHasHitSomeBall
+            // was set, so the shot read as "hit the wrong ball" (turn + ball in hand to the opponent) and
+            // ReconcileAuthoritativePocketResult cannot repair a contact it believes it saw. The rule is
+            // also decided BEFORE the cosmetic timer/glow calls, which came first and throw where CircularTimeController is missing.
+            AightBallPoolPlayer shooter = ResolveRuleShooter();
             if (isBlackBall(ballId))
             {
-                if (((AightBallPoolPlayer)BallPoolPlayer.currentPlayer).isBlack)
+                if (shooter != null && shooter.isBlack)
                 {
                     gameState.cueBallHasHitRightBall = true;
                 }
@@ -131,7 +134,7 @@ namespace BallPool
             {
                 gameState.cueBallHasHitRightBall = true;
             }
-            else if (AightBallPoolPlayer.PlayerHasSomeBallType((AightBallPoolPlayer)BallPoolPlayer.currentPlayer, ballId))
+            else if (shooter != null && AightBallPoolPlayer.PlayerHasSomeBallType(shooter, ballId))
             {
                 gameState.cueBallHasHitRightBall = true;
             }
@@ -140,6 +143,24 @@ namespace BallPool
                 gameState.cueBallInHand = true;
                 gameState.needToChangeTurn = true;
             }
+
+            CircularTimeController.isSoundPlaying = false;
+            if (CircularTimeController.instance != null)
+            {
+                if (CircularTimeController.instance.audioSource != null)
+                    CircularTimeController.instance.audioSource.Stop();
+                CircularTimeController.instance.ToggleBallGlowEffects(false);
+            }
+        }
+
+        // The player whose shot is being judged: on the match server the one who started it
+        // (MyEightBallNetwork.ActiveShotPlayerId), otherwise (offline, or an app's cosmetic copy of the
+        // rules) the turn player, exactly as before.
+        private AightBallPoolPlayer ResolveRuleShooter()
+        {
+            int shooterId = (BallPoolGameLogic.isOnLine && Mirror.NetworkServer.active && MyEightBallNetwork.Instance != null)
+                ? MyEightBallNetwork.Instance.ActiveShotPlayerId : -1;
+            return ResolveShotPlayer(shooterId);
         }
         bool isHighlighterShowed = false;
 
@@ -272,7 +293,7 @@ namespace BallPool
                         }
                     }
                 }           
-                else if (AightBallPoolPlayer.PlayerHasSomeBallType((AightBallPoolPlayer)BallPoolPlayer.currentPlayer, ballId))
+                else if (ResolveRuleShooter() is AightBallPoolPlayer potter && AightBallPoolPlayer.PlayerHasSomeBallType(potter, ballId))   // QA 29 Oct: the shot's player, see OnCueBallHitBall
                 {
                     gameState.hasRightBallInPocket = true;
                 }

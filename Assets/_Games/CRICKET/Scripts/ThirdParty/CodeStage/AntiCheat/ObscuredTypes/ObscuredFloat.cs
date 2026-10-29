@@ -8,7 +8,10 @@ using UnityEngine.Serialization;
 namespace CodeStage.AntiCheat.ObscuredTypes
 {
 	[Serializable]
-	public struct ObscuredFloat : IFormattable, IEquatable<ObscuredFloat>, IComparable<ObscuredFloat>, IComparable<float>, IComparable
+	// QA 29 Oct, Cricket crash: a second IComparable<> next to IComparable<ObscuredFloat> made il2cpp check variance while
+	// setting up this hot-update type and initialise the type again mid-setup (Class::Init assert, SIGABRT when the
+	// Cricket menu opens). CompareTo(float) below is kept as a plain method.
+	public struct ObscuredFloat : IFormattable, IEquatable<ObscuredFloat>, IComparable<ObscuredFloat>, IComparable
 	{
 		[StructLayout(LayoutKind.Explicit)]
 		internal struct FloatIntBytesUnion

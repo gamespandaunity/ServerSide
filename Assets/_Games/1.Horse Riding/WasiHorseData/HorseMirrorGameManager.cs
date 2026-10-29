@@ -298,9 +298,13 @@ public class HorseMirrorGameManager : NetworkBehaviour
         if (!NetworkClient.isConnected)
             return false;
 
+        localForfeitRequested = true;
         CmdForfeitRace();
         return true;
     }
+
+    // This phone pressed Leave: its result must not wait (PauseMenuManager loads Home 0.7 s later).
+    private bool localForfeitRequested;
 
     [Command(requiresAuthority = false)]
     private void CmdForfeitRace(NetworkConnectionToClient sender = null)
@@ -375,6 +379,20 @@ public class HorseMirrorGameManager : NetworkBehaviour
         if (PopupMessageManager.instance != null && PopupMessageManager.instance.waitingPanel != null)
             PopupMessageManager.instance.waitingPanel.StopTimer();
 
+        // QA 29 Oct: the server decides the moment a horse touches the finish trigger, so the win/lose panel
+        // covered the horse at the line. Let both phones see it cross first. The flags above are set now so no
+        // disconnect/forfeit flow can show a second result during the wait; the server cleans up only after 5 s.
+        if (localForfeitRequested)
+            ShowServerWinner(winnerId);
+        else
+            StartCoroutine(ShowServerWinnerAfterDelay(winnerId));
+    }
+
+    private const float ResultDelayAfterFinish = 2f;
+
+    private IEnumerator ShowServerWinnerAfterDelay(string winnerId)
+    {
+        yield return new WaitForSecondsRealtime(ResultDelayAfterFinish);
         ShowServerWinner(winnerId);
     }
 
@@ -874,7 +892,9 @@ public class HorseMirrorGameManager : NetworkBehaviour
     {
         // Wait until object is available on client
         float timeout = 3f;
-        float timer = 3f;
+        // QA 29 Oct: this started at 3 (= timeout), so a horse not spawned yet on the very first check was dropped
+        // for good and never got a place on the leaderboard.
+        float timer = 0f;
 
         while (!NetworkClient.spawned.ContainsKey(netId))
         {

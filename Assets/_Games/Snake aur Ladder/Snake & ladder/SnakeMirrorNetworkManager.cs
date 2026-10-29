@@ -43,7 +43,8 @@ namespace Snake_Ladder
 
         // Track connected clients using connectionId
         private bool hasGameStarted = false;
-        [SyncVar]
+        // The hook (QA 29 Oct): a phone that missed every result Rpc still gets the result from this synced state.
+        [SyncVar(hook = nameof(OnServerResultDeclared))]
         private bool serverResultDeclared;
         [SyncVar]
         private string serverWinnerId = string.Empty;
@@ -250,6 +251,7 @@ namespace Snake_Ladder
         [Server]
         private bool ServerSubmitWinner(string winnerId)
         {
+            ServerAdoptSharedDisconnectResult();
             if (serverResultDeclared)
                 return false;
             if (ApiAndRoomManager._instance == null || NetworkGameManager.Instance == null)
@@ -328,9 +330,65 @@ namespace Snake_Ladder
             return true;
         }
 
+        // QA 29 Oct (5th time away, and the 30 s waiting time running out): the match server now settles a 2-player
+        // match itself - AwayClock at the disconnection limit and NetworkGameManager.AbandonWatch at the end of the 30 s
+        // both call NetworkGameManager.SetDisconnectWinner directly. That pays the winner, but this board never heard of
+        // it: serverResultDeclared stayed false, so the turn timer and match clock kept running, a phone coming back got
+        // the board instead of the result (CmdRequestPlayerAssignment), the waiting phone's own fallback
+        // (CmdRequestExistingDisconnectResult) was refused or re-settled, and MatchFlow.SendResult never ran (no entry
+        // for the 12:54 and 13:01 matches in the match list). Take that result over as Snake's own.
+        private float nextSharedResultCheck;
+
+        /// <summary>The winner NetworkGameManager.SetDisconnectWinner declared for this match, or null.</summary>
+        private static string SharedDisconnectWinnerId(NetworkGameManager ngm, out int cause)
+        {
+            cause = ngm != null ? ngm.ServerDisconnectWinCause : NetworkGameManager.DISCONNECT_WIN_GENERIC;
+            return ngm != null ? ngm.ServerDisconnectWinnerId : null;
+        }
+
+        private static string SharedResultReason(int cause)
+        {
+            switch (cause)
+            {
+                case NetworkGameManager.DISCONNECT_WIN_RECONNECT_LIMIT: return "opponent reached the disconnection limit";
+                case NetworkGameManager.DISCONNECT_WIN_ABANDONED: return "opponent did not come back within 30 s";
+                case NetworkGameManager.DISCONNECT_WIN_EXPLICIT_LEAVE: return "opponent left the game";
+                default: return "opponent disconnected";
+            }
+        }
+
+        [Server]
+        private void ServerAdoptSharedDisconnectResult()
+        {
+            if (serverResultDeclared || !hasGameStarted || IsMultiSeatTable) return;
+            string winnerId = SharedDisconnectWinnerId(NetworkGameManager.Instance, out int cause);
+            if (string.IsNullOrEmpty(winnerId)) return;
+
+            serverWinnerId = winnerId;
+            serverResultWasDraw = false;
+            serverResultDeclared = true;
+            serverMoveInProgress = false;
+            gameOver = true;
+            gameInProgress = false;
+            ServerStopTimerCompletely();
+            if (countdownCoroutine != null)
+            {
+                StopCoroutine(countdownCoroutine);
+                countdownCoroutine = null;
+            }
+
+            Debug.Log($"[SnakeServerResult] Shared disconnect result adopted: winner={winnerId}, cause={cause}.");
+            MatchFlow.SendResult(winnerId, SharedResultReason(cause));
+            // The shared Rpc (RpcDeclareDisconnectWinner) is already on its way; this one only reaches a phone that
+            // missed it. Both are latched on ResultManager.GameSpawnedFinished, so a phone shows one result.
+            RpcShowServerWinner(winnerId);
+            ScheduleServerCleanup(65f);
+        }
+
         [Server]
         private void ServerDeclareDraw()
         {
+            ServerAdoptSharedDisconnectResult();
             if (serverResultDeclared || ApiAndRoomManager._instance == null || NetworkGameManager.Instance == null)
                 return;
 
@@ -423,6 +481,14 @@ namespace Snake_Ladder
         private void CmdRequestExistingDisconnectResult(NetworkConnectionToClient sender = null)
         {
             if (IsMultiSeatTable) return;   // N seats: the server's seat timers decide, never a phone's claim
+            // Already decided (by the board or by the server's away clock, QA 29 Oct): the phone asking - the waiting
+            // phone at the end of its own 30 s - gets that result instead of nothing.
+            ServerAdoptSharedDisconnectResult();
+            if (serverResultDeclared)
+            {
+                if (sender != null) TargetRestoreFinishedResult(sender, serverWinnerId, serverResultWasDraw);
+                return;
+            }
             NetworkGameManager networkManager = NetworkGameManager.Instance;
             if (sender == null || networkManager == null || !hasGameStarted ||
                 networkManager.currentPlayerCount != 1 ||
@@ -458,6 +524,20 @@ namespace Snake_Ladder
         private void RpcShowServerDraw()
         {
             ShowServerDraw();
+        }
+
+        // Client: the server declared the result (QA 29 Oct). serverWinnerId is declared after this SyncVar, so it may
+        // not be applied yet when the hook runs: read both a frame later.
+        private void OnServerResultDeclared(bool oldValue, bool newValue)
+        {
+            if (!newValue || isServer || !isActiveAndEnabled) return;
+            StartCoroutine(ShowSyncedFinishedResultNextFrame());
+        }
+
+        private IEnumerator ShowSyncedFinishedResultNextFrame()
+        {
+            yield return null;
+            if (!ResultManager.GameSpawnedFinished) TryShowSyncedFinishedResult();
         }
 
         private void TryShowSyncedFinishedResult()
@@ -717,6 +797,9 @@ namespace Snake_Ladder
         {
             remainingminutes = Mathf.FloorToInt(newTime / 60);
             remainingseconds = Mathf.FloorToInt(newTime % 60);
+            // A hook that throws drops the rest of this object's update - serverResultDeclared included (QA 29 Oct: a
+            // NullReferenceException on the returning phone). The board may not be loaded yet.
+            if (GameControllerNew.instance == null || GameControllerNew.instance.countDownGameTimer == null) return;
 
             GameControllerNew.instance.countDownGameTimer.text = string.Format("{0:00}:{1:00}", remainingminutes, remainingseconds);
 
@@ -731,6 +814,7 @@ namespace Snake_Ladder
         [ClientRpc]
         private void RpcTimerDisplayEnded()
         {
+            if (GameControllerNew.instance == null || GameControllerNew.instance.countDownGameTimer == null) return;
             GameControllerNew.instance.countDownGameTimer.text = "00:00";
             GameControllerNew.instance.countDownGameTimer.color = Color.red;
         }
@@ -747,6 +831,12 @@ namespace Snake_Ladder
 
         private void Update()
         {
+            // QA 29 Oct: pick up a result the shared code declared (away limit / 30 s) - see ServerAdoptSharedDisconnectResult.
+            if (isServer && !serverResultDeclared && Time.unscaledTime >= nextSharedResultCheck)
+            {
+                nextSharedResultCheck = Time.unscaledTime + 0.25f;
+                ServerAdoptSharedDisconnectResult();
+            }
             if (isServer && isTimerRunning && gameInProgress)
             {
                 // Freeze the per-turn clock whenever a player has dropped — same reason the
@@ -893,9 +983,16 @@ namespace Snake_Ladder
 
         public void DirectResult(bool result)
         {
-            string winnerId = result
-                ? staticVariables.UserProfiledata.user._id.ToString()
-                : staticVariables.OpponetProfile.userId;
+            // The server is gone and the API holds the result (MirrorNetwork's status check). Prefer the API's winner id;
+            // OpponetProfile can be empty on a phone that came back (QA 29 Oct: NullReferenceException, no result).
+            string me = staticVariables.UserProfiledata?.user?._id.ToString();
+            string apiWinner = MirrorNetwork.Instance != null ? MirrorNetwork.Instance.userModel?.data?.winner : null;
+            string winnerId = result ? me
+                : !string.IsNullOrEmpty(apiWinner) && apiWinner != me ? apiWinner
+                : staticVariables.OpponetProfile != null && !string.IsNullOrEmpty(staticVariables.OpponetProfile.userId)
+                    ? staticVariables.OpponetProfile.userId
+                    : staticVariables.lastOpponentId;
+            if (string.IsNullOrEmpty(winnerId)) return;
             ShowServerWinner(winnerId);
         }
 

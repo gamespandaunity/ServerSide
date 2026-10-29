@@ -98,6 +98,47 @@ public class HighwayCarNetwork : NetworkBehaviour
         // ResultManagerHorse = FindAnyObjectByType<ResultManagerForHorse>(FindObjectsInactive.Include);
 
         FixHoodCameraToCar();
+        DisableDuplicateTransformSync();
+    }
+
+    /// <summary>
+    /// QA 29 Oct (opponent's car jerky when both cars drive side by side): the car prefab carries a
+    /// NetworkRigidbodyReliable AND a plain NetworkTransformReliable on the same transform. Each one sends its own
+    /// position stream and each one writes the transform on the other phone every frame - twice the traffic on
+    /// the reliable channel for the same data. NetworkRigidbodyReliable already does everything the plain one
+    /// does (and also keeps the remote car kinematic), so the plain one is switched off. Done here on every
+    /// build (app and server) so both sides agree; the component stays on the prefab so the NetworkBehaviour
+    /// order - which Mirror relies on - is unchanged.
+    /// </summary>
+    private void DisableDuplicateTransformSync()
+    {
+        NetworkRigidbodyReliable rigidbodySync = GetComponent<NetworkRigidbodyReliable>();
+        if (rigidbodySync == null)
+            return;
+
+        foreach (NetworkTransformReliable sync in GetComponents<NetworkTransformReliable>())
+        {
+            if (sync != rigidbodySync && sync.GetType() == typeof(NetworkTransformReliable) &&
+                sync.target == rigidbodySync.target)
+                sync.enabled = false;
+        }
+    }
+
+    /// <summary>
+    /// QA 29 Oct: the car Rigidbody is set to Extrapolate. On the opponent's car that fights the network sync:
+    /// with interpolation/extrapolation on, Unity drives the transform from the physics pose and drops the
+    /// NetworkTransform's direct writes between physics steps, so the car is drawn alternately at the synced
+    /// pose and at an extrapolated physics pose - the jerk seen when the two cars are side by side (the camera
+    /// follows our car, so any wobble of the car next to it shows). The remote car is kinematic and already
+    /// interpolated by Mirror, so physics interpolation is turned off for it. Our own car uses Interpolate:
+    /// Extrapolate overshoots on every speed or steering change, which also shows against the car beside it.
+    /// </summary>
+    private void ApplyRigidbodySmoothing()
+    {
+        if (rigid == null)
+            return;
+
+        rigid.interpolation = isOwned ? RigidbodyInterpolation.Interpolate : RigidbodyInterpolation.None;
     }
 
     /// <summary>
@@ -170,6 +211,7 @@ public class HighwayCarNetwork : NetworkBehaviour
     public override void OnStartClient()
     {
         base.OnStartClient();
+        ApplyRigidbodySmoothing();
 
         if (isOwned)
         {

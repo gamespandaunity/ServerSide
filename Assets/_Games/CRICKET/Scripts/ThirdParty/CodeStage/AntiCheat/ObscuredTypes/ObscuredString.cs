@@ -5,7 +5,10 @@ using UnityEngine;
 namespace CodeStage.AntiCheat.ObscuredTypes
 {
 	[Serializable]
-	public sealed class ObscuredString : IComparable<ObscuredString>, IComparable<string>, IComparable
+	// QA 29 Oct, Cricket crash: a second IComparable<> next to IComparable<ObscuredString> made il2cpp check variance while
+	// setting up this hot-update type and initialise the type again mid-setup (Class::Init assert, SIGABRT when the
+	// Cricket menu opens). CompareTo(string) below is kept as a plain method.
+	public sealed class ObscuredString : IComparable<ObscuredString>, IComparable
 	{
 		private static string cryptoKey = "4441";
 

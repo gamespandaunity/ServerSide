@@ -138,6 +138,26 @@ namespace BEKStudio
         public GameObject playerCamera;
         public bool isCarronMultiplayerGame;
         public static bool isGameStarted;
+
+        // QA 29 Oct: isGameStarted (and the board scores) are statics that were never cleared, so from the SECOND
+        // Carrom match of an app session every fresh match looked like a reconnect: CarromNetworkManager.Start skipped
+        // the per-match flag reset and fired the reconnect resync into a new match, the master skipped its first-turn
+        // request, and the scores of the last match were still on the board. They are meant to survive only a reconnect
+        // reload of the SAME match, so remember which server they belong to and forget them for any other.
+        static string startedOnServer;
+
+        /// <summary>Clears the previous match's statics unless this scene is a reconnect into that same match.</summary>
+        public static void ForgetFinishedMatch()
+        {
+            if (NetworkServer.active) return;   // the dedicated server runs one match per process
+            if (!isGameStarted && currentHomeScore == 0 && currentAwayScore == 0) return;
+            if (isGameStarted && startedOnServer != null && startedOnServer == (MirrorNetwork.serverAddress ?? "")) return;
+            Debug.Log($"[Carrom] New match ({MirrorNetwork.serverAddress}, last one {startedOnServer}) — clearing the previous match's started flag and scores.");
+            isGameStarted = false;
+            startedOnServer = null;
+            currentHomeScore = 0;
+            currentAwayScore = 0;
+        }
         public string gameWinner;
         public TextMeshProUGUI countDownGameTimer;
         void Awake()
@@ -152,6 +172,7 @@ namespace BEKStudio
                 Instance = this;
             }
             if (!isCarronMultiplayerGame) return;
+            ForgetFinishedMatch();
             MirrorNetwork.Instance.isMasterClient.Show("IsMaster");
             if (MirrorNetwork.Instance.isMasterClient)
             {
@@ -337,7 +358,15 @@ namespace BEKStudio
                 && staticVariables.OpponetProfile != null
                 && !string.IsNullOrEmpty(staticVariables.OpponetProfile.userId))
             {
-                CarromNetworkManager.instance.CmdRequestInitialTurn(staticVariables.OpponetProfile.userId);
+                // QA 29 Oct: CarromNetworkManager is spawned by the server, it is not in this scene. When its spawn lands
+                // a frame after this scene object's, instance is still null here (or the destroyed one of the previous
+                // match) and the NullReference aborted the rest of Start: no player names, no "YOU START" banner, no
+                // CmdgameStarted, isGameStarted never set. Wait for it; the server schedules the first turn itself too.
+                string opponentId = staticVariables.OpponetProfile.userId;
+                this.DelayUntil(() => CarromNetworkManager.instance != null, () =>
+                {
+                    if (!isGameStarted) CarromNetworkManager.instance.CmdRequestInitialTurn(opponentId);
+                });
             }
             homePucksCollected = new List<GameObject>();
             awayPucksCollected = new List<GameObject>();
@@ -457,10 +486,14 @@ namespace BEKStudio
             {
                 if (statusPanelText.text == "YOU START")
                 {
-                    if (NetworkServer.active)
-                        CarromNetworkManager.instance.ServerGameStarted();
-                    else
-                        CarromNetworkManager.instance.CmdgameStarted();
+                    // QA 29 Oct: same spawn-order gap as the first-turn request in Start.
+                    this.DelayUntil(() => CarromNetworkManager.instance != null, () =>
+                    {
+                        if (NetworkServer.active)
+                            CarromNetworkManager.instance.ServerGameStarted();
+                        else
+                            CarromNetworkManager.instance.CmdgameStarted();
+                    });
                 }
             });
 
@@ -483,6 +516,7 @@ namespace BEKStudio
                             {
                                 statusScreen.SetActive(false);
                                 isGameStarted = true;
+                                startedOnServer = MirrorNetwork.serverAddress ?? "";   // QA 29 Oct: see ForgetFinishedMatch
 
 
 
@@ -672,7 +706,10 @@ namespace BEKStudio
                 opponentSlider.value = 0.5f;
             }
 
-            StartCoroutine(WaitForPucks());
+            // QA 29 Oct: one settle wait per shot. A wait left over from a shot that never settled (or that the server's
+            // stalled-shot watchdog moved past) would otherwise finish together with the next shot's and score it twice.
+            if (waitForPucksRoutine != null) StopCoroutine(waitForPucksRoutine);
+            waitForPucksRoutine = StartCoroutine(WaitForPucks());
         }
 
         public void NavigatorSliderValueChanged()
@@ -974,6 +1011,21 @@ namespace BEKStudio
                 }
             }
             return null;
+        }
+
+        Coroutine waitForPucksRoutine;
+
+        void OnDestroy()
+        {
+            // QA 29 Oct: leaving the match (Home, a quit, a match that ended) — not a reconnect reload, which happens
+            // while connected to the match's server — closes its started flag for good.
+            if (isCarronMultiplayerGame && !NetworkServer.active && !NetworkClient.isConnected)
+            {
+                isGameStarted = false;
+                startedOnServer = null;
+                currentHomeScore = 0;
+                currentAwayScore = 0;
+            }
         }
 
         public IEnumerator WaitForPucks()

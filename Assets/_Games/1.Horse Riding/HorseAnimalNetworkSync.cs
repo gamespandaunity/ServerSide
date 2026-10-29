@@ -95,6 +95,8 @@ public class HorseAnimationSync : NetworkBehaviour
                     Playerpositioncontroller.currentWaypoint = horseData.CurrentWaypoint;
                     Playerpositioncontroller.lap = horseData.Lap;
                     Playerpositioncontroller.GrandTalWaypointPassed = horseData.GrandTotalWaypointPassed;
+                    // QA 29 Oct: PlayerPositionController.Start runs after this and used to zero the count again.
+                    Playerpositioncontroller.progressRestored = true;
 
                     Playerpositioncontroller.ResetWaypointTracking();
 
@@ -202,14 +204,31 @@ public class HorseAnimationSync : NetworkBehaviour
                 float gyro = mobileControls.GetGyroscopeInput();
                 float joyDir = mobileControls.GetJoystickDirectionInput();
 
-                CmdSyncHorseInputs(acc, brake, steerL, steerR, steer, gyro, joyDir);
                 ApplyInputs(acc, brake, steerL, steerR, steer, gyro, joyDir);
 
                 PlayerName = staticVariables.UserProfiledata.user.first_name + " " +
                          staticVariables.UserProfiledata.user.last_name;
                 playerCountry = "IN";
-                CmdSyncTransform(transform.position, transform.rotation);
-                CmdSetPlayerName(PlayerName, playerCountry);
+
+                // QA 29 Oct (horse running in place after a reconnect, then jumping ahead): these three
+                // Commands went out EVERY frame, on the same reliable channel as the NetworkTransform. On a
+                // weak link (a phone that just reconnected) every lost packet held the whole queue back, so the
+                // other phone got no positions for a while - the horse kept its gallop animation from the
+                // last synced input but stood still - then the backlog arrived at once and the snapshot
+                // interpolation caught up with a jerk. Send inputs only when they change, the name once, and
+                // the (unused for movement) netPosition a few times a second.
+                SendInputsIfChanged(acc, brake, steerL, steerR, steer, gyro, joyDir);
+                if (Time.unscaledTime >= nextTransformSendTime)
+                {
+                    nextTransformSendTime = Time.unscaledTime + TransformSendInterval;
+                    CmdSyncTransform(transform.position, transform.rotation);
+                }
+                if (PlayerName != lastSentName || playerCountry != lastSentCountry)
+                {
+                    lastSentName = PlayerName;
+                    lastSentCountry = playerCountry;
+                    CmdSetPlayerName(PlayerName, playerCountry);
+                }
             }
         }
         else
@@ -217,6 +236,46 @@ public class HorseAnimationSync : NetworkBehaviour
             ApplyInputs(accelerationInput, brakeForceInput, steeringLeftInput,
                        steeringRightInput, steeringInput, gyroscopeInput, joystickDirectionInput);
         }
+    }
+
+    private const float InputSendInterval = 0.05f;    // at most 20 input Commands a second
+    private const float InputResendInterval = 1f;     // and a refresh now and then, in case one was missed
+    private const float TransformSendInterval = 0.25f;
+    private readonly float[] lastSentInputs = new float[7];
+    private bool inputsSentOnce;
+    private float lastInputSendTime = -10f;
+    private float nextTransformSendTime;
+    private string lastSentName;
+    private string lastSentCountry;
+
+    private void SendInputsIfChanged(float acc, float brake, float steerL, float steerR,
+                                     float steer, float gyro, float joyDir)
+    {
+        float now = Time.unscaledTime;
+        if (now - lastInputSendTime < InputSendInterval)
+            return;
+
+        bool changed = !inputsSentOnce ||
+                       !Mathf.Approximately(lastSentInputs[0], acc) ||
+                       !Mathf.Approximately(lastSentInputs[1], brake) ||
+                       !Mathf.Approximately(lastSentInputs[2], steerL) ||
+                       !Mathf.Approximately(lastSentInputs[3], steerR) ||
+                       !Mathf.Approximately(lastSentInputs[4], steer) ||
+                       !Mathf.Approximately(lastSentInputs[5], gyro) ||
+                       !Mathf.Approximately(lastSentInputs[6], joyDir);
+        if (!changed && now - lastInputSendTime < InputResendInterval)
+            return;
+
+        lastSentInputs[0] = acc;
+        lastSentInputs[1] = brake;
+        lastSentInputs[2] = steerL;
+        lastSentInputs[3] = steerR;
+        lastSentInputs[4] = steer;
+        lastSentInputs[5] = gyro;
+        lastSentInputs[6] = joyDir;
+        inputsSentOnce = true;
+        lastInputSendTime = now;
+        CmdSyncHorseInputs(acc, brake, steerL, steerR, steer, gyro, joyDir);
     }
 
     public void RequestJump()

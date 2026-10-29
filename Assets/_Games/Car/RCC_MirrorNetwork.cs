@@ -66,20 +66,40 @@ namespace CarRace
         private float sendRate = 0.05f;
         private float lastSendTime = 0f;
         public bool isRestoreComplete = false;
+        // QA 29 Oct (car stuck at random points after a reconnect): this runs every time the shared waiting
+        // panel opens or closes (NetworkGameManager.ShowPausePanel), and after a reconnect the server opens and
+        // closes it again and again while the link settles. The old ResetRigidbody coroutine first set the
+        // OPPOSITE state for 0.5 s, so every resume froze the car for half a second, and when a pause and a resume
+        // came within 0.5 s of each other the older coroutine finished last and left the car kinematic - stuck
+        // until the next panel. Apply the requested state once, and keep the speed the car had so a resume does
+        // not start from a dead stop.
+        private Vector3 pausedVelocity;
+        private Vector3 pausedAngularVelocity;
+
         public void StartStopGame(bool isstop)
         {
             if (!rigid)
                 rigid = GetComponent<Rigidbody>();
+            if (!rigid || !isOwned)
+                return;
 
-            rigid.isKinematic = isstop;
-            StartCoroutine(ResetRigidbody(isstop));
-        }
-        IEnumerator ResetRigidbody(bool state)
-        {
-            rigid.isKinematic = !state;
-            yield return new WaitForSecondsRealtime(0.5f);
-            rigid.isKinematic = state;
+            if (isstop)
+            {
+                if (rigid.isKinematic)
+                    return;
+                pausedVelocity = rigid.linearVelocity;
+                pausedAngularVelocity = rigid.angularVelocity;
+                rigid.isKinematic = true;
+                return;
+            }
 
+            if (!rigid.isKinematic)
+                return;
+            rigid.isKinematic = false;
+            rigid.linearVelocity = pausedVelocity;
+            rigid.angularVelocity = pausedAngularVelocity;
+            pausedVelocity = Vector3.zero;
+            pausedAngularVelocity = Vector3.zero;
         }
         void OnDestroy()
         {
@@ -92,6 +112,44 @@ namespace CarRace
             if (NetworkServer.active)
                 MatchFlow.Log("Car Race", $"{(string.IsNullOrEmpty(playerName) ? "a player" : playerName)}'s car removed — left or disconnected");
         }
+        void Awake()
+        {
+            DisableDuplicateTransformSync();
+        }
+
+        // Set when the prefab's NetworkRigidbodyReliable was switched off: it used to keep the remote car kinematic.
+        private bool keepRemoteKinematic;
+
+        /// <summary>
+        /// QA 29 Oct (car stuck at points, then jumping on): 1Car20 carries a NetworkRigidbodyReliable AND a plain
+        /// NetworkTransformReliable on the same transform. The NetworkRigidbodyReliable has syncInterval 1.2 s, so
+        /// besides the plain component's smooth stream a second one went out once every 1.2 s, and on the other
+        /// phone (and the server) both wrote the transform every frame - whenever the slow one wrote last, the car
+        /// was drawn at a pose up to 1.2 s old and then jumped forward. The plain one (interval 0, the one this
+        /// class requires) stays; the slow one is switched off, on app and server alike. The component stays on
+        /// the prefab so the NetworkBehaviour order Mirror relies on is unchanged. 2Car3 has only the plain one.
+        /// </summary>
+        private void DisableDuplicateTransformSync()
+        {
+            NetworkTransformReliable plainSync = null;
+            foreach (NetworkTransformReliable sync in GetComponents<NetworkTransformReliable>())
+            {
+                if (sync.GetType() == typeof(NetworkTransformReliable))
+                    plainSync = sync;
+            }
+            if (plainSync == null)
+                return;
+
+            foreach (NetworkRigidbodyReliable rigidbodySync in GetComponents<NetworkRigidbodyReliable>())
+            {
+                if (rigidbodySync.target == plainSync.target)
+                {
+                    rigidbodySync.enabled = false;
+                    keepRemoteKinematic = true;
+                }
+            }
+        }
+
         public override void OnStartServer()
         {
             base.OnStartServer();
@@ -99,6 +157,10 @@ namespace CarRace
             wheelColliders = GetComponentsInChildren<RCC_WheelCollider>();
             rigid = GetComponent<Rigidbody>();
 
+            // The server only follows the owner's synced pose (client authority), as the switched-off
+            // NetworkRigidbodyReliable made sure of.
+            if (keepRemoteKinematic && rigid != null && !NetworkClient.active)
+                rigid.isKinematic = true;
         }
         public override void OnStartClient()
         {
@@ -108,6 +170,14 @@ namespace CarRace
             wheelColliders = GetComponentsInChildren<RCC_WheelCollider>();
             rigid = GetComponent<Rigidbody>();
             playerSetup = GetComponent<PlayerSetup>();
+
+            // QA 29 Oct (car stuck / jumping on the other phone): the car Rigidbody is set to Interpolate. On the
+            // opponent's car that fights the NetworkTransform - with physics interpolation on, Unity drives the
+            // transform from the physics pose and drops direct transform writes between physics steps, so the
+            // remote car is drawn at its locally simulated pose (which runs into walls on its own) instead of
+            // the synced one. Mirror already interpolates the remote car; switch Unity's off for it.
+            if (!isOwned && rigid != null)
+                rigid.interpolation = RigidbodyInterpolation.None;
 
             if (!isOwned)
             {
@@ -232,6 +302,10 @@ namespace CarRace
             }
             else
             {
+                // What the switched-off NetworkRigidbodyReliable did: the opponent's car is moved by the network
+                // sync only, so local physics must not push it around.
+                if (keepRemoteKinematic && rigid != null && !rigid.isKinematic)
+                    rigid.isKinematic = true;
                 ApplyInputsToCarController();
             }
 

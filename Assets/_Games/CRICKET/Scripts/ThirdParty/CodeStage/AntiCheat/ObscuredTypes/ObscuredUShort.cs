@@ -5,7 +5,10 @@ using UnityEngine;
 namespace CodeStage.AntiCheat.ObscuredTypes
 {
 	[Serializable]
-	public struct ObscuredUShort : IFormattable, IEquatable<ObscuredUShort>, IComparable<ObscuredUShort>, IComparable<ushort>, IComparable
+	// QA 29 Oct, Cricket crash: a second IComparable<> next to IComparable<ObscuredUShort> made il2cpp check variance while
+	// setting up this hot-update type and initialise the type again mid-setup (Class::Init assert, SIGABRT when the
+	// Cricket menu opens). CompareTo(ushort) below is kept as a plain method.
+	public struct ObscuredUShort : IFormattable, IEquatable<ObscuredUShort>, IComparable<ObscuredUShort>, IComparable
 	{
 		private static ushort cryptoKey = 224;
 

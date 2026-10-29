@@ -387,6 +387,24 @@ namespace CarRace
         if (PopupMessageManager.instance != null && PopupMessageManager.instance.waitingPanel != null)
             PopupMessageManager.instance.waitingPanel.StopTimer();
 
+        // QA 29 Oct: win/lose came up before the car had reached the line. The server settles the race on its own
+        // copy of the car, or on the owner's finish report accepted up to 35 m (ServerTriggerTolerance) from
+        // the trigger, and the other phone draws that car about one interpolation buffer + half a round trip
+        // behind - at race speed that is well short of the line. Wait 2 s so the crossing is seen on both phones.
+        // isGameFinished is set above so no disconnect/forfeit flow shows another result in the meantime; the
+        // server cleans up only after 5 s. A player who pressed Leave gets it at once: LeaveMultiplayerAfterForfeit
+        // loads Home 0.7 s later and would take the waiting coroutine with this scene.
+        if (isLeavingMultiplayer)
+            ShowServerWinner(winnerId);
+        else
+            StartCoroutine(ShowServerWinnerAfterDelay(winnerId));
+    }
+
+    private const float ResultDelayAfterFinish = 2f;
+
+    private IEnumerator ShowServerWinnerAfterDelay(string winnerId)
+    {
+        yield return new WaitForSecondsRealtime(ResultDelayAfterFinish);
         ShowServerWinner(winnerId);
     }
 

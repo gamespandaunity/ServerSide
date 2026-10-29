@@ -2182,6 +2182,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         activeShotImpulse = string.Empty;
         activeShotBallPositions = new Vector3[0];
         ServerFreezeAuthoritativeBoard(reason);
+        SeparateOverlappingBalls();
         // Reliable final board. An unreliable playback frame can be lost exactly when the shooter's
         // transport dies; this keeps the watcher from stopping on an older table state.
         RpcForceFreezeShotAtServerBoard(CaptureAuthoritativeBoardPositions(), activeShotSequence);
@@ -2199,6 +2200,32 @@ public class MyEightBallNetwork : NetworkBehaviour
         }
         Debug.LogWarning($"[8Ball][Autonomous] Server force-completed shot by {shooterId} ({reason}). Shooter's WaitAndStopMoveFromNetwork was not required.");
         return true;
+    }
+
+    /// <summary>
+    /// The board frozen mid-roll when the shooter dropped is the last frame they sent, and balls in contact at that moment
+    /// can overlap ("balls apas m merge ho jati hain", QA 29 Oct). Push overlapping balls apart before it is sent.
+    /// </summary>
+    [Server]
+    private void SeparateOverlappingBalls()
+    {
+        var balls = poolMessenger != null && poolMessenger.gameManager != null ? poolMessenger.gameManager.allBalls : null;
+        if (balls == null) return;
+        for (int pass = 0; pass < 4; pass++)
+            for (int i = 0; i < balls.Length; i++)
+                for (int j = i + 1; j < balls.Length; j++)
+                {
+                    var a = balls[i];
+                    var b = balls[j];
+                    if (a == null || b == null || a.inPocket || b.inPocket) continue;
+                    Vector3 d = b.position - a.position;
+                    d.y = 0f;
+                    float min = a.radius + b.radius, dist = d.magnitude;
+                    if (dist <= 1e-5f || dist >= min) continue;
+                    Vector3 push = d / dist * ((min - dist) * 0.5f);
+                    a.position -= push;
+                    b.position += push;
+                }
     }
 
     [Server]

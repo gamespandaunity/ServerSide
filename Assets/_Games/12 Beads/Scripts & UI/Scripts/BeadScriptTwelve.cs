@@ -30,7 +30,9 @@ namespace Twelve
         public int currentBeadId = -1;
         private void Start()
         {
-            transform.parent = GamePlayControllerTwelve.instance.beadsParentTransform;
+            // QA 29 Oct: null-safe, see OnStartClient.
+            if (GamePlayControllerTwelve.instance != null)
+                transform.parent = GamePlayControllerTwelve.instance.beadsParentTransform;
 
         }
         void OnBeadIdChanged(int oldId, int newId)
@@ -41,6 +43,7 @@ namespace Twelve
         {
             Debug.Log("NEW id :" + newId + playerID.ToString());
             if (newId < 0) return;
+            if (GamePlayControllerTwelve.instance == null) return;   // QA 29 Oct: placed by RegisterWhenControllerReady
 
             var allNodes = GamePlayControllerTwelve.instance.allNodes;
             // Defensive: SyncVar carries a nodeNo. We treat it as an index into allNodes,
@@ -106,6 +109,33 @@ namespace Twelve
         public override void OnStartClient()
         {
             base.OnStartClient();
+            // QA 29 Oct (no beads on the board until a reconnect): a bead that reaches the phone before the scene's
+            // GamePlayControllerTwelve is up threw a NullReference here — never parented, never in the team lists, never
+            // placed on its node. Register it as soon as the controller exists instead (and say so in the log).
+            if (GamePlayControllerTwelve.instance == null)
+            {
+                Debug.LogError($"[BeadScriptTwelve] {playerID} bead {beadId} spawned before GamePlayControllerTwelve — registering it when the controller is up.");
+                StartCoroutine(RegisterWhenControllerReady());
+                return;
+            }
+            RegisterWithController();
+        }
+
+        private IEnumerator RegisterWhenControllerReady()
+        {
+            while (GamePlayControllerTwelve.instance == null) yield return new WaitForSeconds(0.1f);
+            RegisterWithController();
+            // The node SyncVar arrived while there were no nodes to place the bead on: place it now.
+            if (currentNodeId >= 0) OnNodeChanged(-1, currentNodeId);
+        }
+
+        private void RegisterWithController()
+        {
+            // Error level so release builds keep it: a bead whose sprite is gone (its bundle unloaded) is invisible.
+            var sr = GetComponent<SpriteRenderer>();
+            if (sr != null && playerID != PLAYERS.EMPTY && (sr.sprite == null || sr.sprite.texture == null))
+                Debug.LogError($"[BeadScriptTwelve] {playerID} bead {beadId} has no sprite — its bundle is not loaded; it will not show.");
+
             transform.parent = GamePlayControllerTwelve.instance.beadsParentTransform;
 
             if (playerID == PLAYERS.EMPTY)

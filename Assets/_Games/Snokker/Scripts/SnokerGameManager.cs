@@ -123,17 +123,41 @@ public class SnokerGameManager : MonoBehaviour
             UnpauseGame();
         }
     }
+    // QA 29 Oct (reconnect: cue ball and balls in different places): unpausing used to turn EVERY ball and the cue
+    // ball non-kinematic, whatever they were before the pause. Between shots the cue ball can be kinematic
+    // (snookerSetTargetBAll), and in ball in hand all balls are (setAllBallKinematic(true)), so after the
+    // opponent came back the match server's table started simulating where it should not: the cue ball and the
+    // ball being placed shoved resting balls, and the server then synced those moved balls to the phones. Each
+    // body now gets back exactly the kinematic state it had when the pause began. On a phone in a multiplayer
+    // match nothing is touched at all: its balls only follow the server (NetworkTransform, kept kinematic by
+    // rotateBall / NetworkRigidbody), and a phone running its own physics, even briefly, fights that sync.
+    private bool cueBallWasKinematic;
+    private bool[] storedKinematic;
+
+    private bool PhonePhysicsIsServerDriven()
+    {
+        return SnokerNetwork.IsMultiplayer && !Mirror.NetworkServer.active;
+    }
+
     private void PauseGame()
     {
         Debug.Log("Game paused 1: " + bGamePaused);
         if (bGamePaused)
             return;
         bGamePaused = true;
+        if (PhonePhysicsIsServerDriven())
+        {
+            Debug.Log("Game paused (phone in a multiplayer match: physics left to the server).");
+            return;
+        }
+        if (storedKinematic == null || storedKinematic.Length != ballsRigidbodyArray.Length)
+            storedKinematic = new bool[ballsRigidbodyArray.Length];
         // Store cue ball velocity
         if (_SnokerCueBall != null && _SnokerCueBall.thisRigidbody != null)
         {
-            cueBallVelocity = _SnokerCueBall.thisRigidbody.linearVelocity;
-            cueBallAngularVelocity = _SnokerCueBall.thisRigidbody.angularVelocity;
+            cueBallWasKinematic = _SnokerCueBall.thisRigidbody.isKinematic;
+            cueBallVelocity = cueBallWasKinematic ? Vector3.zero : _SnokerCueBall.thisRigidbody.linearVelocity;
+            cueBallAngularVelocity = cueBallWasKinematic ? Vector3.zero : _SnokerCueBall.thisRigidbody.angularVelocity;
             _SnokerCueBall.thisRigidbody.isKinematic = true;
         }
 
@@ -142,8 +166,9 @@ public class SnokerGameManager : MonoBehaviour
         {
             if (ballsArray[i].activeSelf && ballsRigidbodyArray[i] != null)
             {
-                storedVelocities[i] = ballsRigidbodyArray[i].linearVelocity;
-                storedAngularVelocities[i] = ballsRigidbodyArray[i].angularVelocity;
+                storedKinematic[i] = ballsRigidbodyArray[i].isKinematic;
+                storedVelocities[i] = storedKinematic[i] ? Vector3.zero : ballsRigidbodyArray[i].linearVelocity;
+                storedAngularVelocities[i] = storedKinematic[i] ? Vector3.zero : ballsRigidbodyArray[i].angularVelocity;
                 ballsRigidbodyArray[i].isKinematic = true;
             }
         }
@@ -156,11 +181,20 @@ public class SnokerGameManager : MonoBehaviour
         Debug.Log("Game Unpaused 1: " + bGamePaused);
         if (!bGamePaused)
             return; // Not paused, nothing to unpause      
+        if (PhonePhysicsIsServerDriven())
+        {
+            bGamePaused = false;
+            Debug.Log("Game Unpaused (phone in a multiplayer match: physics left to the server).");
+            return;
+        }
         if (_SnokerCueBall != null && _SnokerCueBall.thisRigidbody != null)
         {
-            _SnokerCueBall.thisRigidbody.isKinematic = false;
-            _SnokerCueBall.thisRigidbody.linearVelocity = cueBallVelocity;
-            _SnokerCueBall.thisRigidbody.angularVelocity = cueBallAngularVelocity;
+            _SnokerCueBall.thisRigidbody.isKinematic = cueBallWasKinematic;
+            if (!cueBallWasKinematic)
+            {
+                _SnokerCueBall.thisRigidbody.linearVelocity = cueBallVelocity;
+                _SnokerCueBall.thisRigidbody.angularVelocity = cueBallAngularVelocity;
+            }
         }
 
         // Restore all other balls
@@ -168,9 +202,13 @@ public class SnokerGameManager : MonoBehaviour
         {
             if (ballsArray[i].activeSelf && ballsRigidbodyArray[i] != null)
             {
-                ballsRigidbodyArray[i].isKinematic = false;
-                ballsRigidbodyArray[i].linearVelocity = storedVelocities[i];
-                ballsRigidbodyArray[i].angularVelocity = storedAngularVelocities[i];
+                bool wasKinematic = storedKinematic != null && i < storedKinematic.Length && storedKinematic[i];
+                ballsRigidbodyArray[i].isKinematic = wasKinematic;
+                if (!wasKinematic)
+                {
+                    ballsRigidbodyArray[i].linearVelocity = storedVelocities[i];
+                    ballsRigidbodyArray[i].angularVelocity = storedAngularVelocities[i];
+                }
             }
         }
         bGamePaused = false;

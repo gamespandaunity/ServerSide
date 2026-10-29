@@ -35,6 +35,9 @@ public class PlayerPositionController : NetworkBehaviour
 
     public bool isAtFirst = false;
 
+    /// <summary>Set when a reconnect restored lap/checkpoint progress, so Start keeps it.</summary>
+    [System.NonSerialized] public bool progressRestored;
+
     // Store the previous value of the number
     private float previousNumber;
 
@@ -48,7 +51,16 @@ public class PlayerPositionController : NetworkBehaviour
         // Next waypoint's position.
 
 
+        // QA 29 Oct: a reconnecting rider's checkpoint count is restored in HorseAnimationSync.OnStartClient,
+        // which runs before this Start; setWavePoint zeroes it, so the leaderboard restarted the horse from 0.
+        int restoredWaypointsPassed = GrandTalWaypointPassed;
         setWavePoint(DemoGameManagers.Instance.aiWaypointsContainer);
+        if (progressRestored)
+        {
+            GrandTalWaypointPassed = restoredWaypointsPassed;
+            TotalDistanecPoints = restoredWaypointsPassed;
+            ResetWaypointTracking();
+        }
 
         //
         // if (!MultiPlayerGame.isChampion)

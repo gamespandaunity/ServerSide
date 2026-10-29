@@ -46,6 +46,52 @@ public class CarromNetworkManager : NetworkBehaviour
             timerCoroutine = null;
         }
         isTimerRunning = false;
+        StopShotWatchdog();
+    }
+
+    // QA 29 Oct ("game got stuck on the second turn, app restart needed"): a shot stops the turn timer, and only the
+    // turn that follows the settle re-arms it. If the server's settle never finished (WaitForPucks waiting on a coin
+    // that never reports stopped) or its switch failed, nothing ever moved again on either phone. This watchdog passes
+    // the turn on when no turn has started within StalledShotSeconds of a shot. Paused time (waiting panel) is not counted.
+    private Coroutine shotWatchdog;
+    private const float StalledShotSeconds = 20f;
+
+    [Server]
+    private void StartShotWatchdog(string shooterId)
+    {
+        StopShotWatchdog();
+        if (gameEnded || string.IsNullOrEmpty(shooterId)) return;
+        shotWatchdog = StartCoroutine(ShotWatchdog(shooterId));
+    }
+
+    [Server]
+    private void StopShotWatchdog()
+    {
+        if (shotWatchdog == null) return;
+        StopCoroutine(shotWatchdog);
+        shotWatchdog = null;
+    }
+
+    [Server]
+    private IEnumerator ShotWatchdog(string shooterId)
+    {
+        float waited = 0f;
+        while (waited < StalledShotSeconds)
+        {
+            if (gameEnded) { shotWatchdog = null; yield break; }
+            NetworkGameManager ngm = NetworkGameManager.Instance;
+            if (ngm == null || (!ngm.IsPaused && ngm.currentPlayerCount >= 2)) waited += Time.unscaledDeltaTime;
+            yield return null;
+        }
+        shotWatchdog = null;   // before any switch: StartTurnTimer stops the watchdog, and this is it
+        if (gameEnded || isTimerRunning || PlayercurrentTurnId != shooterId) yield break;
+
+        Debug.LogError($"[Carrom][Server] Shot by {shooterId} did not settle within {StalledShotSeconds:0} s — passing the turn on.");
+        MatchFlow.Log("Carrom", $"shot by {MatchFlow.Who(shooterId)} did not settle in {StalledShotSeconds:0} s — turn passed on");
+        ServerSwitchTurnAfterShot();
+        // The switch can fail (no player data yet); keep the match moving with the current holder's timer then.
+        if (!gameEnded && !isTimerRunning && !string.IsNullOrEmpty(PlayercurrentTurnId))
+            StartTurnTimer(PlayercurrentTurnId);
     }
     [SyncVar(hook = nameof(onTurnChanged))]
     public string currentNetworkTurn = string.Empty;
@@ -118,6 +164,13 @@ public class CarromNetworkManager : NetworkBehaviour
     {
         instance = this;
 
+    }
+
+    // QA 29 Oct: instance outlived its match — the next match's scene objects saw the destroyed previous manager until
+    // this one spawned. Null is what callers can test for.
+    void OnDestroy()
+    {
+        if (instance == this) instance = null;
     }
 
     private void OnEnable()
@@ -277,6 +330,10 @@ public class CarromNetworkManager : NetworkBehaviour
     }
     void Start()
     {
+        // QA 29 Oct: GameController.isGameStarted is read below as "this is a reconnect"; drop it first when it belongs
+        // to an earlier match (it never used to be cleared, so every match after the first ran the reconnect path).
+        BEKStudio.GameController.ForgetFinishedMatch();
+
         if (playerPuck == null)
         {
             playerPuck = FindAnyObjectByType<PlayerPuck>().gameObject;
@@ -388,6 +445,7 @@ public class CarromNetworkManager : NetworkBehaviour
         // It is re-armed by StartTurnTimer(...) when the next turn begins.
         StopTurnTimer();
         lastShooterId = PlayercurrentTurnId;
+        StartShotWatchdog(lastShooterId);
         MatchFlow.Log("Carrom", $"{MatchFlow.Who(PlayercurrentTurnId)} strikes (power {forceMultiplier:0.00})");
 
         if (playerPuck != null)
@@ -1058,19 +1116,7 @@ public class CarromNetworkManager : NetworkBehaviour
 
             // Hand the striker over a moment later so the authoritative pose reaches
             // every client before the new owner starts streaming its own position.
-            this.Delay(0.15f, () =>
-            {
-                if (gameEnded || playerPuck == null) return;
-                if (PlayercurrentTurnId != playerId) return; // turn changed meanwhile
-                if (targetConn == null || !targetConn.isReady) return;
-
-                var identity = playerPuck.GetComponent<NetworkIdentity>();
-                if (identity != null && identity.connectionToClient == null)
-                {
-                    identity.AssignClientAuthority(targetConn);
-                    Debug.Log($"[Carrom][Server] Striker authority assigned to {playerId}");
-                }
-            });
+            StartCoroutine(HandStrikerOver(playerId, targetConn));
             return true;
         }
 
@@ -1098,6 +1144,49 @@ public class CarromNetworkManager : NetworkBehaviour
 
         Debug.LogWarning($"[Carrom][Server] No ready MirrorPlayerPrefab found for turn player {playerId}.");
         return false;
+    }
+
+    // QA 29 Oct: the hand-over used to be a single try 0.15 s later that silently gave up when the connection was not
+    // ready at that instant (a scene reload, a reconnect in progress). The turn id had moved, but the striker stayed
+    // server-owned: the new holder saw no turn circle (it needs isOwned) and could not aim or shoot. Retry for a while,
+    // re-reading the player's connection each time (a reconnect brings a new one).
+    [Server]
+    private IEnumerator HandStrikerOver(string playerId, NetworkConnectionToClient conn)
+    {
+        yield return new WaitForSeconds(0.15f);
+        const int attempts = 40;   // 0.25 s apart: ~10 s
+        for (int attempt = 0; attempt < attempts; attempt++)
+        {
+            if (gameEnded || playerPuck == null) yield break;
+            if (PlayercurrentTurnId != playerId) yield break; // turn changed meanwhile
+
+            var identity = playerPuck.GetComponent<NetworkIdentity>();
+            if (identity == null || identity.connectionToClient != null) yield break;
+
+            if (conn == null || !conn.isReady || !NetworkServer.connections.ContainsKey(conn.connectionId))
+                conn = FindPlayerConnection(playerId);
+            if (conn != null && conn.isReady)
+            {
+                identity.AssignClientAuthority(conn);
+                Debug.Log($"[Carrom][Server] Striker authority assigned to {playerId}" + (attempt > 0 ? $" (after {attempt} retries)" : ""));
+                yield break;
+            }
+            if (attempt == 0) Debug.LogWarning($"[Carrom][Server] {playerId} is not ready for the striker yet — retrying.");
+            yield return new WaitForSeconds(0.25f);
+        }
+        Debug.LogError($"[Carrom][Server] Could not hand the striker to {playerId}: no ready connection.");
+    }
+
+    private static NetworkConnectionToClient FindPlayerConnection(string playerId)
+    {
+        foreach (var item in FindObjectsOfType<MirrorPlayerPrefab>())
+        {
+            string itemPlayerId = item.playerData != null && !string.IsNullOrEmpty(item.playerData.playerId)
+                ? item.playerData.playerId
+                : item.playerId;
+            if (itemPlayerId == playerId && item.connectionToClient != null) return item.connectionToClient;
+        }
+        return null;
     }
 
     // Shot-path entry for the DEDICATED SERVER's own GameController flow (SwitchMasterDelay).
@@ -1497,6 +1586,7 @@ public class CarromNetworkManager : NetworkBehaviour
     {
         if (gameEnded) return;
         Debug.Log("Timer" + playerId);
+        StopShotWatchdog();   // QA 29 Oct: a turn started, the shot settled
         // Stop any old timer
         if (timerCoroutine != null)
             StopCoroutine(timerCoroutine);

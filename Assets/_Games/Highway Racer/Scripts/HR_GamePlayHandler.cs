@@ -12,6 +12,8 @@ using UnityEngine.UI;
 using System;
 using System.Collections;
 using UnityEngine.SceneManagement;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using Mirror;
 
 #if PHOTON_UNITY_NETWORKING
@@ -157,6 +159,7 @@ public class HR_GamePlayHandler : MonoBehaviour
 
     private void Start()
     {
+        StartCoroutine(BrightenNightScene());
         StartCoroutine(SpawnCar());
         {
 
@@ -175,6 +178,82 @@ public class HR_GamePlayHandler : MonoBehaviour
 
         }
     }
+    #region Night scene brightness
+
+    // QA 29 Oct: "game screen is very dark, colours dull". The online race runs in HighwayNight: its two
+    // directional lights are 0.5 and 0.1, the ambient comes from a dark night skybox, and the camera renders
+    // without post-processing (the HR_Camera instance drops its URP camera data), so nothing lifts it.
+    // Brighten it at runtime - here rather than in the scene so it ships with a code update and is easy to tune:
+    //  - ambient switched to a brighter trilight (lights the cars and all non-lightmapped objects),
+    //  - directional lights doubled (capped), so the road and cars get a real key light,
+    //  - a global URP volume adds exposure and saturation (the only lever that also lifts the baked lightmaps),
+    //    and post-processing is turned on for the game cameras so the volume is applied.
+    // Only the night scene; skipped on the headless server.
+    private const float NightLightMultiplier = 2f;
+    private const float NightLightMaxIntensity = 1.2f;
+    private const float NightPostExposure = 0.6f;    // EV, about 1.5x brighter
+    private const float NightSaturation = 20f;       // -100..100
+    private const float NightContrast = 8f;          // -100..100
+    private static readonly Color NightAmbientSky = new Color(0.50f, 0.55f, 0.65f);
+    private static readonly Color NightAmbientEquator = new Color(0.40f, 0.42f, 0.46f);
+    private static readonly Color NightAmbientGround = new Color(0.22f, 0.21f, 0.19f);
+
+    private bool nightSceneBrightened;
+
+    private IEnumerator BrightenNightScene()
+    {
+        if (Application.isBatchMode || SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null)
+            yield break;
+        if (gameObject.scene.name.IndexOf("Night", StringComparison.OrdinalIgnoreCase) < 0)
+            yield break;
+
+        if (!nightSceneBrightened)
+        {
+            nightSceneBrightened = true;
+
+            RenderSettings.ambientMode = AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor = NightAmbientSky;
+            RenderSettings.ambientEquatorColor = NightAmbientEquator;
+            RenderSettings.ambientGroundColor = NightAmbientGround;
+
+            foreach (Light sceneLight in FindObjectsByType<Light>(FindObjectsSortMode.None))
+            {
+                if (sceneLight.type == LightType.Directional && sceneLight.isActiveAndEnabled)
+                    sceneLight.intensity = Mathf.Min(sceneLight.intensity * NightLightMultiplier, NightLightMaxIntensity);
+            }
+
+            VolumeProfile profile = ScriptableObject.CreateInstance<VolumeProfile>();
+            ColorAdjustments colorAdjustments = profile.Add<ColorAdjustments>(true);
+            colorAdjustments.postExposure.Override(NightPostExposure);
+            colorAdjustments.saturation.Override(NightSaturation);
+            colorAdjustments.contrast.Override(NightContrast);
+
+            GameObject volumeObject = new GameObject("HR_NightBrightnessVolume");
+            SceneManager.MoveGameObjectToScene(volumeObject, gameObject.scene);
+            Volume volume = volumeObject.AddComponent<Volume>();
+            volume.isGlobal = true;
+            volume.priority = 100f;
+            volume.sharedProfile = profile;
+        }
+
+        // The race camera can be (re)enabled after Start - car spawn, reconnect - so enable post-processing
+        // a few times over the first seconds.
+        for (int i = 0; i < 5; i++)
+        {
+            foreach (Camera cam in Camera.allCameras)
+            {
+                if (cam == null || cam.targetTexture != null) // leave the minimap / render-texture cameras alone
+                    continue;
+                UniversalAdditionalCameraData cameraData = cam.GetUniversalAdditionalCameraData();
+                if (cameraData != null && cameraData.renderType == CameraRenderType.Base)
+                    cameraData.renderPostProcessing = true;
+            }
+            yield return new WaitForSecondsRealtime(1f);
+        }
+    }
+
+    #endregion
+
     //Photon Removal  public ConnectAndJoin ConnectAndJoin;
     private void Update()
     {
