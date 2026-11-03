@@ -461,6 +461,7 @@ namespace Snake_Ladder
                 ServerSeatOut(forfeitingIndex, SeatLeft, "pressed Leave");
                 return;
             }
+            if (NetworkGameManager.Instance != null && NetworkGameManager.Instance.ServerForfeitAfterOpponentLeft(sender, "Snake")) return;
 
             Debug.Log($"[SnakeServerResult] Player {forfeitingIndex + 1} forfeited.");
             if (!serverResultDeclared) MatchFlow.Log("Snake & Ladder", $"{FlowWho(forfeitingIndex)} left the game (forfeit)");
@@ -667,7 +668,7 @@ namespace Snake_Ladder
 
         private static ResultManager SpawnResultManager()
         {
-            GameObject prefab = AssetRouter.Load<GameObject>("WinLoseGameManager");
+            GameObject prefab = Resources.Load<GameObject>("WinLoseGameManager");
             if (prefab == null)
             {
                 Debug.LogError("WinLoseGameManager prefab not found!");
@@ -681,18 +682,12 @@ namespace Snake_Ladder
             return resultManager;
         }
 
-        /// <summary>The 2-player result shows the local player on the side they play on, which is the LEFT for both
-        /// players (GameControllerNew puts the joiner's own panel on the left). Nothing outside an online Snake &amp; Ladder match.</summary>
-        internal static void SetSnakeResultSide()
+        private static void SetSnakeResultSide()
         {
-            if (GameControllerNew.instance == null || IsMultiSeatTable) return;
-            int player = GameControllerNew.myPlayerNumber;
-            // A phone that rejoined may not have its number back yet: the match's creator plays player 0.
-            if (player < 0 && NetworkGameManager.Instance != null && !string.IsNullOrEmpty(NetworkGameManager.Instance.creatorData.playerId)
-                && staticVariables.UserProfiledata != null)
-                player = NetworkGameManager.Instance.creatorData.playerId == staticVariables.UserProfiledata.user._id.ToString() ? 0 : 1;
-            if (player == 0 || player == 1)
+            if (GameControllerNew.myPlayerNumber == 0)
                 ResultManager.LocalPlayerSideOverride = ResultManager.ResultSide.Left;
+            else if (GameControllerNew.myPlayerNumber == 1)
+                ResultManager.LocalPlayerSideOverride = ResultManager.ResultSide.Right;
         }
 
         private static void SetWinnerBox(ResultManager resultManager, bool hasWinner, bool localPlayerWon)
@@ -836,7 +831,6 @@ namespace Snake_Ladder
 
         private void Update()
         {
-            WatchMySeat();
             // QA 29 Oct: pick up a result the shared code declared (away limit / 30 s) - see ServerAdoptSharedDisconnectResult.
             if (isServer && !serverResultDeclared && Time.unscaledTime >= nextSharedResultCheck)
             {
@@ -1446,52 +1440,6 @@ namespace Snake_Ladder
 
         void OnDestroy() => MultiSeatTable.Unregister(this);
 
-        // ─── This phone was taken out of the table (QA 21 Oct, items 5, 8, 9) ──────────────────────────────────
-        // The server marks the seat SeatAbandoned (away more than 30 s), SeatKicked (reconnected 5 times) or
-        // SeatEliminated (missed turns). A phone that comes back after that — or after the match ended without it,
-        // so it never got RpcMatchWon — sees it only in seatList: tell the player and go Home instead of leaving them
-        // on a board that no longer plays.
-        bool removedShown;
-        float nextSeatCheck;
-
-        void WatchMySeat()
-        {
-            if (removedShown || !NetworkClient.active || NetworkServer.active || seatCount <= 2) return;
-            if (Time.unscaledTime < nextSeatCheck) return;
-            nextSeatCheck = Time.unscaledTime + 0.5f;
-            string me = staticVariables.UserProfiledata?.user?._id.ToString();
-            if (string.IsNullOrEmpty(me)) return;
-            foreach (var seat in seatList)
-                if (seat.playerId == me && (seat.state == SeatAbandoned || seat.state == SeatKicked || seat.state == SeatEliminated))
-                {
-                    ShowRemoved(seat.state);
-                    return;
-                }
-        }
-
-        void ShowRemoved(int state)
-        {
-            removedShown = true;
-            string body = state == SeatKicked
-                ? $"You disconnected more than {SeatReconnectLimit} times, so you have been removed from this match."
-                : state == SeatEliminated
-                    ? "You missed your turn too many times in a row, so you are out of this match."
-                    : $"You were away for more than {SeatDropGraceSeconds:0} seconds, so you can no longer rejoin this match.";
-            ConstantsData_M.Log($"[Snake] removed from the table (state {state})");
-            if (PopupMessageManager.instance != null)
-                PopupMessageManager.instance.ShowConfirmPanel(body, LeaveRemoved, "OK", true, false);
-            else
-                LeaveRemoved();
-        }
-
-        void LeaveRemoved()
-        {
-            // The seat is already out on the server: no leave to report, and no reconnect to try.
-            if (MirrorNetwork.Instance != null) MirrorNetwork.Instance.currentDisconnectReason = DisconnectReason.UserRequested;
-            if (NetworkClient.active) NetworkManager.singleton.StopClient();
-            SceneRouter.LoadScene("Home");
-        }
-
         GameObject SeatToken(int seat) => seat >= 0 && seat < seatTokens.Length ? seatTokens[seat] : null;
 
         int SpawnedSeatTokens()
@@ -1668,21 +1616,16 @@ namespace Snake_Ladder
         }
 
         /// <summary>Phones: the N-seat result panel (place, colour, name, square, state, coins).</summary>
-        public void ShowSeatResult(string winnerId)
+        void ShowSeatResult(string winnerId)
         {
             ResultManager.isGameFinished = true;
             var gc = GameControllerNew.instance;
-            string reason = gc != null && gc.SeatSquareOnScreen(MatchSeatIndex(winnerId)) >= 100 ? "Reached 100"
-                          : remainingTime <= 0 ? "Time over - furthest token wins" : "Last player at the table";
-            // "Last player at the table": everyone else is out, even when the seat list has not caught up yet (a seat
-            // put out on missed turns still read "playing" on the result, 28 Oct).
-            bool lastStanding = reason == "Last player at the table";
             var rows = new List<(MultiSeatResult.Row row, int square, bool gone)>();
             for (int s = 0; s < seatList.Count; s++)
             {
                 var info = seatList[s];
                 int square = gc != null ? gc.SeatSquareOnScreen(s) : 0;
-                bool gone = info.state != SeatPlaying || (lastStanding && info.playerId != winnerId);
+                bool gone = info.state != SeatPlaying;
                 rows.Add((new MultiSeatResult.Row
                 {
                     seat = s,
@@ -1693,8 +1636,7 @@ namespace Snake_Ladder
                           : info.state == SeatLeft ? "left"
                           : info.state == SeatAbandoned ? "disconnected"
                           : info.state == SeatKicked ? "removed (reconnects)"
-                          : info.state == SeatEliminated ? "out (missed turns)"
-                          : gone ? "out" : "playing",
+                          : info.state == SeatEliminated ? "out (missed turns)" : "playing",
                 }, square, gone));
             }
             rows.Sort((a, b) =>
@@ -1705,6 +1647,8 @@ namespace Snake_Ladder
                 int c = b.square.CompareTo(a.square);
                 return c != 0 ? c : a.row.seat.CompareTo(b.row.seat);
             });
+            string reason = gc != null && gc.SeatSquareOnScreen(MatchSeatIndex(winnerId)) >= 100 ? "Reached 100"
+                          : remainingTime <= 0 ? "Time over - furthest token wins" : "Last player at the table";
             MultiSeatResult.Show(rows.ConvertAll(r => r.row), winnerId, reason, GameControllerNew.SeatColours);
         }
 
