@@ -590,6 +590,15 @@ namespace Snake_Ladder
                 ShowSeatResult(winnerId);
                 return;
             }
+            ShowTwoPlayerWinner(winnerId);
+        }
+
+        // QA 3 Nov: static, so a phone whose connection (and with it this spawned object) is already gone can still show
+        // the 2-player result the API holds - see ShowApiResult.
+        public static void ShowTwoPlayerWinner(string winnerId)
+        {
+            if (staticVariables.UserProfiledata == null || staticVariables.UserProfiledata.user == null)
+                return;
             if (ResultManager.GameSpawnedFinished || !ResultManager.TryCommitResultLatch())
                 return;
 
@@ -612,17 +621,19 @@ namespace Snake_Ladder
             resultManager.UpdateResultSummary(localPlayerWon);
             NetworkGameManager.OnRematchRecived += resultManager.RematchRequestRecived;
 
+            // OpponetProfile can be empty on a phone that came back (QA 29 Oct).
+            string opponentName = staticVariables.OpponetProfile != null ? staticVariables.OpponetProfile.userName : string.Empty;
             if (localPlayerWon)
             {
                 resultManager.InitializeWinnerUI(staticVariables.ProfilePicture,
                     staticVariables.UserProfiledata.user.first_name + " " + staticVariables.UserProfiledata.user.last_name);
-                resultManager.InitializeLoserUI(staticVariables.opponentImage, staticVariables.OpponetProfile.userName);
+                resultManager.InitializeLoserUI(staticVariables.opponentImage, opponentName);
             }
             else
             {
                 resultManager.InitializeLoserUI(staticVariables.ProfilePicture,
                     staticVariables.UserProfiledata.user.first_name + " " + staticVariables.UserProfiledata.user.last_name);
-                resultManager.InitializeWinnerUI(staticVariables.opponentImage, staticVariables.OpponetProfile.userName);
+                resultManager.InitializeWinnerUI(staticVariables.opponentImage, opponentName);
             }
 
             if (ApiAndRoomManager._instance != null)
@@ -831,6 +842,11 @@ namespace Snake_Ladder
 
         private void Update()
         {
+            if (!isServer)
+            {
+                lastSeatCount = seatCount;
+                KeepTurnIndicatorInStep();
+            }
             // QA 29 Oct: pick up a result the shared code declared (away limit / 30 s) - see ServerAdoptSharedDisconnectResult.
             if (isServer && !serverResultDeclared && Time.unscaledTime >= nextSharedResultCheck)
             {
@@ -983,6 +999,19 @@ namespace Snake_Ladder
 
         public void DirectResult(bool result)
         {
+            ShowApiResult(result);
+        }
+
+        // QA 3 Nov (30 s away, the phone that comes back sat on the board until the player left): that phone learns the
+        // result from the API (MirrorNetwork's status check after the drop / after resuming), which raises
+        // OnDirectWinWithoutInternet. But by then Mirror has already destroyed this spawned object (StopClient ->
+        // DestroyAllClientObjects), and OnDisable had unsubscribed DirectResult: nobody showed anything. GameControllerNew
+        // (a scene object, still alive) now forwards the event here when this object is gone.
+        /// <summary>Seats of the last table this phone played (this object may be gone when the API result arrives).</summary>
+        static int lastSeatCount = 2;
+
+        public static void ShowApiResult(bool result)
+        {
             // The server is gone and the API holds the result (MirrorNetwork's status check). Prefer the API's winner id;
             // OpponetProfile can be empty on a phone that came back (QA 29 Oct: NullReferenceException, no result).
             string me = staticVariables.UserProfiledata?.user?._id.ToString();
@@ -993,7 +1022,36 @@ namespace Snake_Ladder
                     ? staticVariables.OpponetProfile.userId
                     : staticVariables.lastOpponentId;
             if (string.IsNullOrEmpty(winnerId)) return;
-            ShowServerWinner(winnerId);
+            if (Instance != null)
+            {
+                Instance.ShowServerWinner(winnerId);
+                return;
+            }
+            if (lastSeatCount > 2)
+            {
+                ShowTableEndedWhileAway(result);
+                return;
+            }
+            ShowTwoPlayerWinner(winnerId);
+        }
+
+        /// <summary>3-4 seats, this object gone: the seat list behind the table result is gone with it. Say so and go Home.</summary>
+        static void ShowTableEndedWhileAway(bool won)
+        {
+            if (ResultManager.GameSpawnedFinished || !ResultManager.TryCommitResultLatch())
+                return;
+            ResultManager.GameSpawnedFinished = true;
+            ResultManager.isGameFinished = true;
+            if (MirrorNetwork.Instance != null) MirrorNetwork.Instance.currentDisconnectReason = DisconnectReason.UserRequested;
+            string body = won ? "This match ended while you were away. You won!"
+                              : "This match ended while you were away.";
+            if (PopupMessageManager.instance != null)
+            {
+                PopupMessageManager.instance.ReconnectionPanelStatus(false);
+                PopupMessageManager.instance.ShowConfirmPanel(body, () => SceneRouter.LoadScene("Home"), "OK", true, false);
+            }
+            else
+                SceneRouter.LoadScene("Home");
         }
 
         private void AnnounceWinner(string reason)
@@ -1013,9 +1071,28 @@ namespace Snake_Ladder
         [Command(requiresAuthority = false)]
         void CmdRequestPlayerAssignment(string playerID, NetworkConnectionToClient sender = null)
         {
-            if (!TryResolveConnection(sender, out string authoritativePlayerId, out _))
-                return;
+            ServerHandlePlayerAssignment(playerID, sender, 0);
+        }
 
+        // QA 3 Nov: a phone that comes back sends this 0.2 s after this object spawns on it, often before its player
+        // object's CmdSetPlayerData has bound the new connection to its seat (CreatorRef / JoinerRef / MatchSeats). The
+        // request was then dropped as "unregistered" and never repeated: no turn state (the arrow and dice stayed off
+        // until the next turn change) and, in a match already settled, no TargetRestoreFinishedResult. Try again for a
+        // while instead.
+        const int AssignmentRetries = 20;
+        const float AssignmentRetrySeconds = 0.5f;
+
+        [Server]
+        void ServerHandlePlayerAssignment(string playerID, NetworkConnectionToClient sender, int attempt)
+        {
+            if (!TryResolveConnection(sender, out string authoritativePlayerId, out _))
+            {
+                if (sender != null && attempt < AssignmentRetries)
+                    StartCoroutine(RetryPlayerAssignment(playerID, sender, attempt + 1));
+                return;
+            }
+
+            ServerAdoptSharedDisconnectResult();
             if (serverResultDeclared)
             {
                 Debug.Log($"[SnakeServerResult] Restoring finished result to reconnecting connection {sender.connectionId}.");
@@ -1062,6 +1139,15 @@ namespace Snake_Ladder
 
 
 
+        }
+
+        IEnumerator RetryPlayerAssignment(string playerID, NetworkConnectionToClient sender, int attempt)
+        {
+            yield return new WaitForSecondsRealtime(AssignmentRetrySeconds);
+            // Gone again (or replaced by a newer connection): that one sends its own request.
+            if (!NetworkServer.connections.TryGetValue(sender.connectionId, out NetworkConnectionToClient live) || live != sender)
+                yield break;
+            ServerHandlePlayerAssignment(playerID, sender, attempt);
         }
         [TargetRpc]
         void TargetSyncTurnState(
@@ -1260,6 +1346,43 @@ namespace Snake_Ladder
         public void RpcNotifyFirstTurn(int firstPlayerNumber)
         {
             Debug.Log($"🎯 [Client] Player {firstPlayerNumber + 1}'s turn");
+            ApplyTurnOnClient(firstPlayerNumber);
+        }
+
+        // QA 3 Nov (the turn arrow gone when the turn passed; after a reconnect it came back only at the next turn change,
+        // the game looking stuck): the arrow followed RpcNotifyFirstTurn / TargetSyncTurnState only. A phone that reloads
+        // the board on a reconnect hides both arrows (GameControllerNew.Init) and its one-shot assignment request could
+        // be dropped (see ServerHandlePlayerAssignment), so neither came. The synced turn (currentTurnPlayerNumber) is
+        // the truth: when the board has shown another turn for a second, show the synced one.
+        private float nextTurnCheck;
+        private int turnSeen = -2;
+        private float turnSeenAt;
+
+        private void KeepTurnIndicatorInStep()
+        {
+            if (Time.unscaledTime < nextTurnCheck) return;
+            nextTurnCheck = Time.unscaledTime + 0.25f;
+            if (!gameInProgress || serverResultDeclared || ResultManager.isGameFinished) return;
+            int turn = currentTurnPlayerNumber;
+            if (turn != turnSeen)
+            {
+                // The Rpc for a new turn may land a moment after (or before) the SyncVar: give it a second.
+                turnSeen = turn;
+                turnSeenAt = Time.unscaledTime;
+                return;
+            }
+            if (turn < 0 || Time.unscaledTime - turnSeenAt < 1f) return;
+            GameControllerNew gc = GameControllerNew.instance;
+            if (gc == null || GameControllerNew.myPlayerNumber < 0 || gc.TurnShownFor(turn)) return;
+
+            Debug.Log($"[Snake] Turn indicator out of step: showing Player {turn + 1}'s turn from the synced state.");
+            ApplyTurnOnClient(turn);
+            if (!gc.TurnShownFor(turn)) gc.ShowTurn(turn);   // the board had not subscribed to this object (yet)
+        }
+
+        private void ApplyTurnOnClient(int firstPlayerNumber)
+        {
+            if (GameControllerNew.instance == null) return;
             if (IsMultiSeatTable)
             {
                 GameControllerNew.instance.ApplySeatTurn(firstPlayerNumber);

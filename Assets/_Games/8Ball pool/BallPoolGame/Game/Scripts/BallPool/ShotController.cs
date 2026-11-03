@@ -2163,24 +2163,62 @@ namespace BallPool
             yield return null;
             if (!BallPoolGameLogic.isOnLine || mainCueBall == null) yield break;
 
+            // QA 3 Nov: the server sends all zeros when it holds no cue pose for this turn. A real pose never
+            // has the vertical tilt at exactly 0 (the authored rest pose is ~5 degrees).
+            bool serverHasAim = pivotY != 0f || verticalX != 0f || displacement != Vector2.zero;
             if (BallPoolGameLogic.controlFromNetwork)
             {
                 // Watcher: re-apply the AUTHORITATIVE aim (re-sent by the server), so a one-shot that
                 // was lost to the init race is corrected without waiting for the opponent to nudge.
-                ForceSyncCueControlFromNetwork(pivotY, verticalX, displacement, sliderZ, force);
+                // QA 3 Nov: with no cached pose the server already sent the rest pose (TargetRpcResetCueOnReconnect);
+                // re-applying the zeros here put the stick back below its bar (vertical tilt 0) three frames later.
+                if (serverHasAim)
+                    ForceSyncCueControlFromNetwork(pivotY, verticalX, displacement, sliderZ, force);
+                else
+                    AnchorCuePivotToCueBall();
             }
             else
             {
-                // Active player: re-anchor the pivot on the cue ball, deterministically re-aim (unless
-                // it is ball-in-hand / a scratch), re-render and re-broadcast so the watcher matches.
+                // Active player: re-anchor the pivot on the cue ball, re-render and re-broadcast so the
+                // watcher matches.
                 if (mainCueBall.position.y > -0.1f)
                     cuePivotTransform.position = mainCueBall.position;
                 if (AightBallPoolGameLogic.gameState != null
                     && !AightBallPoolGameLogic.gameState.cueBallInPocket)
-                    AlignCueForBreakAndAim(ConsumeRespottedCueAimPending());
+                {
+                    // QA 3 Nov ("stick stuck in the centre of the table on one phone, near the edge on the
+                    // other"): this always re-aimed the stick toward the table centre, throwing away the
+                    // player's aim the server had just restored — the one the opponent's phone still shows.
+                    // Keep that aim; only a fresh respot (stale shot aim) or no cached aim re-aims.
+                    bool freshRespot = cueBallRespottedAimPending && mainCueBall.position.y > -0.1f;
+                    if (serverHasAim && !freshRespot)
+                        ApplyRestoredAimPose(pivotY, verticalX, displacement);
+                    else
+                        AlignCueForBreakAndAim(ConsumeRespottedCueAimPending());
+                }
                 EstimateShot(true);
                 ForceSendCueState();
             }
+        }
+
+        // QA 3 Nov: puts the cue rig on a restored aim (reconnect), no pull-back, and refreshes the cached sync
+        // fields so IsCueModified does not report a spurious change next frame (see AlignCueForBreakAndAim).
+        private void ApplyRestoredAimPose(float pivotY, float verticalX, Vector2 displacement)
+        {
+            AttachCueRigToCuePivot();
+            cuePivotTransform.localRotation = Quaternion.Euler(0.0f, pivotY, 0.0f);
+            cueVerticalAlignment.localRotation = Quaternion.Euler(verticalX, 0.0f, 0.0f);
+            cueDisplacementTransform.localPosition = new Vector3(displacement.x, displacement.y, 0.0f);
+            cueSliderTransform.localPosition = Vector3.zero;
+            cueSliderZDisplacement = 0.0f;
+            cueForce = 0.0f;
+            if (targetingManager2D != null)
+                targetingManager2D.SetPointTargetingPosition(-cueDisplacementTransform.localPosition / cueBallSize);
+
+            cuePivotYRotation = cuePivotTransform.localRotation.eulerAngles.y;
+            localCueVerticalRotationX = cueVerticalAlignment.localRotation.eulerAngles.x;
+            cueLocalDisplacementXY = new Vector2(cueDisplacementTransform.localPosition.x, cueDisplacementTransform.localPosition.y);
+            cueSliderLocalZPosition = cueSliderTransform.localPosition.z;
         }
 
         /// <summary>

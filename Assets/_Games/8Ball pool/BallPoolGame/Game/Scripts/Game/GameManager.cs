@@ -119,6 +119,7 @@ public class GameManager : MonoBehaviour
                 int prizeAmount = NetworkGameManager.Instance.Prize;
                 staticVariables.currentPrize = prizeAmount;
                 prizeText.text = (prizeAmount * 2).ToString();
+                BindMatchCoinType();   // QA 3 Nov
                 Debug.Log("Player Online Mode " + prizeAmount);
             });
         }
@@ -317,6 +318,31 @@ public class GameManager : MonoBehaviour
             && AightBallPoolGameLogic.gameState != null;
     }
 
+    // QA 3 Nov ("one player sees Silver Coins while the opponent sees Gold Coins"): the match's coin type is
+    // the server's NetworkGameManager.IsGoldCoin (Edgegap env), but 8 Ball never read it — every screen used
+    // this phone's staticVariables.isgoldcoins, left over from whatever coin card / flow this phone came
+    // through (other games copy IsGoldCoin into it on scene start), and the prize pill's coin was a fixed gold
+    // sprite. Adopt the server's value and paint the pill's coin to match. Called once Prize has synced (the
+    // SyncVars arrive together, so IsGoldCoin is valid then too).
+    private void BindMatchCoinType()
+    {
+        if (NetworkGameManager.Instance == null)
+            return;
+        bool isGold = NetworkGameManager.Instance.IsGoldCoin;
+        staticVariables.isgoldcoins = isGold;
+        if (prizeText == null || prizeText.transform.parent == null)
+            return;
+        Transform coin = prizeText.transform.parent.Find("Coins");
+        Image coinImage = coin != null ? coin.GetComponent<Image>() : null;
+        if (coinImage == null || SpritesManager.Instance == null || SpritesManager.Instance.spritesScriptable == null)
+            return;
+        Sprite sprite = isGold ? SpritesManager.Instance.spritesScriptable.goldenCoin : SpritesManager.Instance.spritesScriptable.silvercoin;
+        if (sprite == null)
+            return;
+        coinImage.sprite = sprite;
+        coinImage.preserveAspect = true;
+    }
+
     // Latch for the lazy prize binding below (fires once per scene load).
     private bool prizeBound = false;
 
@@ -332,6 +358,7 @@ public class GameManager : MonoBehaviour
         {
             staticVariables.currentPrize = NetworkGameManager.Instance.Prize;
             prizeText.text = (NetworkGameManager.Instance.Prize * 2).ToString();
+            BindMatchCoinType();   // QA 3 Nov
             prizeBound = true;
         }
 

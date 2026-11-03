@@ -293,6 +293,21 @@ namespace Snake_Ladder
             }
         }
 
+        /// <summary>Phones: the board shows <paramref name="turn"/> as the player (seat) whose turn it is (QA 3 Nov).</summary>
+        public bool TurnShownFor(int turn)
+        {
+            if (SnakeMirrorNetworkManager.IsMultiSeatTable) return seatTurnOnScreen == turn;
+            if (player1Arrow == null || player2Arrow == null) return true;
+            return player1Arrow.activeSelf == (turn == 0) && player2Arrow.activeSelf == (turn == 1);
+        }
+
+        /// <summary>Phones: show <paramref name="turn"/>'s turn (arrow, dice) as RpcNotifyFirstTurn does (QA 3 Nov).</summary>
+        public void ShowTurn(int turn)
+        {
+            if (SnakeMirrorNetworkManager.IsMultiSeatTable) ApplySeatTurn(turn);
+            else OnFirstTurnPlayer(turn);
+        }
+
         void OnFirstTurnPlayer(int firstPlayerNumber)
         {
             if (SnakeMirrorNetworkManager.IsMultiSeatTable) return;   // ApplySeatTurn already set the N-seat table up
@@ -533,7 +548,10 @@ namespace Snake_Ladder
             {
                 Debug.Log("🎲 Taking Player 1's turn");
                 Snake_Ladder.SoundManager.instance.PlaySound(SoundManager.AllSounds.Dice);
-                player1Arrow.gameObject.SetActive(false);
+                // QA 3 Nov: online, the arrow stays on the roller until the server passes the turn (RpcNotifyFirstTurn
+                // moves it): hidden here, no arrow showed for the 2 s wait and the walk, and none at all if the roll was
+                // refused.
+                if (!isOnline) player1Arrow.gameObject.SetActive(false);
                 Player1DiceButton.interactable = false;
                 Player1Button.interactable = false;
                 int turnNumber = UnityEngine.Random.Range(1, 7);
@@ -565,7 +583,7 @@ namespace Snake_Ladder
             {
                 Debug.Log("🎲 Taking Player 2's turn");
                 SoundManager.instance.PlaySound(SoundManager.AllSounds.Dice);
-                player2Arrow.gameObject.SetActive(false);
+                if (!isOnline) player2Arrow.gameObject.SetActive(false);   // QA 3 Nov: see Player 1 above
                 Player2TimerImage.gameObject.SetActive(false);
 
                 int turnNumber = UnityEngine.Random.Range(1, 7);
@@ -1661,6 +1679,22 @@ namespace Snake_Ladder
         private void OnDestroy()
         {
             MirrorNetwork.OnWinCall -= AnnounceVictory;
+            MirrorNetwork.OnDirectWinWithoutInternet -= OnApiResultAfterConnectionGone;
+        }
+
+        private void OnEnable()
+        {
+            MirrorNetwork.OnDirectWinWithoutInternet -= OnApiResultAfterConnectionGone;
+            MirrorNetwork.OnDirectWinWithoutInternet += OnApiResultAfterConnectionGone;
+        }
+
+        // QA 3 Nov (30 s away: the phone that came back stayed on the board): the API's result reaches the phone after
+        // its connection dropped, when Mirror has already destroyed SnakeMirrorNetworkManager (a spawned object) and its
+        // DirectResult listener with it. This board is a scene object and is still here: show the result from it.
+        void OnApiResultAfterConnectionGone(bool won)
+        {
+            if (SnakeMirrorNetworkManager.Instance != null) return;   // still here: its own DirectResult shows it
+            SnakeMirrorNetworkManager.ShowApiResult(won);
         }
 
         public void AnnounceVictory(string reason)

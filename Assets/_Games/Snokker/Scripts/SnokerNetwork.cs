@@ -412,7 +412,10 @@ public class SnokerNetwork : NetworkBehaviour
 
             }
         }
-        if (ballInHand)
+        // QA 3 Nov (cue ball in different places after a reconnect): only the player in hand starts again from the D
+        // (and sends it to the server, ClientToServer). The other phone threw the cue ball the opponent was placing
+        // back to the D and kept it there while the opponent's hand stood still; it now keeps the server's.
+        if (ballInHand && IsMyTurn())
             _mainScript.resetCueBallToStart();
 
     }
@@ -511,7 +514,10 @@ public class SnokerNetwork : NetworkBehaviour
                 {
                     StickManager.instance.SetBallInHand(false);
                 }
-                _mainScript.doAutoTarget();
+                // QA 3 Nov: only the player whose turn it is aims. The other phone turned its copy of the stick (and
+                // its camera) to its own pick of a target here, until the owner's next stick update turned it back.
+                if (NetworkServer.active || IsMyTurn())
+                    _mainScript.doAutoTarget();
 
             }
             _mainScript.ballInHandIndicatorObj.SetActive(false);

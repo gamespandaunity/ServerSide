@@ -260,6 +260,8 @@ public class LudoServerBoard
         sb.Append(Turn).Append(';');
         sb.Append(CanEnterHome[creatorPl] ? 1 : 0).Append(';');
         sb.Append(CanEnterHome[joinerPl] ? 1 : 0).Append(';');
+        // QA 3 Nov: a roll not moved yet, so a phone back from a reconnect can move it (older phones read only 0-10).
+        sb.Append(PendingSteps).Append(';');
         return sb.ToString();
     }
 

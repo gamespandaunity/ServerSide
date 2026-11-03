@@ -35,10 +35,29 @@ public class StickManager : NetworkBehaviour
 
     //[SyncVar(hook = nameof(OnTurnChanged))]
     //public string CurrentTurn = string.Empty;
+    // QA 3 Nov (after a reconnect both phones played as if it were their turn, "stick dono side"): whether this hook
+    // means "the toss just happened" or "a match is under way" was read from SnokerNetwork.isTossDone, a static that
+    // only survives a reconnect while the app keeps running. A phone that was killed and came back (MatchResume)
+    // starts with it false, so it re-ran the toss: it took the TOSS WINNER as the current turn (NetorkedTurn is only
+    // written at the toss), forced ball in hand on the server (CmdSetBallInHand(true), which also hands the cue ball
+    // to a phone) and never asked the server for the real state. The value now tells it: a toss changes NetorkedTurn
+    // while this stick is already running on the phone; a phone that joins a match under way gets it inside the
+    // spawn, before OnStartClient.
+    private bool startedOnClient;
+    // Set when this phone asked the server for the match state (CmdGetCurrentTurn); RpcSyncAllPlayerData reaches
+    // every phone, and only the one that asked has to rebuild its table from it.
+    private bool awaitingStateRestore;
+
     void OnServerTossDone(string oldValue, string newValue)
     {
+        bool joinedMatchUnderWay = !startedOnClient && !string.IsNullOrEmpty(newValue);
         this.DelayUntil(() => SnokerNetwork.Instance._SnokerGameManager._SnokerCueBall.initialized, () =>
         {
+            if (joinedMatchUnderWay && !SnokerNetwork.isTossDone)
+            {
+                Debug.Log("[SnookerSync] joined a match under way (app restarted): restoring it, not re-running the toss.");
+                SnokerNetwork.isTossDone = true;
+            }
             if (SnokerNetwork.isTossDone == false)
             {
                 SnokerNetwork.Instance.NotifyTossResult(NetorkedTurn);
@@ -49,6 +68,7 @@ public class StickManager : NetworkBehaviour
             {
                 Debug.LogError("Cmd Current turn");
                 SnokerNetwork.Instance._SnokerGameManager._SnokerCameraManager.blurGameView(true);
+                awaitingStateRestore = true;
                 CmdGetCurrentTurn();
                 this.Delay(2, () =>
                 {
@@ -139,6 +159,7 @@ public class StickManager : NetworkBehaviour
     }
     public override void OnStartClient()
     {
+        startedOnClient = true;
         this.Delay(2, () =>
         {
             for (int index = 0; index < SnokerNetwork.Instance._SnokerGameManager.ballsArray.Length; index++)
@@ -239,35 +260,66 @@ public class StickManager : NetworkBehaviour
         RpcOnTurnChanged(BallsSnapshot());
     }
 
+    /// <summary>
+    /// QA 3 Nov: the same table snapshot as at a turn change, for a shot after which the SAME player plays on (a ball
+    /// potted, no foul). Only turn changes used to send one, so in the red and colour phases a whole break could pass
+    /// with the phones' balls drifting away from the server's (see RpcOnTurnChanged).
+    /// </summary>
+    [Server]
+    public void ServerSendBallsSnapshot()
+    {
+        RpcOnTurnChanged(BallsSnapshot());
+    }
+
     /// <summary>Below the table: where a potted ball goes in the snapshot (y below this = potted, on the phones).</summary>
     public const float PottedBelowY = -10f;
 
     // Every ball where the server has it. Potting is decided on the server only, and the phones never heard of it: a ball
     // potted here stayed on their tables at the pocket (27 Oct emulator test). A potted ball is sent below the table, so
     // even an app that does not know this rule shows it nowhere.
+    // QA 3 Nov: the cue ball goes last, one element after ballsArray. An app from before reads only ballsArray.Length
+    // elements, so it simply ignores it; an app that gets an array without it (an older server) leaves its cue ball alone.
     [Server]
     Vector3[] BallsSnapshot()
     {
         var balls = SnokerNetwork.Instance._SnokerGameManager.ballsArray;
-        var positions = new Vector3[balls.Length];
+        var positions = new Vector3[balls.Length + 1];
         for (int i = 0; i < balls.Length; i++)
         {
             Vector3 p = balls[i].transform.position;
             positions[i] = balls[i].activeSelf ? p : new Vector3(p.x, PottedBelowY, p.z);
         }
+        positions[balls.Length] = SnokerNetwork.Instance._mainScript.transform.position;
         return positions;
     }
+
+    // QA 3 Nov (balls and cue ball in different places on the two phones, aim lines on different balls): the balls and the
+    // cue ball follow the server through NetworkTransformUnreliable, which DELTA-encodes over an unreliable channel: a
+    // packet only carries the x/y/z that moved since the previous one, and a receiver fills every axis the packet does
+    // not carry from the last position it buffered. When the last packet that moved an axis is lost (a ball creeping to
+    // a stop, the cue ball put back on the D, a reconnect), every later packet - 50 a second, even at rest - re-applies
+    // the stale axis, for the rest of the match. Setting the position from this snapshot did not help either: the
+    // NetworkTransform overwrote it again on the next frame from that same stale buffer. Now every ball takes the
+    // server's position AND its transform syncs drop their buffers, so the next packet's untouched axes are filled
+    // from this, the server's, position.
     [ClientRpc]
     void RpcOnTurnChanged(Vector3[] ballspos)
     {
-
-        int i = 0;
-        foreach (GameObject pos in SnokerNetwork.Instance._SnokerGameManager.ballsArray)
+        if (ballspos == null || SnokerNetwork.Instance == null) return;
+        var balls = SnokerNetwork.Instance._SnokerGameManager.ballsArray;
+        int count = Mathf.Min(balls.Length, ballspos.Length);
+        for (int i = 0; i < count; i++)
         {
-            pos.transform.position = ballspos[i];
-            StartCoroutine(ResetRigidbody(pos, pos.GetComponent<Rigidbody>().isKinematic));
-            i++;
+            GameObject ball = balls[i];
+            ball.transform.position = ballspos[i];
+            // The server sends a ball it potted below the table (StickManager.BallsSnapshot on the server).
+            bool onTable = ballspos[i].y > PottedBelowY / 2f;
+            if (!isServer && ball.activeSelf != onTable) ball.SetActive(onTable);
+            if (!isServer) DropTransformSyncHistory(ball);
+            if (ball.activeSelf) StartCoroutine(ResetRigidbody(ball, ball.GetComponent<Rigidbody>().isKinematic));
         }
+        bool hasCueBall = ballspos.Length > balls.Length;
+        FollowServerCueBall(hasCueBall, hasCueBall ? ballspos[balls.Length] : Vector3.zero);
         IEnumerator ResetRigidbody(GameObject pos, bool state)
         {
             pos.GetComponent<Rigidbody>().isKinematic = !state;
@@ -275,6 +327,75 @@ public class StickManager : NetworkBehaviour
             pos.GetComponent<Rigidbody>().isKinematic = state;
 
         }
+    }
+
+    /// <summary>
+    /// Drops the buffered snapshots of every transform sync on <paramref name="go"/> that this phone does not drive itself,
+    /// so the position just set is the base the next server update builds on (see RpcOnTurnChanged).
+    /// </summary>
+    static void DropTransformSyncHistory(GameObject go)
+    {
+        foreach (NetworkTransformBase sync in go.GetComponents<NetworkTransformBase>())
+        {
+            if (sync.isOwned && sync.syncDirection == SyncDirection.ClientToServer) continue;
+            sync.ResetState();
+        }
+    }
+
+    // The cue ball follows the server through its NetworkTransform. Ball in hand switches a phone's copy to ClientToServer
+    // (mainScript), and only the phone that placed the ball switched it back, so the other phone could keep its own cue
+    // ball position for the rest of the match (27 Oct emulator test: cue ball in different places). Outside ball in hand,
+    // every phone takes the server's cue ball again at each turn change.
+    // QA 3 Nov: the 29 Oct version only dropped the syncs' snapshots, so the next "nothing moved" update filled the
+    // position from wherever this phone's own cue ball was - the wrong place stayed. The server's position now comes in
+    // the snapshot and is set first.
+    void FollowServerCueBall(bool hasServerPosition, Vector3 serverPosition)
+    {
+        var cue = SnokerNetwork.Instance != null ? SnokerNetwork.Instance._mainScript : null;
+        if (cue == null || isServer) return;
+        var nt = cue.GetComponent<NetworkTransformUnreliable>();
+        var nrb = cue.GetComponent<NetworkRigidbodyUnreliable>();
+        Debug.Log($"[SnookerSync] turn change: cue ball at {cue.transform.position.ToString("F3")}" +
+                  (hasServerPosition ? $", server {serverPosition.ToString("F3")}" : "") +
+                  $", direction {(nt != null ? nt.syncDirection.ToString() : "-")}, ball in hand {SnokerGameManager.bBallInHand}");
+        if (SnokerGameManager.bBallInHand) return;
+        // QA 29 Oct: the cue ball carries TWO transform syncs (a NetworkTransformUnreliable and the
+        // NetworkRigidbodyUnreliable, itself a NetworkTransform), both writing the same transform. Only the first
+        // dropped its old snapshots here, so the rigidbody one kept replaying positions from before ball in hand.
+        if (nrb != null) nrb.syncDirection = SyncDirection.ServerToClient;
+        if (nt != null) nt.syncDirection = SyncDirection.ServerToClient;
+        if (hasServerPosition && serverPosition.y > PottedBelowY / 2f) cue.transform.position = serverPosition;
+        DropTransformSyncHistory(cue.gameObject);   // the next server update builds on the position above
+    }
+
+    /// <summary>
+    /// QA 3 Nov (cue ball in different places after ball in hand): the phone that placed the cue ball sends where it put
+    /// it. The server used to keep wherever its interpolation of that phone's unreliable updates had got to when the
+    /// authority was taken back (up to ~0.1 s behind; further when the last update was lost), and the other phone
+    /// followed the server. Sent before CmdSetBallInHand(false), while the server is still in ball in hand.
+    /// </summary>
+    [Command(requiresAuthority = false)]
+    public void CmdCuePlacedAt(Vector3 position, NetworkConnectionToClient sender = null)
+    {
+        if (!SnokerGameManager.bBallInHand || NetworkGameManager.Instance == null) return;
+        bool isCreatorTurn = SnokerGameManager.currentTurn == NetworkGameManager.Instance.creatorData.playerId;
+        var turnConnection = isCreatorTurn ? NetworkGameManager.Instance.CreatorRef : NetworkGameManager.Instance.JoinerRef;
+        if (sender == null || sender != turnConnection) return;   // only the player in hand places the cue ball
+        if (float.IsNaN(position.x) || float.IsNaN(position.y) || float.IsNaN(position.z)) return;
+        var cue = SnokerNetwork.Instance._mainScript;
+        cue.transform.position = position;
+        DropTransformSyncHistory(cue.gameObject);
+        SnookerFlow.Log($"cue ball placed at {position.ToString("F3")}");
+        RpcCuePlacedAt(position);
+    }
+
+    [ClientRpc]
+    void RpcCuePlacedAt(Vector3 position)
+    {
+        var cue = SnokerNetwork.Instance != null ? SnokerNetwork.Instance._mainScript : null;
+        if (cue == null || isServer) return;
+        cue.transform.position = position;
+        DropTransformSyncHistory(cue.gameObject);
     }
 
     void OnCurrentPlayerChanged(int oldIndex, int newIndex)
@@ -474,6 +595,18 @@ public class StickManager : NetworkBehaviour
     [ClientRpc]
     public void RpcSyncAllPlayerData(string currentTurn, bool ballInHand, bool ballStanding, bool tossDone, int snookerRedPottedCount, int snookerTargetBall, bool foulInThisTurn)
     {
+        // QA 3 Nov (after a reconnect: sticks on both sides, aim and cue ball reset on the phone that stayed): this
+        // reaches EVERY phone, and the one that never left re-ran the whole restore in the middle of its own turn -
+        // auto aim, cue shown again, onClickPlaceCueOkBtn (its Cmds and the server's RpcOnClickCuePlaced to both
+        // phones), or in ball in hand goToBallInHand + resetCueBallToStart, which threw its placed cue ball back to
+        // the D. Only the phone that asked (CmdGetCurrentTurn) restores; another phone only does when it disagrees
+        // with the server about the turn or ball in hand.
+        if (!awaitingStateRestore && SnokerGameManager.currentTurn == currentTurn && SnokerGameManager.bBallInHand == ballInHand)
+        {
+            Debug.Log("[Snooker][RpcSyncAllPlayerData] already in step with the server (another phone came back) - nothing to restore.");
+            return;
+        }
+        awaitingStateRestore = false;
         // Restart (never stack) the bounded wait so a re-sent sync always wins and we can't leak
         // two concurrent retries.
         if (_syncAllPlayerDataCo != null) StopCoroutine(_syncAllPlayerDataCo);

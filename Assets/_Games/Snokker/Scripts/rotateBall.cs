@@ -14,6 +14,7 @@ public class rotateBall : MonoBehaviour
     {
         thisTransform = transform;
         thisRigidbody = GetComponent<Rigidbody>();
+        mainScript.LimitTransformSyncToChanges(gameObject);   // QA 3 Nov: see mainScript.LimitTransformSyncToChanges
         innerMeshTransform = thisTransform.Find("ballMesh");
         mainScriptComp = GameObject.Find("cueBall").GetComponent<mainScript>();
 
