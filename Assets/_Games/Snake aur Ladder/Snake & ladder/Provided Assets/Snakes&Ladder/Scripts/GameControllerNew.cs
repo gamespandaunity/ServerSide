@@ -273,7 +273,82 @@ namespace Snake_Ladder
                 }
             }
 
+            PutMeOnTheLeft();
             Debug.Log("✅ Player profiles setup complete!");
+        }
+
+        // Online 2P: har player apne aap ko LEFT pa dekhe aur opponent ko RIGHT pa (baki games jaisa).
+        // "Player 1 UI" / "Player 2 UI" aik dusre ki mirror hain, to joiner (player 1) ke liye dono panels
+        // jagah badal lete hain aur andar se mirror ho jate hain. Sirf view badalta hai - har reference
+        // (dice, arrow, timer, buttons, names) apne player ka hi rehta hai, game logic waisi hi hai.
+        bool sidesSwapped;
+        void PutMeOnTheLeft()
+        {
+            if (sidesSwapped || myPlayerNumber != 1 || SnakeMirrorNetworkManager.IsMultiSeatTable)
+                return;
+            if (Player1DiceButton == null || Player2DiceButton == null)
+                return;
+            var left = Player1DiceButton.transform.parent as RectTransform;   // Player 1 UI
+            var right = Player2DiceButton.transform.parent as RectTransform;  // Player 2 UI
+            if (left == null || right == null || left == right)
+                return;
+            sidesSwapped = true;
+
+            // Arrow tweens apni start position sa chalti hain: pehle wapas start pa, mirror ke baad nayi direction.
+            var arrows = new List<DOTweenAnimation>();
+            foreach (var arrow in new[] { player1Arrow, player2Arrow })
+            {
+                if (arrow == null) continue;
+                foreach (var a in arrow.GetComponents<DOTweenAnimation>())
+                {
+                    if (a.tween != null && a.tween.active) a.tween.Rewind();
+                    arrows.Add(a);
+                }
+            }
+
+            Vector2 aMin = left.anchorMin, aMax = left.anchorMax, piv = left.pivot, pos = left.anchoredPosition, size = left.sizeDelta;
+            left.anchorMin = right.anchorMin; left.anchorMax = right.anchorMax; left.pivot = right.pivot;
+            left.anchoredPosition = right.anchoredPosition; left.sizeDelta = right.sizeDelta;
+            right.anchorMin = aMin; right.anchorMax = aMax; right.pivot = piv;
+            right.anchoredPosition = pos; right.sizeDelta = size;
+            MirrorInside(left);
+            MirrorInside(right);
+            // Player 1 ka arrow Y 180 pa ulta hai (board ki taraf) - side badli to rukh bhi badlo.
+            if (player1Arrow != null && player2Arrow != null)
+            {
+                var turn = player1Arrow.transform.localRotation;
+                player1Arrow.transform.localRotation = player2Arrow.transform.localRotation;
+                player2Arrow.transform.localRotation = turn;
+            }
+
+            // Avatar timer ring dusri taraf sa bharti thi - woh bhi side ke sath badal do.
+            if (Player1TimerImage != null && Player2TimerImage != null)
+            {
+                int origin = Player1TimerImage.fillOrigin; bool clockwise = Player1TimerImage.fillClockwise;
+                Player1TimerImage.fillOrigin = Player2TimerImage.fillOrigin; Player1TimerImage.fillClockwise = Player2TimerImage.fillClockwise;
+                Player2TimerImage.fillOrigin = origin; Player2TimerImage.fillClockwise = clockwise;
+            }
+
+            foreach (var a in arrows)
+            {
+                if (a.animationType != DOTweenAnimation.AnimationType.Move) continue;
+                a.endValueV3 = new Vector3(-a.endValueV3.x, a.endValueV3.y, a.endValueV3.z);
+                if (a.tween != null) a.CreateTween(true, a.autoPlay);
+            }
+            Debug.Log("↔️ Joiner view: meri side LEFT, opponent RIGHT");
+        }
+
+        static void MirrorInside(RectTransform panel)
+        {
+            foreach (var rt in panel.GetComponentsInChildren<RectTransform>(true))
+            {
+                if (rt == panel) continue;
+                Vector2 aMin = rt.anchorMin, aMax = rt.anchorMax;
+                rt.anchorMin = new Vector2(1f - aMax.x, aMin.y);
+                rt.anchorMax = new Vector2(1f - aMin.x, aMax.y);
+                rt.pivot = new Vector2(1f - rt.pivot.x, rt.pivot.y);
+                rt.anchoredPosition = new Vector2(-rt.anchoredPosition.x, rt.anchoredPosition.y);
+            }
         }
         void SubscribeToNetworkEvents()
         {
@@ -844,7 +919,7 @@ namespace Snake_Ladder
                     if (ResultManager.GameSpawnedFinished == false)
                     {
                         ResultManager.GameSpawnedFinished = true;
-                        GameObject enemyPrefab = Resources.Load<GameObject>("WinLoseGameManager");
+                        GameObject enemyPrefab = AssetRouter.Load<GameObject>("WinLoseGameManager");
 
                         if (enemyPrefab != null)
                         {
@@ -869,7 +944,7 @@ namespace Snake_Ladder
                     if (ResultManager.GameSpawnedFinished == false)
                     {
                         ResultManager.GameSpawnedFinished = true;
-                        GameObject enemyPrefab = Resources.Load<GameObject>("WinLoseGameManager");
+                        GameObject enemyPrefab = AssetRouter.Load<GameObject>("WinLoseGameManager");
 
                         if (enemyPrefab != null)
                         {
@@ -1337,6 +1412,7 @@ namespace Snake_Ladder
                     {
                         Player2TimerImage.fillAmount = 1 - (timer / TimerDuration);
                     }
+                    if (SnakeMirrorNetworkManager.IsMultiSeatTable) TickSeatTimer();
                 }
             }
             else
@@ -1429,7 +1505,7 @@ namespace Snake_Ladder
                     if (ResultManager.GameSpawnedFinished == false)
                     {
                         ResultManager.GameSpawnedFinished = true;
-                        GameObject enemyPrefab = Resources.Load<GameObject>("WinLoseGameManager");
+                        GameObject enemyPrefab = AssetRouter.Load<GameObject>("WinLoseGameManager");
 
                         if (enemyPrefab != null)
                         {
@@ -1454,7 +1530,7 @@ namespace Snake_Ladder
                     if (ResultManager.GameSpawnedFinished == false)
                     {
                         ResultManager.GameSpawnedFinished = true;
-                        GameObject enemyPrefab = Resources.Load<GameObject>("WinLoseGameManager");
+                        GameObject enemyPrefab = AssetRouter.Load<GameObject>("WinLoseGameManager");
 
                         if (enemyPrefab != null)
                         {
@@ -1635,7 +1711,7 @@ namespace Snake_Ladder
             }
             else
             {
-                SceneManager.LoadScene("Home");
+                SceneRouter.LoadScene("Home");
             }
         }
 
@@ -1656,7 +1732,7 @@ namespace Snake_Ladder
 
             if (NetworkClient.active && NetworkManager.singleton != null)
                 NetworkManager.singleton.StopClient();
-            SceneManager.LoadScene("Home");
+            SceneRouter.LoadScene("Home");
         }
         private void OnDestroy()
         {
@@ -1929,7 +2005,16 @@ namespace Snake_Ladder
         void SetUpSeatPanels()
         {
             if (player1NameText != null)
+            {
                 player1NameText.text = staticVariables.UserProfiledata.user.first_name + " " + staticVariables.UserProfiledata.user.last_name;
+                // Long names stay inside the name block (QA 21 Oct): shrink to fit instead of running past it.
+                player1NameText.horizontalOverflow = HorizontalWrapMode.Wrap;
+                player1NameText.verticalOverflow = VerticalWrapMode.Truncate;
+                player1NameText.resizeTextMaxSize = Mathf.Max(player1NameText.fontSize, 16);
+                player1NameText.resizeTextMinSize = 12;
+                player1NameText.resizeTextForBestFit = true;
+            }
+            EnsureMusic();
             if (player1AvatarImage != null && staticVariables.ProfilePicture != null)
                 player1AvatarImage.sprite = Sprite.Create(staticVariables.ProfilePicture,
                     new Rect(0, 0, staticVariables.ProfilePicture.width, staticVariables.ProfilePicture.height), Vector2.zero);
@@ -1959,7 +2044,9 @@ namespace Snake_Ladder
             Player1DiceButton.interactable = mine;
             Player1Button.interactable = mine;
             if (player1Arrow != null) player1Arrow.SetActive(mine);
-            Player1TimerImage.gameObject.SetActive(true);
+            // My panel's ring runs on my turn only; every seat's own turn shows on its chip in the seat bar (QA 21 Oct:
+            // the ring ran on all four phones' profile whoever had the turn).
+            Player1TimerImage.gameObject.SetActive(mine);
             Player1TimerImage.fillAmount = 0;
             if (Player2TimerImage != null) Player2TimerImage.gameObject.SetActive(false);
             RefreshSeatBar();
@@ -1976,6 +2063,87 @@ namespace Snake_Ladder
         readonly Image[] seatChips = new Image[4];
         readonly TextMeshProUGUI[] seatNames = new TextMeshProUGUI[4];
         readonly TextMeshProUGUI[] seatStates = new TextMeshProUGUI[4];
+        readonly Outline[] seatOutlines = new Outline[4];
+        readonly Image[] seatTimers = new Image[4];
+
+        /// <summary>Phones: runs the turn bar of the seat whose turn it is (called from Update).</summary>
+        void TickSeatTimer()
+        {
+            if (seatBar == null || seatTurnOnScreen < 0 || seatTurnOnScreen >= 4 || seatTimers[seatTurnOnScreen] == null) return;
+            seatTimers[seatTurnOnScreen].fillAmount = TimerDuration > 0 ? Mathf.Clamp01(timer / TimerDuration) : 0;
+        }
+
+        static Sprite whiteSprite, ringSprite;
+        static Sprite WhiteSprite()
+        {
+            if (whiteSprite == null) whiteSprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f));
+            return whiteSprite;
+        }
+
+        /// <summary>A soft ring, 1 world unit across (made in code: nothing new in the content).</summary>
+        static Sprite RingSprite()
+        {
+            if (ringSprite != null) return ringSprite;
+            const int n = 128;
+            var tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+            var px = new Color32[n * n];
+            float c = (n - 1) / 2f, outer = n / 2f - 1f, inner = outer * 0.70f;
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c));
+                    float a = Mathf.Clamp01(outer - d) * Mathf.Clamp01(d - inner);
+                    px[y * n + x] = new Color32(255, 255, 255, (byte)(a * 255));
+                }
+            tex.SetPixels32(px);
+            tex.Apply();
+            ringSprite = Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), n);
+            return ringSprite;
+        }
+
+        /// <summary>A ring in the seat's colour under a token, so four tokens are told apart at a glance (QA 21 Oct:
+        /// the tinted tokens of seats 2-3 looked too alike).</summary>
+        static void SeatRing(SpriteRenderer token, int seat)
+        {
+            if (token.sprite == null || seat < 0 || seat >= SeatColours.Length) return;
+            var ring = token.transform.Find("SeatRing");
+            SpriteRenderer sr;
+            if (ring == null)
+            {
+                var go = new GameObject("SeatRing");
+                go.transform.SetParent(token.transform, false);
+                sr = go.AddComponent<SpriteRenderer>();
+                sr.sprite = RingSprite();
+                ring = go.transform;
+            }
+            else sr = ring.GetComponent<SpriteRenderer>();
+            var b = token.sprite.bounds;
+            ring.localPosition = new Vector3(b.center.x, b.center.y, 0f);
+            float size = Mathf.Max(b.size.x, b.size.y) * 1.25f;
+            ring.localScale = new Vector3(size, size, 1f);
+            sr.color = SeatColours[seat];
+            sr.sortingLayerID = token.sortingLayerID;
+            sr.sortingOrder = token.sortingOrder - 1;
+        }
+
+        /// <summary>The scene's background music (SnakeBackground on the Gameplay Canvas) plays on every table: QA
+        /// heard none in a 4-player match. Started here if it is not already playing.</summary>
+        void EnsureMusic()
+        {
+            foreach (var src in FindObjectsByType<AudioSource>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                var res = src.resource;
+                if (res == null || res.name != "SnakeBackground") continue;
+                src.loop = true;
+                if (src.volume <= 0f) src.volume = 0.3f;
+                if (!src.gameObject.activeInHierarchy) src.gameObject.SetActive(true);
+                if (!src.enabled) src.enabled = true;
+                if (!src.isPlaying) src.Play();
+                ConstantsData_M.Log($"[Snake] music: playing {src.isPlaying}, volume {src.volume}, listener {AudioListener.volume}");
+                return;
+            }
+            ConstantsData_M.Log("[Snake] music: no SnakeBackground AudioSource in the scene");
+        }
 
         public void RefreshSeatBar()
         {
@@ -1986,20 +2154,29 @@ namespace Snake_Ladder
             {
                 int s = net.MatchSeatIndex(r.playerID);
                 var sr = r.GetComponent<SpriteRenderer>();
-                if (s >= 0 && sr != null) sr.color = TokenTint(s);
+                if (s < 0 || sr == null) continue;
+                sr.color = TokenTint(s);
+                SeatRing(sr, s);
             }
             for (int s = 0; s < net.seatList.Count && s < 4; s++)
             {
                 var info = net.seatList[s];
                 bool turn = s == seatTurnOnScreen && info.state == SnakeMirrorNetworkManager.SeatPlaying;
                 bool me = s == myPlayerNumber;
-                seatChips[s].color = new Color(1f, 1f, 1f, turn ? 0.30f : 0.10f);
+                bool out_ = info.state != SnakeMirrorNetworkManager.SeatPlaying;
+                Color c = SeatColours[s];
+                // Dark chip, the seat's colour when it has the turn; faded when the seat is out.
+                seatChips[s].color = turn ? new Color(c.r * 0.55f, c.g * 0.55f, c.b * 0.55f, 0.92f) : new Color(0.06f, 0.05f, 0.12f, out_ ? 0.45f : 0.82f);
+                if (seatOutlines[s] != null) seatOutlines[s].effectColor = new Color(c.r, c.g, c.b, turn ? 1f : 0.7f);
                 seatNames[s].text = (string.IsNullOrEmpty(info.name) ? "Player " + (s + 1) : info.name) + (me ? " (you)" : "");
+                seatNames[s].color = out_ ? new Color(1f, 1f, 1f, 0.5f) : Color.white;
                 seatStates[s].text = info.state == SnakeMirrorNetworkManager.SeatLeft ? "Left"
                                    : info.state == SnakeMirrorNetworkManager.SeatAbandoned ? "Disconnected"
+                                   : info.state == SnakeMirrorNetworkManager.SeatKicked ? "Removed"
                                    : info.state == SnakeMirrorNetworkManager.SeatEliminated ? "Out (missed turns)"
                                    : !info.connected ? "Reconnecting…"
                                    : turn ? (me ? "Your turn" : "Rolling…") : "";
+                if (seatTimers[s] != null && !turn) seatTimers[s].fillAmount = 0;
             }
         }
 
@@ -2021,24 +2198,51 @@ namespace Snake_Ladder
                 var chip = new GameObject("Seat" + (s + 1), typeof(RectTransform), typeof(Image));
                 chip.transform.SetParent(root.transform, false);
                 var rt = chip.GetComponent<RectTransform>();
-                rt.anchorMin = new Vector2(width * s + 0.01f, 0.905f);
-                rt.anchorMax = new Vector2(width * (s + 1) - 0.01f, 0.965f);
+                rt.anchorMin = new Vector2(width * s + 0.008f, 0.885f);
+                rt.anchorMax = new Vector2(width * (s + 1) - 0.008f, 0.968f);
                 rt.offsetMin = rt.offsetMax = Vector2.zero;
                 seatChips[s] = chip.GetComponent<Image>();
                 seatChips[s].raycastTarget = false;
+                seatOutlines[s] = chip.AddComponent<Outline>();
+                seatOutlines[s].effectDistance = new Vector2(3f, -3f);
+                seatOutlines[s].effectColor = SeatColours[s];
+
+                // This seat's turn clock: a thin bar along the chip's bottom, running only on its turn.
+                var bar = new GameObject("TurnTimer", typeof(RectTransform), typeof(Image));
+                bar.transform.SetParent(chip.transform, false);
+                var brt = bar.GetComponent<RectTransform>();
+                brt.anchorMin = new Vector2(0.02f, 0.02f);
+                brt.anchorMax = new Vector2(0.98f, 0.10f);
+                brt.offsetMin = brt.offsetMax = Vector2.zero;
+                seatTimers[s] = bar.GetComponent<Image>();
+                seatTimers[s].sprite = WhiteSprite();
+                seatTimers[s].type = Image.Type.Filled;
+                seatTimers[s].fillMethod = Image.FillMethod.Horizontal;
+                seatTimers[s].fillAmount = 0;
+                seatTimers[s].color = Color.white;
+                seatTimers[s].raycastTarget = false;
 
                 var dot = new GameObject("Colour", typeof(RectTransform), typeof(Image));
                 dot.transform.SetParent(chip.transform, false);
                 var drt = dot.GetComponent<RectTransform>();
-                drt.anchorMin = new Vector2(0.03f, 0.25f);
-                drt.anchorMax = new Vector2(0.11f, 0.75f);
+                drt.anchorMin = new Vector2(0.03f, 0.22f);
+                drt.anchorMax = new Vector2(0.13f, 0.78f);
+                dot.AddComponent<AspectRatioFitter>().aspectMode = AspectRatioFitter.AspectMode.FitInParent;
                 drt.offsetMin = drt.offsetMax = Vector2.zero;
                 dot.GetComponent<Image>().color = SeatColours[s];
                 dot.GetComponent<Image>().raycastTarget = false;
 
-                seatNames[s] = SeatLabel(chip.transform, font, 26, new Vector2(0.14f, 0.45f), new Vector2(0.98f, 1f));
-                seatStates[s] = SeatLabel(chip.transform, font, 20, new Vector2(0.14f, 0f), new Vector2(0.98f, 0.5f));
-                seatStates[s].color = new Color(1f, 0.9f, 0.55f);
+                // Bigger, bold names that shrink to fit their block instead of running out of it (QA 21 Oct).
+                seatNames[s] = SeatLabel(chip.transform, font, 34, new Vector2(0.16f, 0.44f), new Vector2(0.97f, 0.97f));
+                seatNames[s].fontStyle = FontStyles.Bold;
+                seatNames[s].enableAutoSizing = true;
+                seatNames[s].fontSizeMin = 18;
+                seatNames[s].fontSizeMax = 34;
+                seatStates[s] = SeatLabel(chip.transform, font, 24, new Vector2(0.16f, 0.10f), new Vector2(0.97f, 0.46f));
+                seatStates[s].enableAutoSizing = true;
+                seatStates[s].fontSizeMin = 14;
+                seatStates[s].fontSizeMax = 24;
+                seatStates[s].color = new Color(1f, 0.88f, 0.4f);
             }
         }
 
