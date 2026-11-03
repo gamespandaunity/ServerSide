@@ -577,6 +577,7 @@ public class mainScript : MonoBehaviour
     private void Start()
     {
         SnookerFlow.Main = this;
+        LimitTransformSyncToChanges(gameObject);
         Debug.Log("snoker" + SnokerNetwork.IsMultiplayer);
         if (!SnokerNetwork.IsMultiplayer)
         {
@@ -586,6 +587,19 @@ public class mainScript : MonoBehaviour
         lastvalidpos = CUEBALL_START_SNOOKER_POS;
         lastvalidpos.x -= 0.1f;
     }
+    /// <summary>
+    /// QA 3 Nov (lag, worst around a disconnect / reconnect): the 21 balls and the cue ball (two syncs) were set to send
+    /// their position 50 times a second each even while standing still (onlySyncOnChange off): over 1,000 unreliable
+    /// updates a second to every phone during the long pauses between shots, and as many again to a phone that has just
+    /// come back. Mirror's default sends only what moved. The table snapshots (StickManager.RpcOnTurnChanged) put every
+    /// ball where the server has it when they stop. Called on the server (the sender) and on the phones.
+    /// </summary>
+    public static void LimitTransformSyncToChanges(GameObject go)
+    {
+        foreach (NetworkTransformBase sync in go.GetComponents<NetworkTransformBase>())
+            sync.onlySyncOnChange = true;
+    }
+
     public void start()
     {
         //1.Show("start");
@@ -1997,6 +2011,10 @@ public class mainScript : MonoBehaviour
                 {
                     StickManager.instance.SetBallInHand(false);
                 }
+                // QA 3 Nov: tell the server exactly where the cue ball was put (StickManager.CmdCuePlacedAt), before
+                // it takes the cue ball back. The server ignores this when it is not in ball in hand any more.
+                if (!NetworkServer.active && _snokerNetwork != null && _snokerNetwork.IsMyTurn())
+                    StickManager.instance.CmdCuePlacedAt(transform.position);
                 StickManager.instance.CmdSetBallInHand(false);
                 SnokerNetwork.Instance._mainScript.GetComponent<NetworkRigidbodyUnreliable>().syncDirection = SyncDirection.ServerToClient;
                 SnokerNetwork.Instance._mainScript.GetComponent<NetworkTransformUnreliable>().syncDirection = SyncDirection.ServerToClient;
@@ -3182,6 +3200,9 @@ public class mainScript : MonoBehaviour
             else
             {
                 StickManager.instance.RpcChangeturnrpc(SnokerGameManager.currentTurn, cueBallPotted, firstBallTouched, false, (int)SnokerGameManager.snookerTargetBall);
+                // QA 3 Nov: the phones get the server's table after this shot too, not only when the turn changes
+                // (StickManager.ServerSendBallsSnapshot).
+                if (NetworkServer.active) StickManager.instance.ServerSendBallsSnapshot();
             }
             AfterChangingTurn(gameMode);
 

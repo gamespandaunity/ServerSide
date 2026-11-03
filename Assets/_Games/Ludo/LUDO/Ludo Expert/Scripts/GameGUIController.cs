@@ -1352,6 +1352,9 @@ public class GameGUIController : NetworkBehaviour
                         // there the server IS the creator player). Instead we echo the
                         // client-authoritative snapshot cached via the SaveBoardState event.
                         // Format: "c0;c1;c2;c3;j0;j1;j2;j3;currentPlayerIndex;"
+                        // QA 3 Nov: with the server running the board, refresh the snapshot now (it carries the roll the
+                        // player has not moved yet) and give a player who comes back on their own turn a full turn.
+                        if (LudoNetworkManager.ServerAuthority) LudoNetworkManager.instance.ServerPlayerRejoined(sender);
                         MatchFlow.Log("Ludo", $"a player rejoined (connection {(sender != null ? sender.connectionId.ToString() : "?")}) — " + (string.IsNullOrEmpty(reconnectSnapshot) ? "no saved board to send back" : "last saved board sent to both players"));
                         if (!string.IsNullOrEmpty(reconnectSnapshot))
                             NetworkGameManager.Instance.RiseEventRpc((int)EnumPhoton.ReconnectGame, reconnectSnapshot);

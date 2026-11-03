@@ -52,7 +52,7 @@ public class CarromNetworkManager : NetworkBehaviour
     // QA 29 Oct ("game got stuck on the second turn, app restart needed"): a shot stops the turn timer, and only the
     // turn that follows the settle re-arms it. If the server's settle never finished (WaitForPucks waiting on a coin
     // that never reports stopped) or its switch failed, nothing ever moved again on either phone. This watchdog passes
-    // the turn on when no turn has started within StalledShotSeconds of a shot. Paused time (waiting panel) is not counted.
+    // the turn on when no turn has started within StalledShotSeconds of a shot. Time with a player gone is not counted.
     private Coroutine shotWatchdog;
     private const float StalledShotSeconds = 20f;
 
@@ -79,8 +79,11 @@ public class CarromNetworkManager : NetworkBehaviour
         while (waited < StalledShotSeconds)
         {
             if (gameEnded) { shotWatchdog = null; yield break; }
+            // QA 3 Nov: IsPaused no longer stops this clock. The settle does not depend on the pause, so a shot that has
+            // not settled in 20 s with both phones connected is stuck either way - and a pause flag left set (a resume
+            // sent on a dead connection) froze this watchdog together with the turn timer: "stuck after the first turn".
             NetworkGameManager ngm = NetworkGameManager.Instance;
-            if (ngm == null || (!ngm.IsPaused && ngm.currentPlayerCount >= 2)) waited += Time.unscaledDeltaTime;
+            if (ngm == null || ngm.currentPlayerCount >= 2 || NetworkServer.connections.Count >= 2) waited += Time.unscaledDeltaTime;
             yield return null;
         }
         shotWatchdog = null;   // before any switch: StartTurnTimer stops the watchdog, and this is it
@@ -336,7 +339,10 @@ public class CarromNetworkManager : NetworkBehaviour
 
         if (playerPuck == null)
         {
-            playerPuck = FindAnyObjectByType<PlayerPuck>().gameObject;
+            // QA 3 Nov: null-safe - a striker spawned a frame later threw here and skipped the rest of Start
+            // (the per-match flag reset below). Server code looks it up again when it needs it.
+            var foundPuck = FindAnyObjectByType<PlayerPuck>();
+            if (foundPuck != null) playerPuck = foundPuck.gameObject;
             Debug.LogWarning("PlayerPuck Found in Scene");
         }
         else
@@ -356,6 +362,7 @@ public class CarromNetworkManager : NetworkBehaviour
             ResultManager.isGameFinished = false;
             ResultManager.GameSpawnedFinished = false;
         }
+        clientStartDone = true;   // QA 3 Nov: a turn that arrived with the spawn is applied now (OnPlayerCurrentTurnIdChanged)
 
         // ---- RECONNECT RESYNC ----
         // GameController.isGameStarted is a static that survives the scene reload
@@ -898,19 +905,35 @@ public class CarromNetworkManager : NetworkBehaviour
     // and applies the full local turn state (CurrentTurn + masterClientTag + UI).
     // RpcSwitchTurn still runs for the immediate path; both are idempotent, so
     // whichever arrives (first or alone) the client ends in the same state.
+    // QA 3 Nov ("first turn starts, then the game is stuck"): client side, the turn id the board was last set up for
+    // (CheckTurn ran for it). The server hands out the first turn ~4 s after IT opened the scene; a phone still loading
+    // the scene from Addressables is not ready, so Mirror drops RpcSwitchTurn for it, and it only gets the turn through
+    // this SyncVar's hook when it spawns. That hook ran CheckTurn only when CurrentTurn / masterClientTag CHANGED - but
+    // they already arrive with the server's values (GameController's SyncVars), so the late phone often never ran
+    // CheckTurn: no "Your Turn!", slider never enabled, gameState never READY on that phone.
+    private string turnShownFor;
+    private bool clientStartDone;
+
     private void OnPlayerCurrentTurnIdChanged(string oldTurnId, string newTurnId)
     {
         if (oldTurnId == newTurnId || string.IsNullOrEmpty(newTurnId)) return;
-        if (!NetworkClient.active) return;
-        if (gameEnded || ResultManager.isGameFinished || ResultManager.GameSpawnedFinished) return;
+        if (!NetworkClient.active || NetworkServer.active) return;
+        if (gameEnded) return;
 
         this.DelayUntil(
-            () => BEKStudio.GameController.Instance != null
+            // QA 3 Nov: wait for Start too - on the spawn that delivers this hook, ResultManager's flags can still be
+            // the PREVIOUS match's "finished" (Start resets them), and checking them here dropped the first turn.
+            () => clientStartDone
+                  && BEKStudio.GameController.Instance != null
                   && PlayerPuck.Instance != null
+                  && PlayerPuck.Instance.rb != null   // set in its Start; CheckTurn -> ResetPosition uses it
                   && staticVariables.UserProfiledata != null
                   && staticVariables.UserProfiledata.user != null,
             () =>
             {
+                if (gameEnded || ResultManager.isGameFinished || ResultManager.GameSpawnedFinished) return;
+                if (PlayercurrentTurnId != newTurnId) return;   // a newer turn arrived meanwhile; its own hook applies it
+
                 var gc = BEKStudio.GameController.Instance;
                 var beforeTurn = gc.CurrentTurn;
                 var beforeTag = gc.masterClientTag;
@@ -924,8 +947,11 @@ public class CarromNetworkManager : NetworkBehaviour
                 // RpcSwitchTurn, or the first SyncVar landing on a scene rebuilt by a
                 // reconnect). A shoot-again never reaches here because the turn id does
                 // not change, so "Go On" was always the wrong banner.
-                if (beforeTurn != gc.CurrentTurn || beforeTag != gc.masterClientTag)
+                if (beforeTurn != gc.CurrentTurn || beforeTag != gc.masterClientTag || turnShownFor != newTurnId)
+                {
+                    turnShownFor = newTurnId;
                     gc.CheckTurn(BEKStudio.GameController.TurnBanner.Restore);
+                }
             });
     }
 
@@ -955,10 +981,9 @@ public class CarromNetworkManager : NetworkBehaviour
             return;
         }
 
-        if (!ServerSwitchTurnFrom(currentPlayerIdForCreatorFirstTurn))
-        {
-            ScheduleInitialTurnFrom(currentPlayerIdForCreatorFirstTurn, "initial turn request");
-        }
+        // QA 3 Nov: through the same wait as the server's own first turn (both phones ready in the scene), not at once:
+        // the creator asks from its Start, often while the joiner is still loading and would miss RpcSwitchTurn.
+        ScheduleInitialTurnFrom(currentPlayerIdForCreatorFirstTurn, "initial turn request");
     }
 
     [Command(requiresAuthority = false)]
@@ -1027,9 +1052,36 @@ public class CarromNetworkManager : NetworkBehaviour
         initialTurnCoroutine = StartCoroutine(CoEnsureInitialTurn(currentPlayerId, reason));
     }
 
+    // QA 3 Nov: the first turn used to be handed out ~4 s after the SERVER opened the scene, whether or not the phones
+    // had finished loading it (an Addressables scene load on a phone can take longer). A phone that was not ready yet
+    // missed RpcSwitchTurn and RpcOnTimerReset (Mirror only sends Rpcs to ready connections), and the striker hand-over
+    // to a creator that was not ready gave up after 10 s - the first turn showed on one phone only and then nothing
+    // moved. Wait until both players' connections are ready in this scene (and a moment for their Start), at most
+    // InitialTurnReadyWaitSeconds, then assign as before.
+    private const float InitialTurnReadyWaitSeconds = 30f;
+
+    [Server]
+    private bool BothPlayersReadyInScene()
+    {
+        NetworkGameManager ngm = NetworkGameManager.Instance;
+        if (ngm == null || ngm.creatorData == null || ngm.joinerData == null) return false;
+        NetworkConnectionToClient creatorConn = FindPlayerConnection(ngm.creatorData.playerId);
+        NetworkConnectionToClient joinerConn = FindPlayerConnection(ngm.joinerData.playerId);
+        return creatorConn != null && creatorConn.isReady && joinerConn != null && joinerConn.isReady;
+    }
+
     [Server]
     private IEnumerator CoEnsureInitialTurn(string currentPlayerId, string reason)
     {
+        float readyDeadline = Time.realtimeSinceStartup + InitialTurnReadyWaitSeconds;
+        while (!gameEnded && string.IsNullOrEmpty(PlayercurrentTurnId) && !BothPlayersReadyInScene()
+               && Time.realtimeSinceStartup < readyDeadline)
+            yield return new WaitForSeconds(0.25f);
+        if (BothPlayersReadyInScene())
+            yield return new WaitForSeconds(1f);   // the phones' scene objects run Start after their spawn
+        else if (!gameEnded && string.IsNullOrEmpty(PlayercurrentTurnId))
+            Debug.LogWarning($"[Carrom][Server] Both players not ready after {InitialTurnReadyWaitSeconds:0} s ({reason}) - assigning the first turn anyway.");
+
         const int maxAttempts = 40;
         for (int attempt = 0; attempt < maxAttempts && !gameEnded && string.IsNullOrEmpty(PlayercurrentTurnId); attempt++)
         {
@@ -1154,7 +1206,9 @@ public class CarromNetworkManager : NetworkBehaviour
     private IEnumerator HandStrikerOver(string playerId, NetworkConnectionToClient conn)
     {
         yield return new WaitForSeconds(0.15f);
-        const int attempts = 40;   // 0.25 s apart: ~10 s
+        // QA 3 Nov: ~10 s was shorter than a slow phone's scene load / reconnect; without the striker the turn holder
+        // cannot shoot. Keep trying while the turn is still theirs (the turn timer moves it on otherwise).
+        const int attempts = 240;   // 0.25 s apart: ~60 s
         for (int attempt = 0; attempt < attempts; attempt++)
         {
             if (gameEnded || playerPuck == null) yield break;
@@ -1365,6 +1419,7 @@ public class CarromNetworkManager : NetworkBehaviour
         // Restore: the turn is being RE-APPLIED after the reconnect, not earned by
         // potting a bead. Passing `false` here made the banner announce "Go On" to a
         // player who had just walked back into the match.
+        turnShownFor = currentTurnId;
         gc.CheckTurn(BEKStudio.GameController.TurnBanner.Restore);
     }
 
@@ -1395,6 +1450,7 @@ public class CarromNetworkManager : NetworkBehaviour
         if (!string.IsNullOrEmpty(color))
             BEKStudio.GameController.Instance.masterClientTag = color;
 
+        turnShownFor = currentTurnId;   // QA 3 Nov: the SyncVar catch-up need not run CheckTurn again
         BEKStudio.GameController.Instance.CheckTurn();
     }
     #region Shoot Again Logic
@@ -1452,6 +1508,7 @@ public class CarromNetworkManager : NetworkBehaviour
         gc.ApplyAuthoritativeQueenPendingState(queenPendingCover, queenPendingTag);
 
         Debug.Log("🔄 Same player continues turn: " + currentPlayerId);
+        turnShownFor = currentPlayerId;
 
         // Master client tag change nahi karna
         // BEKStudio.GameController.Instance.masterClientTag same rahega
@@ -1559,25 +1616,10 @@ public class CarromNetworkManager : NetworkBehaviour
     public void Rpc_ShowPlayer()
     {
         Debug.Log("Rpc_ShowPlayer called");
-        if (MirrorNetwork.Instance.isMasterClient)
-        {
-            Debug.Log("MyName;" + staticVariables.UserProfiledata.user.first_name + staticVariables.UserProfiledata.user.last_name);
-            Debug.Log("MyName;" + staticVariables.ProfilePicture);
-            BEKStudio.GameController.Instance.topHomeNameText.text = staticVariables.UserProfiledata.user.first_name + staticVariables.UserProfiledata.user.last_name;
-            BEKStudio.GameController.Instance.topHomeAvatar.texture = staticVariables.ProfilePicture;
-            BEKStudio.GameController.Instance.topAwayNameText.text = staticVariables.OpponetProfile.userName;
-            BEKStudio.GameController.Instance.topAwayAvatar.texture = staticVariables.opponentImage;
-        }
-        else
-        {
-            Debug.Log("OpponetName;" + staticVariables.OpponetProfile.userName);
-            Debug.Log("OpponetImage:" + staticVariables.opponentImage);
-            BEKStudio.GameController.Instance.topAwayNameText.text = staticVariables.UserProfiledata.user.first_name + staticVariables.UserProfiledata.user.last_name;
-            BEKStudio.GameController.Instance.topAwayAvatar.texture = staticVariables.ProfilePicture;
-            BEKStudio.GameController.Instance.topHomeNameText.text = staticVariables.OpponetProfile.userName;
-            BEKStudio.GameController.Instance.topHomeAvatar.texture = staticVariables.opponentImage;
-
-        }
+        // QA 3 Nov: the phone fills both seats itself (GameController.ShowPlayers, also run from its Start); this Rpc
+        // only refreshes them. It used to null a picture still downloading and threw on a missing OpponetProfile.
+        if (BEKStudio.GameController.Instance != null)
+            BEKStudio.GameController.Instance.ShowPlayers();
     }
     #endregion
     #region Timer
@@ -1877,6 +1919,7 @@ public class CarromNetworkManager : NetworkBehaviour
     [ClientRpc]
     public void RpcResetStrikerPosition()
     {
-        playerPuck.GetComponent<PlayerPuck>().ResetPosition();
+        if (playerPuck == null && PlayerPuck.Instance != null) playerPuck = PlayerPuck.Instance.gameObject;   // QA 3 Nov
+        if (playerPuck != null) playerPuck.GetComponent<PlayerPuck>().ResetPosition();
     }
 }

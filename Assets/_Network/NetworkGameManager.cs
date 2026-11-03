@@ -1147,6 +1147,16 @@ public class NetworkGameManager : NetworkBehaviour
         }
         _dropOrder.Clear();
         ExplicitLeaverId = null;   // both are back: an announced departure no longer counts
+        // QA 3 Nov: IsPaused is set only by CmdSetPauseState. A phone that came back from the background on a NEW
+        // connection sent its "resume" on the dead one (or while not ready during a scene load, when Mirror drops
+        // Commands), so the match stayed paused for good: Snake / Carrom turn timers wait on IsPaused ("no turn").
+        // A player was just added, so both are here and in the foreground: the match is not paused any more.
+        if (IsPaused)
+        {
+            Debug.Log($"[Pause][SERVER] {why} with both players connected - clearing a pause left set.");
+            IsPaused = false;
+            MirrorNetwork.OnGameStateChanged?.Invoke(false);
+        }
         if (_abandonWatchRoutine == null) return;
         StopCoroutine(_abandonWatchRoutine);
         _abandonWatchRoutine = null;

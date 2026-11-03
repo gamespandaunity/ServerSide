@@ -321,6 +321,9 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
         }
         board.PendingSteps = steps;
         turnDeadline = Time.time + TurnSeconds;
+        // QA 3 Nov: the reconnect snapshot carries this roll, so a phone that drops before the dice reach it can still
+        // move after it is back (before, it showed the dice to roll again and the server refused: "roll_twice").
+        ServerPublishBoard();
     }
 
     /// <summary>A phone asks to move one of its tokens by the server's last roll.</summary>
@@ -412,6 +415,22 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
             MatchFlow.Log("Ludo", $"turn timer ran out for {FlowName(board.Turn)}" + (board.PendingSteps > 0 ? $" (rolled a {board.PendingSteps}, no move)" : " (did not roll)"));
             ServerPassTurn(0f);
         }
+    }
+
+    /// <summary>A phone asked for the board after (re)joining the scene (GameGUIController, ReconnectGame). QA 3 Nov: the
+    /// turn passed or the dice rolled while it was away, and its turn was then missed - it gets a fresh snapshot (turn
+    /// and any roll not moved yet), and a full turn when it comes back on its own turn (its bar restarts at full).</summary>
+    [Server]
+    public void ServerPlayerRejoined(NetworkConnectionToClient conn)
+    {
+        if (!serverAuthority || board == null || matchOver) return;
+        int pl = PlOf(conn);
+        if (pl >= 0 && pl == board.Turn && !passingTurn)
+        {
+            turnDeadline = Mathf.Max(turnDeadline, Time.time + TurnSeconds);
+            MatchFlow.Log("Ludo", $"{FlowName(pl)} is back on their own turn" + (board.PendingSteps > 0 ? $" (rolled a {board.PendingSteps}, not moved yet)" : "") + " — turn timer restarted");
+        }
+        ServerPublishBoard();
     }
 
     // Keep the reconnect snapshot on the server's own board (phones' SaveBoardState reports are ignored while on).

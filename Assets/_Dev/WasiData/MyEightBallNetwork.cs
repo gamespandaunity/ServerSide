@@ -2907,9 +2907,18 @@ public class MyEightBallNetwork : NetworkBehaviour
             yield break;
         }
 
-        if (IsLocalShotReplayMoving() && BallPool.BallPoolGameLogic.controlFromNetwork)
+        // QA 3 Nov ("lag during reconnection", "white ball in different places"): the server only sends this
+        // snapshot once it holds no live shot (it defers or force-completes one first), so motion still running
+        // here is stale. It used to be ended only on the watcher; on the turn player's phone (e.g. the phone
+        // that stayed got the turn after the opponent dropped mid-shot) a frozen replay made every per-ball
+        // restore drop ("shot in progress") and SyncBallsAfterShotRoutine wait up to 12 s before applying the
+        // board. A shot this phone fired itself (isInShot) while the server is still simulating is left alone.
+        bool staleLocalMotion = BallPool.BallPoolGameLogic.controlFromNetwork
+            || (ShotPhase != EightBallShotPhase.Simulating
+                && poolMessenger.shotController != null && !poolMessenger.shotController.isInShot);
+        if (IsLocalShotReplayMoving() && staleLocalMotion)
         {
-            Debug.Log("[8Ball][ReconnectSnapshot] Force-ending stale watcher replay so the authoritative board can snap and stick.");
+            Debug.Log("[8Ball][ReconnectSnapshot] Force-ending stale local replay so the authoritative board can snap and stick.");
             if (poolMessenger.shotController != null && poolMessenger.shotController.cuePhysicsManager != null)
                 poolMessenger.shotController.cuePhysicsManager.StopPlaybackForReconcile();
             if (poolMessenger.shotController != null)

@@ -435,36 +435,64 @@ namespace BEKStudio
         }
         void SetTopUsersForGame()
         {
-            if (NetworkServer.connections.Count == 2)
-            {
+            // QA 3 Nov ("players' profile information is not displayed"): this tested NetworkServer.connections.Count,
+            // which is 0 on a phone, so every phone took the old else branch: its own first name only, and the
+            // opponent's name blanked and picture set to null (an empty white box). The real names came only from
+            // CarromNetworkManager.Rpc_ShowPlayer, sent once by the server 4 s after IT opened the scene - a phone still
+            // loading the scene from Addressables is not ready then and Mirror drops the Rpc for it. Everything needed
+            // is on the phone already (own profile, OpponetProfile, both pictures): show it from here.
+            if (NetworkServer.active) return;   // the match server has no profile (UserProfiledata is empty there)
+            ShowPlayers();
+        }
 
-                // Debug.Log("Both Players Connected");
-                // if (MirrorNetwork.Instance.isMasterClient)
-                // {
-                //     Debug.Log("MyName;" + staticVariables.UserProfiledata.user.first_name + staticVariables.UserProfiledata.user.last_name);
-                //      Debug.Log("MyName;" +staticVariables.ProfilePicture);
-                //     topHomeNameText.text = staticVariables.UserProfiledata.user.first_name + staticVariables.UserProfiledata.user.last_name;
-                //     topHomeAvatar.texture = staticVariables.ProfilePicture;
-                //     topAwayNameText.text = staticVariables.OpponetProfile.userName;
-                //     topAwayAvatar.texture = staticVariables.opponentImage;
-                // }
-                // else
-                // {
-                //     Debug.Log("OpponetName;" + staticVariables.OpponetProfile.userName);
-                //     Debug.Log("OpponetImage:" + staticVariables.opponentImage);
-                //     topAwayNameText.text = staticVariables.UserProfiledata.user.first_name + staticVariables.UserProfiledata.user.last_name;
-                //     topAwayAvatar.texture = staticVariables.ProfilePicture;
-                //     topHomeNameText.text = staticVariables.OpponetProfile.userName;
-                //     topHomeAvatar.texture = staticVariables.opponentImage;
+        Coroutine showPlayersRoutine;
 
-                // }
-            }
-            else
+        /// <summary>
+        /// QA 3 Nov: both players' names and pictures on this phone, from its own data. Same seats as
+        /// CarromNetworkManager.Rpc_ShowPlayer: the creator sees itself at Home (left), the joiner sees the creator
+        /// at Home and itself Away. A picture still downloading is filled in when it arrives; a missing one keeps the
+        /// scene's default avatar instead of turning into an empty box.
+        /// </summary>
+        public void ShowPlayers()
+        {
+            if (NetworkServer.active || !isCarronMultiplayerGame) return;
+
+            var me = staticVariables.UserProfiledata != null ? staticVariables.UserProfiledata.user : null;
+            string myName = me != null ? (me.first_name + me.last_name) : string.Empty;
+            string opponentName = staticVariables.OpponetProfile != null ? staticVariables.OpponetProfile.userName : string.Empty;
+            bool creator = MirrorNetwork.Instance != null && MirrorNetwork.Instance.isMasterClient;
+
+            var myNameText = creator ? topHomeNameText : topAwayNameText;
+            var opponentNameText = creator ? topAwayNameText : topHomeNameText;
+            if (myNameText != null && !string.IsNullOrEmpty(myName)) myNameText.text = myName;
+            if (opponentNameText != null && !string.IsNullOrEmpty(opponentName)) opponentNameText.text = opponentName;
+
+            if (showPlayersRoutine != null) StopCoroutine(showPlayersRoutine);
+            showPlayersRoutine = StartCoroutine(ShowPlayerPictures(creator));
+        }
+
+        IEnumerator ShowPlayerPictures(bool creator)
+        {
+            RawImage myAvatar = creator ? topHomeAvatar : topAwayAvatar;
+            RawImage opponentAvatar = creator ? topAwayAvatar : topHomeAvatar;
+            bool mine = false, theirs = false;
+            float until = Time.realtimeSinceStartup + 30f;   // pictures download in the background (Player Found)
+            while (true)
             {
-                topHomeNameText.text = staticVariables.UserProfiledata.user.first_name;
-                topAwayNameText.text = "";
-                topAwayAvatar.texture = null;
+                if (!mine && staticVariables.ProfilePicture != null && myAvatar != null)
+                {
+                    myAvatar.texture = staticVariables.ProfilePicture;
+                    mine = true;
+                }
+                if (!theirs && staticVariables.opponentImage != null && opponentAvatar != null)
+                {
+                    opponentAvatar.texture = staticVariables.opponentImage;
+                    theirs = true;
+                }
+                if ((mine && theirs) || Time.realtimeSinceStartup > until) break;
+                yield return new WaitForSecondsRealtime(0.5f);
             }
+            showPlayersRoutine = null;
         }
 
         void StartMessage()
