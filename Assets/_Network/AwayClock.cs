@@ -36,8 +36,9 @@ public static class AwayClock
     /// <summary>Seconds until the away player loses the match, or -1 when nobody is away.</summary>
     public static float SecondsLeft => Running ? Mathf.Max(0f, deadline - Time.realtimeSinceStartup) : -1f;
 
-    /// <summary>The time away that loses the match: the 7th in Snooker, the 5th elsewhere (the old reconnect numbers).</summary>
-    public static int Limit => SceneManager.GetActiveScene().name == "SnokkerMultiplayer" ? 7 : 5;
+    /// <summary>The time away that loses the match: the 5th, Snooker included (QA 5 Nov: "Disconnection limit must be
+    /// 5 time not 7"; Snooker used to allow 7).</summary>
+    public const int Limit = 5;
 
     static bool Applies()
     {
