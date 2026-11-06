@@ -52,7 +52,9 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
             // draining while one side is in the reconnect window and can end the game
             // even though the disconnected player still has time to come back.
             // ...but never past the server's lifetime: a pause eats into the clock once the end of that is near.
-            while (TableShort() && LifetimeLeft > remainingTime)
+            // QA 6 Nov: also while a player is away but not yet dropped (AwayClock: 5 s of silence until the transport's
+            // ~20 s timeout) - the phones freeze their bars from the moment the Waiting-for-opponent panel shows.
+            while ((TableShort() || AwayClock.Running) && LifetimeLeft > remainingTime)
             {
                 yield return new WaitForSeconds(0.5f);
             }
@@ -410,7 +412,8 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
         while (!matchOver)
         {
             yield return wait;
-            if (TableShort()) { turnDeadline += 0.5f; continue; }
+            // QA 6 Nov: held while a player is away too (AwayClock), matching the phones' frozen turn bar.
+            if (TableShort() || AwayClock.Running) { turnDeadline += 0.5f; continue; }
             if (passingTurn || Time.time < turnDeadline) continue;
             MatchFlow.Log("Ludo", $"turn timer ran out for {FlowName(board.Turn)}" + (board.PendingSteps > 0 ? $" (rolled a {board.PendingSteps}, no move)" : " (did not roll)"));
             ServerPassTurn(0f);

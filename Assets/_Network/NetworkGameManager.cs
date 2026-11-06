@@ -1270,6 +1270,10 @@ public class NetworkGameManager : NetworkBehaviour
         _disconnectWinnerId = winnerId;
         _disconnectWinnerDeclared = true;
         _disconnectWinCause = cause;
+        // QA 6 Nov (Carrom: "The game timer must stop immediately when the waiting panel timer runs out"): the away clock
+        // settles the match here, but Carrom's turn timer, 10-minute countdown and shot watchdog only stopped on the
+        // client-claimed path (CmdAnnounceDisconnectWin). Stop them for this path too.
+        if (CarromNetworkManager.instance != null) CarromNetworkManager.instance.StopAllTurnLogic();
         AwayClock.Stop(newMatch: false);
         RpcAwayClock(-1f, false);
         creatorData.Scores = 0;
