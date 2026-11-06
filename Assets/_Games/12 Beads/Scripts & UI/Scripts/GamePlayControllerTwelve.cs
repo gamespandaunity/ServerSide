@@ -177,7 +177,15 @@ namespace Twelve
             else
             {
                 if (NetworkServer.active)
-                    this.DelayUntil(() => NetworkGameManager.Instance && NetworkGameManager.Instance.currentPlayerCount >= 2, () =>
+                    // QA 6 Nov ("the game screen and beads appeared on one player's side, while the opponent's side remained on
+                    // the loading screen"): currentPlayerCount is still 2 from the lobby across the scene change, so the beads
+                    // went out before the slower phone had loaded. Wait for both phones to be ready, the same gate as the toss.
+                    this.DelayUntil(() =>
+                    {
+                        var n = NetworkGameManager.Instance;
+                        return n && n.currentPlayerCount >= 2
+                            && n.CreatorRef != null && n.CreatorRef.isReady && n.JoinerRef != null && n.JoinerRef.isReady;
+                    }, () =>
                     {
                         MirrorCreateTeamsBeads();
                     });

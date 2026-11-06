@@ -927,17 +927,31 @@ namespace Snake_Ladder
 
 
 
-        // Sync timer to clients
+        // Sync timer to clients.
+        // QA 6 Nov (reconnect lag, the opponent's old turn replayed in jerks): this went out RELIABLE on EVERY server frame.
+        // While a phone was away the reliable queue piled up thousands of these in front of the token deltas and turn
+        // messages, and the phone had to chew through them all on its return. Now about 5 a second, at once when the
+        // running / paused state flips, on the unreliable channel (a lost one is simply replaced by the next).
+        const float TimerSyncInterval = 0.2f;
+        float nextTimerSyncAt;
+        bool lastTimerSyncRunning;
+
         private void LateUpdate()
         {
             if (isServer && isTimerRunning)
             {
                 // Keep the client-side UI state aligned with the authoritative pause.
-                RpcSyncTimer(currentTimer, isTimerRunning && !IsTurnTimerPaused());
+                bool running = isTimerRunning && !IsTurnTimerPaused();
+                if (running != lastTimerSyncRunning || Time.unscaledTime >= nextTimerSyncAt)
+                {
+                    lastTimerSyncRunning = running;
+                    nextTimerSyncAt = Time.unscaledTime + TimerSyncInterval;
+                    RpcSyncTimer(currentTimer, running);
+                }
             }
         }
 
-        [ClientRpc]
+        [ClientRpc(channel = Channels.Unreliable)]
         public void RpcSyncTimer(float timeRemaining, bool running)
         {
             if (GameControllerNew.instance != null)

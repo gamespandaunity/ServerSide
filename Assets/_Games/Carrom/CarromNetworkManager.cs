@@ -120,7 +120,10 @@ public class CarromNetworkManager : NetworkBehaviour
         while (remainingTime > 0)
         {
             if (gameEnded) yield break;
-            if (!NetworkGameManager.Instance.IsPaused)
+            // QA 6 Nov ("the game timer must stop immediately when the waiting panel timer runs out"): held while a player
+            // is away (AwayClock, from 5 s of silence) or dropped, not only while paused - the phones freeze it then too.
+            NetworkGameManager countdownNgm = NetworkGameManager.Instance;
+            if (countdownNgm != null && !countdownNgm.IsPaused && countdownNgm.currentPlayerCount >= 2 && !AwayClock.Running)
                 remainingTime--; // SyncVar updates all clients automatically
             yield return new WaitForSeconds(1f);
         }
