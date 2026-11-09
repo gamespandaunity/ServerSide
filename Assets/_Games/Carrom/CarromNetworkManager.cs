@@ -1681,7 +1681,11 @@ public class CarromNetworkManager : NetworkBehaviour
             // reconnect/setup timing. Holding here freezes the bar at its last fill
             // (no RpcOnTimerUpdate, so no bandwidth/visual jump) and resumes on return.
             NetworkGameManager ngm = NetworkGameManager.Instance;
-            bool canRunTurnTimer = ngm != null && !ngm.IsPaused && ngm.currentPlayerCount >= 2;
+            // QA 9 Nov ("after disconnection the turn passes to the opponent"): also held while a player is away
+            // (AwayClock, from 5 s of silence). IsPaused / the player count only change once the transport drops the
+            // connection (KCP, 20 s), so the 25 s turn of a phone that lost its network ran out and the server
+            // passed the turn on before anyone noticed the drop.
+            bool canRunTurnTimer = ngm != null && !ngm.IsPaused && ngm.currentPlayerCount >= 2 && !AwayClock.Running;
             if (!canRunTurnTimer)
             {
                 yield return null;
