@@ -60,7 +60,9 @@ public class SnokerGameManager : MonoBehaviour
         mainScript.foulInThisTurn = false;
         setLayers();
         Time.fixedDeltaTime = 0.02f;
-        Application.targetFrameRate = 30;
+        // QA 10 Nov (Snooker lag): the match server ran at 30 fps because of this line, adding up to ~33 ms per hop;
+        // only the phones are capped.
+        if (!Mirror.Utils.IsHeadless()) Application.targetFrameRate = 30;
         storedVelocities = new Vector3[ballsRigidbodyArray.Length];
         storedAngularVelocities = new Vector3[ballsRigidbodyArray.Length];
         {
