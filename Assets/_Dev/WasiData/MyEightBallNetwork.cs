@@ -3178,6 +3178,10 @@ public class MyEightBallNetwork : NetworkBehaviour
                 TargetRpcWaitAndStopMove(conn, time);
             }
         }
+        // QA 10 Nov (8 Ball: "the two screens show different ball positions", worst after a short drop): the other
+        // phone only got TargetRpcWaitAndStopMove and kept whatever its replay ended on. Every phone now gets the
+        // server's final board; SyncBallsAfterShotRoutine waits for the local replay to settle before snapping.
+        RpcSyncBallsAfterShot(CaptureAuthoritativeBoardPositions(), activeShotSequence);
     }
 
     [Command(requiresAuthority = false)]
@@ -3231,6 +3235,10 @@ public class MyEightBallNetwork : NetworkBehaviour
                 TargetRpcWaitAndStopMove(conn, time);
             }
         }
+        // QA 10 Nov (8 Ball: "the two screens show different ball positions", worst after a short drop): the other
+        // phone only got TargetRpcWaitAndStopMove and kept whatever its replay ended on. Every phone now gets the
+        // server's final board; SyncBallsAfterShotRoutine waits for the local replay to settle before snapping.
+        RpcSyncBallsAfterShot(CaptureAuthoritativeBoardPositions(), activeShotSequence);
     }
 
     [Server]
