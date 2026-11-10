@@ -3779,6 +3779,9 @@ public class MyEightBallNetwork : NetworkBehaviour
             ClearPendingReconnectTimerReward("turn player started a shot");
         latestStartedShotSequence = activeShotSequence;
         activeShotPlayerId = senderPlayerId;
+        // QA 10 Nov (8 Ball: shot warning timer): a new shot starts a new countdown; the pre-shot value kept the
+        // opponent's bar stuck and then near-empty when the shooter potted and kept the turn.
+        lastTurnPlayTime = 0f;
         shotStopConsumed = false;
         activeShotStartedAtRealtime = Time.realtimeSinceStartup;
         lastShotFrameRealtime = 0f; // reset per shot; set when the first shooter frame arrives
