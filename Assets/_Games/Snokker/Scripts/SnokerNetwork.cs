@@ -90,7 +90,11 @@ public class SnokerNetwork : NetworkBehaviour
         Debug.Log("Server Countdown Started." + remainingTime);
         while (remainingTime > 0)
         {
-            while (NetworkGameManager.Instance != null && NetworkGameManager.Instance.currentPlayerCount < 2)
+            // QA 10 Nov ("when the waiting panel appears the game timer must stop immediately"): also held while a
+            // player is away (AwayClock, from 5 s of silence, which is when the phones show the waiting panel) or the
+            // match is paused, not only once the transport has dropped the connection (~20 s), like Carrom's clocks.
+            while (NetworkGameManager.Instance != null && (NetworkGameManager.Instance.currentPlayerCount < 2
+                   || NetworkGameManager.Instance.IsPaused || AwayClock.Running))
             {
                 yield return new WaitForSeconds(0.5f);
             }
@@ -434,7 +438,10 @@ public class SnokerNetwork : NetworkBehaviour
         StickManager.instance.turnTimer = elapsedTimeParam;
         while (StickManager.instance.turnTimer < turnDuration)
         {
-            if (!_SnokerGameManager.bGamePaused && _SnokerGameManager.ballIsStanding && NetworkGameManager.Instance.currentPlayerCount > 1 && StickManager.instance.isTimerRunning)
+            // QA 10 Nov: the shot clock holds while the waiting panel is up (AwayClock / IsPaused), not only after the
+            // ~20 s transport drop; it used to run out behind the panel and pass the turn.
+            if (!_SnokerGameManager.bGamePaused && _SnokerGameManager.ballIsStanding && NetworkGameManager.Instance.currentPlayerCount > 1 && StickManager.instance.isTimerRunning
+                && !NetworkGameManager.Instance.IsPaused && !AwayClock.Running)
             {
                 StickManager.instance.turnTimer += Time.deltaTime;
             }
@@ -472,7 +479,7 @@ public class SnokerNetwork : NetworkBehaviour
     }
     private void Update()
     {
-        float fillAmount = 1f - (StickManager.instance.turnTimer / 20);
+        float fillAmount = 1f - (StickManager.instance.turnTimer / 30f);   // the turn is 30 s (StartTurnTimer)
         fillAmount = Mathf.Clamp01(fillAmount);
         if (_mainScript.playerOneTimer.gameObject.activeInHierarchy)
         {

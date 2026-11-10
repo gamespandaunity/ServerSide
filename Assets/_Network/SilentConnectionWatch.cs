@@ -22,6 +22,18 @@ public class SilentConnectionWatch : MonoBehaviour
     const float CheckEvery = 0.5f;
     float next;
     readonly HashSet<int> silent = new HashSet<int>();
+    // QA 10 Nov (Snooker: "the disconnection panel keeps appearing every 4-6 seconds"): one packet used to clear the
+    // panel and 5 s of silence brought it back, so a phone on a flaky link toggled it. A silent player now counts as
+    // back only after steady traffic (no gap over BackQuietSeconds) for BackSteadySeconds.
+    const float BackQuietSeconds = 1f;
+    const float BackSteadySeconds = 1.5f;
+    readonly Dictionary<int, float> backSince = new Dictionary<int, float>();
+
+    bool BackSteady(int id)
+    {
+        if (!backSince.TryGetValue(id, out float since)) { backSince[id] = Time.time; return false; }
+        return Time.time - since >= BackSteadySeconds;
+    }
     readonly List<int> gone = new List<int>();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -45,14 +57,17 @@ public class SilentConnectionWatch : MonoBehaviour
             // In a game scene with a player: ready (not loading a scene) and spawned.
             if (!conn.isReady || conn.identity == null) { if (silent.Remove(conn.connectionId)) changed = true; continue; }
             float quiet = Time.time - conn.lastMessageTime;
+            if (quiet >= BackQuietSeconds) backSince.Remove(conn.connectionId);
             if (quiet > SilentSeconds && silent.Add(conn.connectionId))
             {
                 Debug.Log($"[SilentWatch] conn {conn.connectionId} silent for {quiet:0.0} s - waiting panel for the other player");
                 changed = true;
                 AwayClock.Away(MatchFlow.IdOf(conn), $"silent {quiet:0} s");
             }
-            else if (quiet <= SilentSeconds && silent.Remove(conn.connectionId))
+            else if (silent.Contains(conn.connectionId) && quiet < BackQuietSeconds && BackSteady(conn.connectionId)
+                     && silent.Remove(conn.connectionId))
             {
+                backSince.Remove(conn.connectionId);
                 Debug.Log($"[SilentWatch] conn {conn.connectionId} is back - waiting panel off");
                 changed = true;
                 if (silent.Count == 0 && NetworkServer.connections.Count >= 2) AwayClock.Back("network back");
@@ -61,7 +76,7 @@ public class SilentConnectionWatch : MonoBehaviour
         // Connections that left meanwhile (the transport dropped them: the usual disconnect path takes over).
         gone.Clear();
         foreach (int id in silent) if (!NetworkServer.connections.ContainsKey(id)) gone.Add(id);
-        foreach (int id in gone) silent.Remove(id);
+        foreach (int id in gone) { silent.Remove(id); backSince.Remove(id); }
 
         if (!changed || NetworkGameManager.Instance == null) return;
         NetworkGameManager.Instance.RpcShowWaitingPanel(silent.Count > 0);
