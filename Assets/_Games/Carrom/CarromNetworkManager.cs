@@ -1374,6 +1374,31 @@ public class CarromNetworkManager : NetworkBehaviour
             PlayercurrentTurnId,
             BEKStudio.GameController.Instance.redPuckWaiting,
             BEKStudio.GameController.Instance.QueenPendingTag);
+
+        // Alex 11-08: "After disconnection the turn passes to the opponent" (owner 2026-11-11). The turn timer holds while
+        // a player is away (AwayClock), but the time that was left runs on as soon as they are back, while the phone is
+        // still reloading the board, so a player who dropped near the end of the turn lost it before they could shoot.
+        // A player who comes back holding the turn, before shooting, starts the turn again with the full time.
+        if (sender != null && isTimerRunning && ConnectionOf(PlayercurrentTurnId) == sender)
+        {
+            StartTurnTimer(PlayercurrentTurnId);
+            MatchFlow.Log("Carrom", $"{MatchFlow.Who(PlayercurrentTurnId)} is back on their turn — turn timer restarted");
+        }
+    }
+
+    // The connection of a player in the match, or null while they are away.
+    [Server]
+    private NetworkConnectionToClient ConnectionOf(string playerId)
+    {
+        if (string.IsNullOrEmpty(playerId)) return null;
+        foreach (var item in FindObjectsOfType<MirrorPlayerPrefab>())
+        {
+            string itemPlayerId = item.playerData != null && !string.IsNullOrEmpty(item.playerData.playerId)
+                ? item.playerData.playerId
+                : item.playerId;
+            if (itemPlayerId == playerId) return item.connectionToClient;
+        }
+        return null;
     }
 
     [TargetRpc]
