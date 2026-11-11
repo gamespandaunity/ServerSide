@@ -1342,7 +1342,16 @@ public class CarromNetworkManager : NetworkBehaviour
 
         // Re-assign striker authority to whoever currently owns the turn.
         // The reconnected conn's MirrorPlayerPrefab is in the scene by now.
-        if (!TryAssignStrikerAuthority(PlayercurrentTurnId))
+        // Carrom #6 (Game Tester 11-06 and 11-10: "While aiming ... the striker suddenly gets stuck and stops responding";
+        // owner 2026-11-11: "Han bs dekho and perfect bnao"): the hand-over takes the striker away and puts it back in
+        // the centre, so it is only done when the turn holder does not hold the striker on their live connection yet,
+        // and never during a shot. When the OTHER player came back, it took the striker from the holder in the middle of
+        // the aim (seen on two editors 11-11); during a shot it stopped the striker dead.
+        var strikerIdentity = playerPuck != null ? playerPuck.GetComponent<NetworkIdentity>() : null;
+        NetworkConnectionToClient holderConn = ConnectionOf(PlayercurrentTurnId);
+        bool holderHasStriker = strikerIdentity != null && holderConn != null && strikerIdentity.connectionToClient == holderConn;
+        bool shotRunning = shotWatchdog != null || !isTimerRunning;
+        if (!holderHasStriker && !shotRunning && !TryAssignStrikerAuthority(PlayercurrentTurnId))
         {
             Debug.LogWarning($"[Carrom Reconnect] Could not reassign striker authority to {PlayercurrentTurnId}.");
             return;
