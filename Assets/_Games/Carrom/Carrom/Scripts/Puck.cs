@@ -44,6 +44,14 @@ namespace BEKStudio
         {
             puckStartPos = transform.localPosition;
             shadowRenderer = transform.Find("Shadow")?.GetComponent<SpriteRenderer>();
+
+            // Carrom #8 (Game Tester: "Sometimes, the striker hits the bead with a noticeable delay"). A coin sent its
+            // position only while it moved, so after every rest a phone dropped the coin's history and drew its first new
+            // position at once, about 75 ms ahead of the striker, which sends every tick. The coin twitched while the
+            // striker was still on its way (up to 0.85 board units short), then stood still until the striker got there.
+            // Every coin now sends every tick like the striker, so a coin starts moving when it is really hit.
+            var nt = GetComponent<NetworkTransformUnreliable>();
+            if (nt != null) nt.onlySyncOnChange = false;
         }
 
         void Start()
