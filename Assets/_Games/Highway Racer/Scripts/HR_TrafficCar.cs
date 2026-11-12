@@ -92,6 +92,23 @@ public class HR_TrafficCar : NetworkBehaviour
     public AudioClip engineSound;
     private AudioSource engineSoundSource;
 
+    [Header("Realism / Strength (GamesPanda)")]
+    [Tooltip("Mass is multiplied by this so traffic is not pushed around like paper.")]
+    public float massMultiplier = 1.5f;
+    [Tooltip("No traffic car is lighter than this (kg).")]
+    public float minimumMass = 1900f;
+    [Tooltip("How fast the car speeds up (m/s per second).")]
+    public float acceleration = 3.5f;
+    [Tooltip("How hard the car brakes for traffic ahead (m/s per second).")]
+    public float brakeDeceleration = 7f;
+    [Tooltip("Bumps softer than this relative speed (m/s) do not count as a crash - the car keeps driving.")]
+    public float crashSpeedThreshold = 3f;
+    [Tooltip("Indicator blinks this long before the car starts changing lane (s).")]
+    public float signalTimeBeforeLaneChange = 0.8f;
+    [Tooltip("Steering angle used while changing lane (deg).")]
+    public float laneChangeAngle = 4f;
+    private float laneChangeTimer = 0f;
+
     private bool isMultiplayer = false;
 
     // ✅ Network synced variables - Server sets, clients display
@@ -119,6 +136,9 @@ public class HR_TrafficCar : NetworkBehaviour
         rigid.angularDamping = 4f;
         rigid.maxAngularVelocity = 2.5f;
         rigid.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ | RigidbodyConstraints.FreezePositionY;
+        rigid.mass = Mathf.Max(minimumMass, rigid.mass * massMultiplier);       // stronger, harder to push
+        rigid.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative; // no clipping at high speed
+        rigid.interpolation = RigidbodyInterpolation.Interpolate;
 
         //  Getting all lights.
         Light[] allLights = GetComponentsInChildren<Light>();
@@ -165,6 +185,7 @@ public class HR_TrafficCar : NetworkBehaviour
         engineSoundSource.pitch = 1.5f;
 
         _maximumSpeed = maximumSpeed;
+        desiredSpeed = maximumSpeed;     // spawn already cruising (same as before)
 
         //  Setting layer of the child gameobjects.
         foreach (Transform t in transform)
@@ -313,14 +334,13 @@ public class HR_TrafficCar : NetworkBehaviour
 
         // ========== SERVER + OFFLINE: Full AI Logic ==========
 
-        // Adjusting desired speed
-        if (!crashed)
-            desiredSpeed = Mathf.Clamp(maximumSpeed - Mathf.Lerp(maximumSpeed, 0f, (distance - 10f) / 50f), 0f, maximumSpeed);
-        else
-            desiredSpeed = Mathf.Lerp(desiredSpeed, 0f, Time.fixedDeltaTime);
+        // Adjusting desired speed - smooth acceleration and realistic braking
+        float targetSpeed = crashed ? 0f : Mathf.Clamp(maximumSpeed - Mathf.Lerp(maximumSpeed, 0f, (distance - 10f) / 50f), 0f, maximumSpeed);
+        float rate = crashed ? brakeDeceleration * 0.35f : (targetSpeed < desiredSpeed ? brakeDeceleration : acceleration);
+        desiredSpeed = Mathf.MoveTowards(desiredSpeed, targetSpeed, rate * Time.fixedDeltaTime);
 
-        // Braking distance
-        if (distance < 50)
+        // Braking distance (brake lights also when actually slowing down)
+        if (distance < 50 || crashed || targetSpeed < desiredSpeed - 0.5f)
             brakingOn = true;
         else
             brakingOn = false;
@@ -330,8 +350,16 @@ public class HR_TrafficCar : NetworkBehaviour
             transform.rotation = Quaternion.Lerp(transform.rotation, steeringAngle, Time.fixedDeltaTime * 3f);
 
         // Setting linear and angular velocity
-        rigid.linearVelocity = Vector3.Slerp(rigid.linearVelocity, transform.forward * desiredSpeed, Time.fixedDeltaTime * 3f);
-        rigid.angularVelocity = Vector3.Slerp(rigid.angularVelocity, Vector3.zero, Time.fixedDeltaTime * 10f);
+        if (!crashed)
+        {
+            rigid.linearVelocity = Vector3.Slerp(rigid.linearVelocity, transform.forward * desiredSpeed, Time.fixedDeltaTime * 3f);
+            rigid.angularVelocity = Vector3.Slerp(rigid.angularVelocity, Vector3.zero, Time.fixedDeltaTime * 10f);
+        }
+        else
+        {
+            // After a crash physics takes over: the car slides, spins and slows down naturally (no snapping straight)
+            rigid.linearVelocity = Vector3.Lerp(rigid.linearVelocity, Vector3.zero, Time.fixedDeltaTime * 0.8f);
+        }
 
         // Line changing logic
         if (!crashed && HR_GamePlayHandler.mode != HR_GamePlayHandler.Mode.TwoWay)
@@ -342,6 +370,7 @@ public class HR_TrafficCar : NetworkBehaviour
             {
                 case ChangingLines.Straight:
                     steeringAngle = Quaternion.identity;
+                    laneChangeTimer = 0f;
                     break;
 
                 case ChangingLines.Left:
@@ -358,8 +387,11 @@ public class HR_TrafficCar : NetworkBehaviour
                     }
                     else
                     {
-                        steeringAngle = Quaternion.identity * Quaternion.Euler(0f, -5f, 0f);
                         signalsOn = SignalsOn.Left;
+                        laneChangeTimer += Time.fixedDeltaTime;   // blink first, then move over
+                        steeringAngle = laneChangeTimer >= signalTimeBeforeLaneChange
+                            ? Quaternion.identity * Quaternion.Euler(0f, -laneChangeAngle, 0f)
+                            : Quaternion.identity;
                     }
                     break;
 
@@ -377,8 +409,11 @@ public class HR_TrafficCar : NetworkBehaviour
                     }
                     else
                     {
-                        steeringAngle = Quaternion.identity * Quaternion.Euler(0f, 5f, 0f);
                         signalsOn = SignalsOn.Right;
+                        laneChangeTimer += Time.fixedDeltaTime;
+                        steeringAngle = laneChangeTimer >= signalTimeBeforeLaneChange
+                            ? Quaternion.identity * Quaternion.Euler(0f, laneChangeAngle, 0f)
+                            : Quaternion.identity;
                     }
                     break;
             }
@@ -410,6 +445,9 @@ public class HR_TrafficCar : NetworkBehaviour
         if (crashed || spawnProtection < .5f)
             return;
 
+        if (col.relativeVelocity.magnitude < crashSpeedThreshold)
+            return;     // light bump: keep driving
+
         crashed = true;
         signalsOn = SignalsOn.All;
     }
@@ -423,6 +461,8 @@ public class HR_TrafficCar : NetworkBehaviour
         signalsOn = SignalsOn.Off;
         changingLines = ChangingLines.Straight;
         maximumSpeed = Random.Range(_maximumSpeed, _maximumSpeed * 1.5f);
+        desiredSpeed = maximumSpeed;
+        laneChangeTimer = 0f;
         distance = 50f;
     }
 
