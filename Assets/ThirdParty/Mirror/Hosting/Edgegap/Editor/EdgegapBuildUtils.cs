@@ -234,7 +234,13 @@ namespace Edgegap
 
         public static async Task RunCommand_DockerBuild(string dockerfilePath, string registry, string imageRepo, string tag, string projectPath, Action<string> onStatusUpdate, string extraParams = null)
         {
-            string realErrorMessage = null;
+            var recentOutput = new Queue<string>();
+            void RecordOutput(string message)
+            {
+                recentOutput.Enqueue(message);
+                if (recentOutput.Count > 30) recentOutput.Dequeue();
+                onStatusUpdate?.Invoke(message);
+            }
 
             // ARM -> x86 support:
             // build commands use 'buildx' on ARM cpus for cross compilation.
@@ -248,36 +254,28 @@ namespace Edgegap
                 buildCommand += $" {extraParams}";
             }
 
-            bool done = false;
+            int exitCode;
 
 #if UNITY_EDITOR_WIN
-            await RunCommand("docker.exe", $"{buildCommand} -f \"{dockerfilePath}\" -t \"{registry}/{imageRepo}:{tag}\" \"{projectPath}\"", onStatusUpdate,
+            exitCode = await RunCommand("docker.exe", $"{buildCommand} -f \"{dockerfilePath}\" -t \"{registry}/{imageRepo}:{tag}\" \"{projectPath}\"", RecordOutput,
 #elif UNITY_EDITOR_OSX
-            await RunCommand("/bin/bash", $"-c \"docker {buildCommand} -f {dockerfilePath} -t {registry}/{imageRepo}:{tag} {projectPath}\"", onStatusUpdate,
+            exitCode = await RunCommand("/bin/bash", $"-c \"docker {buildCommand} -f {dockerfilePath} -t {registry}/{imageRepo}:{tag} {projectPath}\"", RecordOutput,
 #elif UNITY_EDITOR_LINUX
-            await RunCommand("/bin/bash", $"-c \"docker {buildCommand} -f {dockerfilePath} -t {registry}/{imageRepo}:{tag} {projectPath}\"", onStatusUpdate,
+            exitCode = await RunCommand("/bin/bash", $"-c \"docker {buildCommand} -f {dockerfilePath} -t {registry}/{imageRepo}:{tag} {projectPath}\"", RecordOutput,
 #endif
                 (msg) =>
                 {
-                    if (msg.ToLowerInvariant().Contains("error") || msg.ToLowerInvariant().Contains("invalid"))
-                    {
-                        realErrorMessage = msg;
-                    }
-                    if (msg.ToLowerInvariant().Contains("done"))
-                    {
-                        done = true;
-                    }
                     Debug.Log(msg);
-                    onStatusUpdate(msg);
+                    RecordOutput(msg);
                 });
 
-            if (realErrorMessage != null)
+            if (exitCode != 0)
             {
-                throw new Exception(realErrorMessage);
-            }
-            else if (!done)
-            {
-                throw new Exception("Couldn't complete containerization, see console log for details.");
+                string details = string.Join(Environment.NewLine, recentOutput);
+                string hint = details.IndexOf("permission denied", StringComparison.OrdinalIgnoreCase) >= 0
+                    ? " Unity cannot access Docker. Start Unity from a docker-group session, or sign out and back in after adding your user to the docker group."
+                    : "";
+                throw new Exception($"Docker build failed (exit code {exitCode}).{hint}{Environment.NewLine}{details}");
             }
         }
 
@@ -296,7 +294,7 @@ namespace Edgegap
             return error ?? "";
         }
 
-        static async Task RunCommand(string command, string arguments, Action<string> outputReciever = null, Action<string> errorReciever = null)
+        static async Task<int> RunCommand(string command, string arguments, Action<string> outputReciever = null, Action<string> errorReciever = null)
         {
             ProcessStartInfo startInfo = new ProcessStartInfo()
             {
@@ -307,6 +305,29 @@ namespace Edgegap
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
+
+#if UNITY_EDITOR_LINUX
+            // Editors opened before `usermod -aG docker` retain their old groups.
+            // sg refreshes the child process only; it needs no password for a
+            // user already listed in the local docker group.
+            if (command == "/bin/bash" &&
+                arguments.StartsWith("-c \"docker ", StringComparison.Ordinal) &&
+                arguments.EndsWith("\"", StringComparison.Ordinal) &&
+                File.Exists("/usr/bin/sg") && File.Exists("/etc/group") &&
+                File.ReadLines("/etc/group").Any(line =>
+                {
+                    string[] fields = line.Split(':');
+                    return fields.Length == 4 && fields[0] == "docker" &&
+                        fields[3].Split(',').Contains(Environment.UserName);
+                }))
+            {
+                // Carry the command as one value, preserving its quotes/spaces.
+                startInfo.EnvironmentVariables["EDGEGAP_DOCKER_COMMAND"] =
+                    arguments.Substring(4, arguments.Length - 5);
+                startInfo.FileName = "/usr/bin/sg";
+                startInfo.Arguments = "docker -c \"exec /bin/bash -c \\\"$EDGEGAP_DOCKER_COMMAND\\\"\"";
+            }
+#endif
 
 #if !UNITY_EDITOR_WIN
             // on mac, commands like 'docker' aren't found because it's not in the application's PATH
@@ -321,7 +342,7 @@ namespace Edgegap
             // Debug.Log("PATH: " + customPath);
 #endif
 
-            Process proc = new Process() { StartInfo = startInfo, };
+            using Process proc = new Process() { StartInfo = startInfo, };
             proc.EnableRaisingEvents = true;
 
             ConcurrentQueue<string> errors = new ConcurrentQueue<string>();
@@ -352,10 +373,11 @@ namespace Edgegap
                 pipeQueue(outputs, outputReciever);
             }
 
+            // The process may exit before its asynchronous output handlers finish.
+            proc.WaitForExit();
             pipeQueue(errors, errorReciever);
             pipeQueue(outputs, outputReciever);
-
-
+            return proc.ExitCode;
         }
 
         static void Proc_OutputDataReceived(object sender, DataReceivedEventArgs e)

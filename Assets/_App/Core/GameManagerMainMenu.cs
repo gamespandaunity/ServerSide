@@ -8,6 +8,13 @@ public class GameManagerMainMenu : MonoBehaviour
     {
         SetDefaultPlayerPrefs(); //RAR
         Physics.simulationMode = SimulationMode.FixedUpdate;
+#if UNITY_SERVER
+        // These gameplay initializers used to run on the client lobby UI objects.
+        // Keep them when the dedicated-server build strips that UI hierarchy.
+        ApiAndRoomManager._instance?.RevertToOriginalStates();
+        EightBallPoolNetworkManager.initialized = true;
+        DataManager.SetIntData("Is3DGraphics", AightBallPoolNetworkGameAdapter.is3DGraphics ? 0 : 1);
+#endif
     }
 
 

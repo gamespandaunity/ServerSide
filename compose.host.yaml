@@ -1,0 +1,23 @@
+services:
+  match:
+    image: panda-au:server-lean
+    ports:
+      - "${HOST_BIND_IP:-0.0.0.0}:${HOST_GAME_PORT:-30001}:7777/udp"
+    environment:
+      GameId: "${GameId:?Set GameId in .env.match}"
+      TransactionId: "${TransactionId:?Set TransactionId in .env.match}"
+      MatchKey: "${MatchKey:?Set MatchKey in .env.match}"
+      MatchAttempt: "${MatchAttempt:-1}"
+      currentPrize: "${currentPrize:-0}"
+      isgoldcoins: "${isgoldcoins:-False}"
+      Creator: "${Creator:?Set Creator in .env.match}"
+      APPCHECK_TOKEN: "${APPCHECK_TOKEN:?Set APPCHECK_TOKEN in .env.match}"
+      ARBITRIUM_REQUEST_ID: "${ARBITRIUM_REQUEST_ID:?Set a unique request ID in .env.match}"
+      PLAYER_API_URL: "${PLAYER_API_URL:-https://api-player.gpstagings.com}"
+    restart: "no"
+    stop_grace_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

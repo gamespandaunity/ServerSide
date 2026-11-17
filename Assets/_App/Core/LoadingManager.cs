@@ -150,6 +150,11 @@ public class LoadingManager : MonoBehaviour
                     ApiAndRoomManager.LastFetchedCoins.data.silver_balance = userModel.user.silver_balance.ToString();
 
                     staticVariables.UserProfiledata = userModel;
+#if UNITY_SERVER
+                    // A match server has no profile UI or player wallet to refresh.
+                    // Keeping these calls loads profile textures and client services at boot.
+                    staticVariables.userNickName = "Server Headless";
+#else
                     ServerConnection.DownloadSprite("/" + staticVariables.UserProfiledata.user.file_url, OnLoaded =>
                     {
                         staticVariables.ProfilePicture = OnLoaded;
@@ -158,6 +163,7 @@ public class LoadingManager : MonoBehaviour
                         staticVariables.ProfilePicture = SpritesManager.Instance.spritesScriptable.nullProfileImg;
                     });
                     ApiAndRoomManager._instance.ModifyUserBalance();
+#endif
                     //Constants_M.Log("loadiong m,nanger");
                     SceneLoaderUtility.LoadScene("Home");
                 }

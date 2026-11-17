@@ -24,7 +24,7 @@ public static class MatchServerApi
     /// TESTING ONLY: print the full MatchKey in the start-up log line. The log goes to S3 and the stats panel, and
     /// anyone holding the key can report this match's result - set false before a production build.
     /// </summary>
-    public const bool LogMatchKeyForTesting = true;
+    public const bool LogMatchKeyForTesting = false;
 
     /// <summary>Seconds between deciding a result and reporting it (the API stops the server right after).</summary>
     public const float ResultDelaySeconds = 5f;
