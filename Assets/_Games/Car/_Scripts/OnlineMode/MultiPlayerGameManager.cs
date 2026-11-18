@@ -5,7 +5,9 @@ namespace CarRace
 {
     using Michsky.LSS;
     using Mirror;
+#if !UNITY_SERVER || UNITY_EDITOR   // BouncyCastle (Mirror encryption) is left out of dedicated server builds
     using Mirror.BouncyCastle.Cms;
+#endif
     using Shapes2D;
     using System.Collections;
     using System.Collections.Generic;

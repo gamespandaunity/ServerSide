@@ -1,3 +1,4 @@
+#if !UNITY_SERVER || UNITY_EDITOR   // BouncyCastle (Mirror encryption) is left out of dedicated server builds
 using System;
 using System.IO;
 using Mirror.BouncyCastle.Asn1.Pkcs;
@@ -117,3 +118,4 @@ namespace Mirror.Transports.Encryption
         }
     }
 }
+#endif

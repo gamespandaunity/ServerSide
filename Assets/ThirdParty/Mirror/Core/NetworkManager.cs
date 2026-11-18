@@ -1,11 +1,15 @@
+#if !UNITY_SERVER || UNITY_EDITOR   // BouncyCastle (Mirror encryption) is left out of dedicated server builds
 using Mirror.BouncyCastle.Security.Certificates;
+#endif
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.Serialization;
+#if !UNITY_SERVER || UNITY_EDITOR   // BouncyCastle (Mirror encryption) is left out of dedicated server builds
 using static Mirror.BouncyCastle.Math.EC.ECCurve;
+#endif
 
 namespace Mirror
 {
