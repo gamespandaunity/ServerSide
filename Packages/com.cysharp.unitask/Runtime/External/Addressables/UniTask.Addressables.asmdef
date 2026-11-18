@@ -5,7 +5,13 @@
         "Unity.ResourceManager",
         "Unity.Addressables"
     ],
-    "includePlatforms": [],
+    "includePlatforms": [
+        "Editor",
+        "Android",
+        "iOS",
+        "macOSStandalone",
+        "WindowsStandalone64"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,
@@ -18,7 +24,7 @@
             "expression": "",
             "define": "UNITASK_ADDRESSABLE_SUPPORT"
         },
-	{
+        {
             "name": "com.unity.addressables.cn",
             "expression": "",
             "define": "UNITASK_ADDRESSABLE_SUPPORT"
