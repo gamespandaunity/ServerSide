@@ -14,7 +14,14 @@ PluginImporter:
       Any: 
     second:
       enabled: 1
-      settings: {}
+      settings:
+        Exclude Linux64: 1
+  - first:
+      Standalone: Linux64
+    second:
+      enabled: 0
+      settings:
+        CPU: None
   - first:
       Editor: Editor
     second:

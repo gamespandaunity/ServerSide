@@ -8,7 +8,9 @@ using DragonArts.Collection.Countries;
 using System;
 using System.Collections;
 using Newtonsoft.Json.Linq;
+#if !UNITY_SERVER   // the Facebook SDK is left out of dedicated server builds
 using Facebook.Unity;
+#endif
 using System.Text;
 using UnityEngine.Networking;
 using UnityEngine.Serialization;
@@ -126,7 +128,9 @@ public class LoginUIManager : MonoBehaviour
         showPasswordToggle.onValueChanged.AddListener(OnToggleValueChanged);
         showPasswordIcon = showPasswordToggle.gameObject.GetComponent<Image>();
         
+#if !UNITY_SERVER
         FB.Init(this.OnInitializationComplete, this.OnHideUnity);
+#endif
         StoreSoundPreference();
         //APIManager.instance.SocialAuthLogin("123654", "", "", "facebook");
         enterOtpInput = otpPanelScript.inputField.GetComponent<InputField>();
@@ -768,9 +772,12 @@ public class LoginUIManager : MonoBehaviour
     // public void CallFBLogin()
     public void CallFBLogin()
     {
+#if !UNITY_SERVER
         FB.LogInWithReadPermissions(new List<string>() { "public_profile", "email" ,"user_friends"}, this.HandleLoginResult);
+#endif
     }
     //  protected void HandleResult(IResult result)
+#if !UNITY_SERVER
     protected void HandleLoginResult(IResult result)
     {
         if (result == null)
@@ -794,6 +801,7 @@ public class LoginUIManager : MonoBehaviour
             StartCoroutine(RetrieveUserDetails(accessToken));
         }
     }
+#endif
     //  private IEnumerator FetchUserDetails(string accessToken)
     private IEnumerator RetrieveUserDetails(string accessToken)
     {

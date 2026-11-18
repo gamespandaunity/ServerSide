@@ -14,7 +14,9 @@ using System.Globalization;
 using UnityEngine.Events;
 //using static PunNetwork;
 
+#if !UNITY_SERVER
 using Facebook.Unity;
+#endif
 using NaughtyAttributes;
 using static LoginUIManager;
 using Mirror;
