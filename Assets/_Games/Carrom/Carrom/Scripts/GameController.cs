@@ -1725,29 +1725,14 @@ namespace BEKStudio
 
                 if (redPuckWaiting)
                 {
+                    // The queen not covered: only the queen goes back to the centre (owner, 24 Nov 3:20 AM; Tabish's
+                    // GP-95 / GP-97: "queen bahar aani chahiye na ke ek white goti bahar aa jaye"). It also used to put
+                    // one of the player's own coins back on the board.
                     Debug.Log("❌ Queen not covered! Resetting queen to board center...");
                     MatchFlow.Log("Carrom", $"queen not covered by {FlowShooter()} — returned to the centre");
                     redPuckWaiting = false;
                     redPuck.GetComponent<Puck>().ResetPosition();
                     redPuck.GetComponent<Puck>().BroadCastResetPosition();
-
-                    // ⚠️ Penalty: Remove one puck of the current player
-                    if (masterClientTag == "White" && homePucksCollected.Count > 0)
-                    {
-                        var lastPuck = homePucksCollected[homePucksCollected.Count - 1];
-                        homePucksCollected.Remove(lastPuck);
-                        lastPuck.GetComponent<Puck>().ResetAndRemove();
-                        Debug.Log("🚨 Penalty: White loses one puck (returned to board).");
-                        MatchFlow.Log("Carrom", $"penalty: one of {FlowOwner("White")}'s white coins returned to the board");
-                    }
-                    else if (masterClientTag == "Black" && awayPucksCollected.Count > 0)
-                    {
-                        var lastPuck = awayPucksCollected[awayPucksCollected.Count - 1];
-                        awayPucksCollected.Remove(lastPuck);
-                        lastPuck.GetComponent<Puck>().ResetAndRemove();
-                        Debug.Log("🚨 Penalty: Black loses one puck (returned to board).");
-                        MatchFlow.Log("Carrom", $"penalty: one of {FlowOwner("Black")}'s black coins returned to the board");
-                    }
                 }
 
                 return;
@@ -1768,42 +1753,16 @@ namespace BEKStudio
                 }
                 else
                 {
-                    // Player failed to cover queen → penalty
+                    // The queen not covered: only the queen goes back to the centre, none of the player's own coins
+                    // (owner, 24 Nov 3:20 AM; Tabish's GP-95 / GP-97). It used to take one of them off the score too.
                     tempRedPuckWaiting = false;
                     queenCheck = false;
 
-                    Debug.Log("❌ Queen not covered! Resetting queen + applying penalty...");
+                    Debug.Log("❌ Queen not covered! Resetting queen to board center...");
                     MatchFlow.Log("Carrom", $"queen not covered by {FlowShooter()} — returned to the centre");
 
-                    // Reset the queen
                     redPuck.GetComponent<Puck>().ResetPosition();
                     redPuck.GetComponent<Puck>().BroadCastResetPosition();
-
-                    // Apply penalty (deduct one puck)
-                    if (masterClientTag == "White" && homePucksCollected.Count > 0)
-                    {
-                        var lastPuck = homePucksCollected[homePucksCollected.Count - 1];
-                        homePucksCollected.RemoveAt(homePucksCollected.Count - 1);
-
-                        lastPuck.GetComponent<Puck>().ResetAndRemove();
-                        // lastPuck.GetComponent<Puck>().BroadCastResetPosition();
-                        Debug.Log("⚪ Penalty applied: White player puck returned to board.");
-                        MatchFlow.Log("Carrom", $"penalty: one of {FlowOwner("White")}'s white coins returned to the board");
-                    }
-                    else if (masterClientTag == "Black" && awayPucksCollected.Count > 0)
-                    {
-                        var lastPuck = awayPucksCollected[awayPucksCollected.Count - 1];
-                        awayPucksCollected.RemoveAt(awayPucksCollected.Count - 1);
-
-                        lastPuck.GetComponent<Puck>().ResetAndRemove();
-                        // lastPuck.GetComponent<Puck>().BroadCastResetPosition();
-                        Debug.Log("⚫ Penalty applied: Black player puck returned to board.");
-                        MatchFlow.Log("Carrom", $"penalty: one of {FlowOwner("Black")}'s black coins returned to the board");
-                    }
-                    else
-                    {
-                        Debug.LogWarning("⚠ No puck available to deduct for penalty!");
-                    }
                 }
             }
 

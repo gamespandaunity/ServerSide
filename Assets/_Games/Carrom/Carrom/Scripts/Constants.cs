@@ -6,7 +6,8 @@ namespace BEKStudio{
     public class Constants{
 
         public static int DEFAULT_COIN = 1000;
-        public static float PLAY_TIME_FOR_PLAYER = 25;
+        // 20 seconds a turn (owner, 24 Nov 3:20 AM; Tabish's GP-96). It was 25.
+        public static float PLAY_TIME_FOR_PLAYER = 20;
 
         public static int ROOM_LONDON_ENTRY_PRICE = 250;
         public static int ROOM_PARIS_ENTRY_PRICE = 500;
