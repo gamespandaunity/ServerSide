@@ -31,13 +31,13 @@ namespace BallPool
             if (!isNetworkSession)
             {
                 BallPoolGameLogic.isOnLine = false;
-                BallPoolPlayer.turnId = (new System.Random()).Next(0, 2);
+                int breaker = (new System.Random()).Next(0, 2);
 
-                if (BallPoolPlayer.turnId == 0)
-                    BallPoolPlayer.SetTurn(staticVariables.UserProfiledata.user._id);
+                if (breaker == 0)
+                    BallPoolPlayer.SetTurn(PlayerId.Me);
                 else
                 {
-                    BallPoolPlayer.SetTurn(GameModeManager.isAI ? 1 : int.Parse(EightBallPoolNetworkManager.opponentPlayer.userId));
+                    BallPoolPlayer.SetTurn(GameModeManager.isAI ? PlayerId.Ai : PlayerId.Normalize(EightBallPoolNetworkManager.opponentPlayer.userId));
                 }
                 UpdateActiveBalls();
 
@@ -51,12 +51,12 @@ namespace BallPool
                 {
                     NetworkPlayerData mainplayer = NetworkGameManager.Instance.creatorData;
                     NetworkPlayerData otherplayer = NetworkGameManager.Instance.joinerData;
-                    BallPoolPlayer.players[0] = new AightBallPoolPlayer(int.Parse(mainplayer.playerId),mainplayer.playerName,mainplayer.silverCoins, null, null);
-                    BallPoolPlayer.players[1] = new AightBallPoolPlayer(int.Parse(otherplayer.playerId), otherplayer.playerName, otherplayer.silverCoins, null, null);
+                    BallPoolPlayer.players[0] = new AightBallPoolPlayer(mainplayer.playerId,mainplayer.playerName,mainplayer.silverCoins, null, null);
+                    BallPoolPlayer.players[1] = new AightBallPoolPlayer(otherplayer.playerId, otherplayer.playerName, otherplayer.silverCoins, null, null);
                 }
                 else {
                     BallPoolPlayer.players[1] = new AightBallPoolPlayer(
-                        int.Parse(staticVariables.OpponetProfile.userId),
+                        staticVariables.OpponetProfile.userId,
                         staticVariables.OpponetProfile.userName,
                         staticVariables.OpponetProfile.coins,
                         staticVariables.OpponetProfile.image,
@@ -212,7 +212,7 @@ namespace BallPool
 
 
 
-            int shooterId = (MyEightBallNetwork.Instance != null) ? MyEightBallNetwork.Instance.ActiveShotPlayerId : -1;
+            string shooterId = (MyEightBallNetwork.Instance != null) ? MyEightBallNetwork.Instance.ActiveShotPlayerId : "";
             bool wasBreakOpen = AightBallPoolGameLogic.gameState != null && AightBallPoolGameLogic.gameState.tableIsOpened;
             int boardHitsThisShot = AightBallPoolGameLogic.gameState != null ? AightBallPoolGameLogic.gameState.ballsHitBoardCount : 0;
             bool serverOnline = NetworkServer.active && BallPoolGameLogic.isOnLine && MyEightBallNetwork.Instance != null;
@@ -242,8 +242,8 @@ namespace BallPool
                 BroadcastServerBallPositions();
                 if (serverOnline)
                 {
-                    int winnerId = ResolveWinnerId();
-                    EightBallOutcomeCode endCode = (winnerId == shooterId)
+                    string winnerId = ResolveWinnerId();
+                    EightBallOutcomeCode endCode = PlayerId.Same(winnerId, shooterId)
                         ? EightBallOutcomeCode.LegalBlackWin : EightBallOutcomeCode.IllegalBlackLoss;
                     MyEightBallNetwork.Instance.ServerPublishShotOutcome(shooterId, (int)endCode, false, true, winnerId);
                     MyEightBallNetwork.Instance.ServerDeclareGameWin(winnerId);
@@ -264,7 +264,7 @@ namespace BallPool
                     // Use the same immutable per-shot scratch result for both movement and outcome.
                     // Do not let later/transient cue component state make those decisions disagree.
                     MyEightBallNetwork.Instance.OnAuthoritativeShotEnded(needChange, cueBallWasPocketedAtShotEnd);
-                    MyEightBallNetwork.Instance.ServerPublishShotOutcome(shooterId, outcome, needChange, false, -1);
+                    MyEightBallNetwork.Instance.ServerPublishShotOutcome(shooterId, outcome, needChange, false, "");
                 }
                 if (AightBallPoolGameLogic.gameState.needToChangeTurn)
                 {
@@ -279,12 +279,12 @@ namespace BallPool
             }
         }
 
-        int ResolveWinnerId()
+        string ResolveWinnerId()
         {
             if (BallPoolPlayer.players != null)
                 foreach (var p in BallPoolPlayer.players)
                     if (p != null && p.isWinner) return p.playerId;
-            return -1;
+            return "";
         }
 
         EightBallOutcomeCode DeriveOutcomeCode(bool wasBreakOpen, int boardHitsThisShot)
@@ -387,7 +387,7 @@ namespace BallPool
             GameManager.instance.ShadowToggle.SetBallShadows();
         }
 
-        public override void OnForceGoHome(int winnerId)
+        public override void OnForceGoHome(string winnerId)
         {
             DebugManager.DebugLog("leavebtn  " + winnerId);
             BallPoolPlayer.SetWinner(winnerId);
@@ -419,8 +419,8 @@ namespace BallPool
                     Debug.Log("[8Ball][TurnControl] Suppressed immediate OnEnableControl while shot is still settling; delayed network control refresh will apply after physics stops (turn timer reset anyway).");
                 }
 
-                CallOnSetActivePlayer(AightBallPoolPlayer.mainPlayer, BallPoolPlayer.turnId == AightBallPoolPlayer.mainPlayer.playerId);
-                CallOnSetActivePlayer(AightBallPoolPlayer.otherPlayer, BallPoolPlayer.turnId == AightBallPoolPlayer.otherPlayer.playerId);
+                CallOnSetActivePlayer(AightBallPoolPlayer.mainPlayer, PlayerId.Same(BallPoolPlayer.turnId, AightBallPoolPlayer.mainPlayer.playerId));
+                CallOnSetActivePlayer(AightBallPoolPlayer.otherPlayer, PlayerId.Same(BallPoolPlayer.turnId, AightBallPoolPlayer.otherPlayer.playerId));
 
                 if (BallPoolGameLogic.playMode == PlayMode.PlayerAI && AightBallPoolPlayer.otherPlayer.myTurn)
                 {

@@ -112,7 +112,7 @@ namespace BallPool
             return (player.isSolids && AightBallPoolGameLogic.isSolidsBall( ballId)) || (player.isStripes && AightBallPoolGameLogic.isStripesBall( ballId));
         }
 
-        public AightBallPoolPlayer(int playerId, string name, int coins, object avatar, string avatarURL) : base(playerId, name, coins, avatar, avatarURL)
+        public AightBallPoolPlayer(string playerId, string name, int coins, object avatar, string avatarURL) : base(playerId, name, coins, avatar, avatarURL)
         {
             _isStripes = false;
             _isSolids = false;

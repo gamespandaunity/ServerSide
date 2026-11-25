@@ -12,7 +12,7 @@ using System.Collections.Generic;
 /// 2-player board (corners 0 and 2) that is the old "opposite" offset of 26.
 ///
 /// 2 players: player index = index into the clients' playerObjects, which every client sorts by user id
-/// (string.Compare), creator/joiner mapped the same way. 4 players: player index = seat (0–3), seat = corner.
+/// (string.CompareOrdinal), creator/joiner mapped the same way. 4 players: player index = seat (0–3), seat = corner.
 /// Pure C#: no Unity objects, so it runs the same on the headless server.
 /// </summary>
 public class LudoServerBoard

@@ -64,7 +64,7 @@ public class ResultManagerFor12Bead : NetworkBehaviour//: MonoBehaviourPun
                 NetworkGameManager.OnRematchRecived += RematchRequestRecived;
                 if (IsWin)
                 {
-                    if (PlayerId == staticVariables.UserProfiledata.user._id)
+                    if (global::PlayerId.IsMe(PlayerId.ToString()))
                     {
                         Debug.LogError("Win PlayerId: " + PlayerId);
                         InitializeWinnerProfile(staticVariables.ProfilePicture, staticVariables.UserProfiledata.user.first_name + " " + staticVariables.UserProfiledata.user.last_name);
@@ -104,7 +104,7 @@ public class ResultManagerFor12Bead : NetworkBehaviour//: MonoBehaviourPun
                 }
                 else
                 {
-                    if (PlayerId == staticVariables.UserProfiledata.user._id)
+                    if (global::PlayerId.IsMe(PlayerId.ToString()))
                     {
                         Debug.LogError("Losse PlayerId: " + PlayerId);
                         //LooserInitialize(staticVariables.opponentImage, staticVariables.OpponetProfile.userName);

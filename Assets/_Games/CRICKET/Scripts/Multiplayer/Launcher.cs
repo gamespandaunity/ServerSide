@@ -447,7 +447,7 @@ public class Launcher : MonoBehaviour//Photon Removal : MonoBehaviourPunCallback
 
     public void OnJoinedRoom()
     {
-        string playerID = staticVariables.UserProfiledata.user._id.ToString();
+        string playerID = PlayerId.Me;
         CONTROLLER.DIRECTWIN = false;
 
         PlayerPrefs.SetString("PlayerID", playerID);
@@ -801,14 +801,14 @@ public class Launcher : MonoBehaviour//Photon Removal : MonoBehaviourPunCallback
 
 
             // PV.RPC("RPC_CheckScore", RpcTarget.OthersBuffered, CONTROLLER.TeamList[CONTROLLER.BattingTeamIndex].currentMatchScores, Singleton<ScoreBoardBallList>.instance.ballCount, CONTROLLER.TeamList[CONTROLLER.BattingTeamIndex].currentMatchWickets);
-            CricketNetworkManager.instance.CmdCheckScore(staticVariables.UserProfiledata.user._id, CONTROLLER.TeamList[CONTROLLER.BattingTeamIndex].currentMatchScores, Singleton<ScoreBoardBallList>.instance.ballCount, CONTROLLER.TeamList[CONTROLLER.BattingTeamIndex].currentMatchWickets);
+            CricketNetworkManager.instance.CmdCheckScore(PlayerId.Me, CONTROLLER.TeamList[CONTROLLER.BattingTeamIndex].currentMatchScores, Singleton<ScoreBoardBallList>.instance.ballCount, CONTROLLER.TeamList[CONTROLLER.BattingTeamIndex].currentMatchWickets);
 
             if (CONTROLLER.myTeamIndex == CONTROLLER.BowlingTeamIndex && Singleton<GroundController>.instance.timerObject.activeInHierarchy)
             {
                 Singleton<GroundController>.instance.Invoke("ToggleDOTweenSequence", 0.5f);
             }
             //photonView.RPC("RPC_CheckScene", RpcTarget.OthersBuffered, SceneManager.GetActiveScene().name, CONTROLLER.meFirstBatting);
-            CricketNetworkManager.instance.CmdCheckScene(staticVariables.UserProfiledata.user._id, SceneManager.GetActiveScene().name, CONTROLLER.meFirstBatting);
+            CricketNetworkManager.instance.CmdCheckScene(PlayerId.Me, SceneManager.GetActiveScene().name, CONTROLLER.meFirstBatting);
             return;
         }
         else
@@ -841,13 +841,13 @@ public class Launcher : MonoBehaviour//Photon Removal : MonoBehaviourPunCallback
         int _matchBalls = CONTROLLER.TeamList[CONTROLLER.BattingTeamIndex].currentMatchBalls;
         int _wickets = CONTROLLER.TeamList[CONTROLLER.BattingTeamIndex].currentMatchWickets;
         int _ballNum = Singleton<GameData>.instance.currentBallNumber;
-        CricketNetworkManager.instance.CmdEqualScore(staticVariables.UserProfiledata.user._id, _scores, _balls, _matchBalls, _wickets, _ballNum);
+        CricketNetworkManager.instance.CmdEqualScore(PlayerId.Me, _scores, _balls, _matchBalls, _wickets, _ballNum);
         // Also update SyncVars so future reconnects get correct state immediately via Mirror auto-sync
         CricketNetworkManager.instance.CmdSyncGameState(_scores, _wickets, _balls, _matchBalls, _ballNum,
             CONTROLLER.StrikerIndex, CONTROLLER.NonStrikerIndex,
             Singleton<GameData>.instance.newBatsmanEntryIndex);
         CONTROLLER.UNEQUALSCORE = false;
-        CricketNetworkManager.instance.CmdCallRebowl(staticVariables.UserProfiledata.user._id, false);
+        CricketNetworkManager.instance.CmdCallRebowl(PlayerId.Me, false);
         if (Singleton<GameData>.instance.currentBallNumber == 5)
         {
             Singleton<GameData>.instance.CallCheckOverComplete();

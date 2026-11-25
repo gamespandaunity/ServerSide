@@ -2263,7 +2263,7 @@ public partial class GroundController
                                 && CricketNetworkManager.ReadyToSend)
                             {
                                 ConstantsData_M.MpLog($"[GroundController][ThrowTarget] Authority ruling: '{throwTargetSaved}' (fielderAction={fielderAction}).");
-                                CricketNetworkManager.instance.CmdThrowTarget(staticVariables.UserProfiledata.user._id, throwTargetSaved);
+                                CricketNetworkManager.instance.CmdThrowTarget(PlayerId.Me, throwTargetSaved);
                             }
                         }
                     }

@@ -25,7 +25,7 @@ namespace BallPool
         /// Gets the player identifier in game, not social id.
         /// </summary>
         /// <value>The player identifier.</value>
-        public int playerId
+        public string playerId
         {
             get;
             private set;
@@ -55,11 +55,11 @@ namespace BallPool
             }
             return null;
         }
-        public static void SetWinner(int playerId)
+        public static void SetWinner(string playerId)
         {
             foreach (BallPoolPlayer player in players)
             {
-                player.isWinner = player.playerId == playerId;
+                player.isWinner = PlayerId.Same(player.playerId, playerId);
             }
         }
         /// <summary>
@@ -71,7 +71,7 @@ namespace BallPool
             {
                 foreach (BallPoolPlayer player in players)
                 {
-                    if (player.playerId == turnId)
+                    if (PlayerId.Same(player.playerId, turnId))
                     {
                         return player;
                     }
@@ -118,9 +118,9 @@ namespace BallPool
         public static BallPoolPlayer[] players = new BallPoolPlayer[2];
 
         /// <summary>
-        /// if 1: Main Player turn els , if 2: Other Player turn.
+        /// Public player id of the player whose turn it is ("ai" for the AI, "" when no turn is set).
         /// </summary>
-        public static int turnId
+        public static string turnId
         {
             get;
             set;
@@ -189,16 +189,16 @@ namespace BallPool
                 // borderline pot, or the active player potting their own ball so the server KEEPS the
                 // turn) the watcher would flip its turn locally with no server correction, and the two
                 // devices then stick on different players' turns ("game stuck after a couple shots").
-                if (MyEightBallNetwork.Instance != null && turnId == staticVariables.UserProfiledata.user._id)
-                    MyEightBallNetwork.Instance.CmdChangeTurn(staticVariables.UserProfiledata.user._id, (int)reason);
+                if (MyEightBallNetwork.Instance != null && PlayerId.IsMe(turnId))
+                    MyEightBallNetwork.Instance.CmdChangeTurn(PlayerId.Me, (int)reason);
                 return; // Server handle karega, local change nahi
             }
 
             Physics.Simulate(Time.fixedDeltaTime); //RAR
                                                    // UnityEngine.Debug.Log("ChangeTurn " + BallPoolPlayer.turnId);
-            if (turnId == staticVariables.UserProfiledata.user._id)
+            if (PlayerId.IsMe(turnId))
             {
-                turnId = GameModeManager.isAI ? 1 : int.Parse(EightBallPoolNetworkManager.opponentPlayer.userId);
+                turnId = GameModeManager.isAI ? PlayerId.Ai : PlayerId.Normalize(EightBallPoolNetworkManager.opponentPlayer.userId);
                 Physics.Simulate(Time.fixedDeltaTime); //RAR
                 if (GameUIController.instance.CueRenderer2D.GetComponent<MeshRenderer>().material == null)
                 {
@@ -210,7 +210,7 @@ namespace BallPool
             }
             else
             {
-                turnId = staticVariables.UserProfiledata.user._id;
+                turnId = PlayerId.Me;
                 Physics.Simulate(Time.fixedDeltaTime); //RAR
                 if (GameUIController.instance.CueRenderer2D.GetComponent<MeshRenderer>().material == null)
                 {
@@ -224,7 +224,7 @@ namespace BallPool
             for (int i = 0; i < players.Length; i++)
             {
 
-                players[i].myTurn = (players[i].playerId == turnId);
+                players[i].myTurn = PlayerId.Same(players[i].playerId, turnId);
                 Physics.Simulate(Time.fixedDeltaTime); //RAR
             }
             if (OnTurnChanged != null)
@@ -238,13 +238,14 @@ namespace BallPool
         /// <summary>
         /// Set the players turn.
         /// </summary>
-        public static void SetTurn(int turnId)
+        public static void SetTurn(string turnId)
         {
+            turnId = PlayerId.Normalize(turnId);
             Debug.Log("Settting turn for :" + turnId);
             BallPoolPlayer.turnId = turnId;
             for (int i = 0; i < players.Length; i++)
             {
-                players[i].myTurn = (players[i].playerId == turnId);
+                players[i].myTurn = PlayerId.Same(players[i].playerId, turnId);
                 Physics.Simulate(Time.fixedDeltaTime); //RAR
             }
             if (OnTurnChanged != null)
@@ -269,9 +270,9 @@ namespace BallPool
             }
             return data;
         }
-        public BallPoolPlayer(int playerId, string name, int coins, object avatar, string avatarURL)
+        public BallPoolPlayer(string playerId, string name, int coins, object avatar, string avatarURL)
         {
-            this.playerId = playerId;
+            this.playerId = PlayerId.Normalize(playerId);
             this.name = name;
             this.coins = coins;
             this.avatar = avatar;

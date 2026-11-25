@@ -1,8 +1,8 @@
 [System.Serializable]
 public class BetRequest
 {
-    public int user_id;
-    public int first_player;
+    public string user_id;
+    public string first_player;
     public string second_player;
     public string game_id;
     public string gold;
@@ -20,6 +20,6 @@ public class BetRequest
 public class BetJoinRequest
 {
     public string transaction_id;
-    public int second_player;
+    public string second_player;
     public string second_player_info;
 }

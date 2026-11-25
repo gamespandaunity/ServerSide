@@ -416,7 +416,7 @@ public class BowlingScoreCard : Singleton<BowlingScoreCard>
 					_awaitingPlayerBowlerPick = false;   // the player made the choice — no fallback needed
 				int _abs = AbsoluteIndexForScorecardPosition(index);
 					if (_abs >= 0)
-						CricketNetworkManager.instance.CmdSyncBowlerAbsolute(staticVariables.UserProfiledata.user._id, _abs);
+						CricketNetworkManager.instance.CmdSyncBowlerAbsolute(PlayerId.Me, _abs);
 				}
 			}
 			if (CONTROLLER.BattingTeamIndex == CONTROLLER.myTeamIndex && CONTROLLER.PlayModeSelected == 8)
@@ -647,7 +647,7 @@ public class BowlingScoreCard : Singleton<BowlingScoreCard>
 				{
 					int _abs = AbsoluteIndexForScorecardPosition(currentBowler);
 					if (_abs >= 0)
-						CricketNetworkManager.instance.CmdSyncBowlerAbsolute(staticVariables.UserProfiledata.user._id, _abs);
+						CricketNetworkManager.instance.CmdSyncBowlerAbsolute(PlayerId.Me, _abs);
 				}
 			}
 
@@ -1420,7 +1420,7 @@ public class BowlingScoreCard : Singleton<BowlingScoreCard>
 			if (GameConstants.isWithAI == false)
 			{
 				//Photon Removal    photonView.RPC("RPC_Continue", RpcTarget.OthersBuffered);
-				CricketNetworkManager.instance.CmdBowlingScoreCardContinue(staticVariables.UserProfiledata.user._id);
+				CricketNetworkManager.instance.CmdBowlingScoreCardContinue(PlayerId.Me);
 			}
 
 
@@ -1581,7 +1581,7 @@ public class BowlingScoreCard : Singleton<BowlingScoreCard>
 			if (GameConstants.isWithAI == false)
 			{
 				//Photon Removal    photonView.RPC("RPC_Continue", RpcTarget.OthersBuffered);
-				CricketNetworkManager.instance.CmdBowlingScoreCardContinue(staticVariables.UserProfiledata.user._id);
+				CricketNetworkManager.instance.CmdBowlingScoreCardContinue(PlayerId.Me);
 			}
 
 

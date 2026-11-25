@@ -20,7 +20,7 @@ public class LocalTestManager : MonoBehaviour
 {
     // ── Inspector / defaults ─────────────────────────────────────────────────
     private string _playerName  = "TestPlayer1";
-    private string _playerId    = "10001";
+    private string _playerId    = "K7Q2M9XA4B";
     private string _token       = "";           // Bearer token for API calls
     private string _serverIp    = "127.0.0.1";
     private int    _port        = 7777;
@@ -50,9 +50,9 @@ public class LocalTestManager : MonoBehaviour
     {
         var profile = staticVariables.UserProfiledata;
         var u       = profile.user;
-        if (u._id != 0)
+        if (!string.IsNullOrEmpty(u._id))
         {
-            _playerId   = u._id.ToString();
+            _playerId   = PlayerId.Normalize(u._id);
             _playerName = (u.first_name + " " + u.last_name).Trim();
         }
         // Preserve real token so API calls (bets/play etc.) don't get 401
@@ -205,9 +205,9 @@ public class LocalTestManager : MonoBehaviour
     // ── Helpers ──────────────────────────────────────────────────────────────
     private bool ValidateInputs()
     {
-        if (!int.TryParse(_playerId, out _))
+        if (!PlayerId.IsPublicId(_playerId))
         {
-            Debug.LogError("[LocalTest] Player ID must be an integer.");
+            Debug.LogError("[LocalTest] Player ID must be a 10-character public ID (e.g. K7Q2M9XA4B).");
             return false;
         }
         if (string.IsNullOrWhiteSpace(_playerName))
@@ -220,7 +220,7 @@ public class LocalTestManager : MonoBehaviour
 
     private void InjectFakeProfile()
     {
-        int id = int.Parse(_playerId);
+        string id = PlayerId.Normalize(_playerId);
         string[] parts = _playerName.Split(' ');
         string first = parts[0];
         string last  = parts.Length > 1 ? parts[1] : "";

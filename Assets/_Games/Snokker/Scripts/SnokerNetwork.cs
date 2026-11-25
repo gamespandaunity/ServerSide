@@ -844,7 +844,7 @@ public class SnokerNetwork : NetworkBehaviour
         StickManager.instance.CmdAnnounceVictory(staticVariables.UserProfiledata.user._id, reason);
 
     }
-    public void Victory(int id, string reason)
+    public void Victory(string id, string reason)
     {
         if (TimerCorotine != null)
             StopCoroutine(TimerCorotine);

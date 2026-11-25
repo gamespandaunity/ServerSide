@@ -124,7 +124,7 @@ public class TriggerEvent : MonoBehaviour
             }
         }
     }
-    IEnumerator MultiplayerDealyWin(int PlayerId)
+    IEnumerator MultiplayerDealyWin(string PlayerId)
     {
         yield return new WaitForSeconds(3f);
         Notification.SetActive(false);

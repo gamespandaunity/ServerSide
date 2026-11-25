@@ -208,7 +208,8 @@ public class CarromNetworkManager : NetworkBehaviour
     {
         // Any client could freeze a live match with this. Accept it only when the opponent really is gone (or announced
         // leaving), and report the result so the match is settled, not just shown.
-        if (!int.TryParse(winnerId, out int claimed)) return;
+        string claimed = PlayerId.Normalize(winnerId);
+        if (claimed.Length == 0) return;
         ClaimedWinGuard.Accept(claimed, "Carrom", "opponent disconnected", () => ServerAnnounceDisconnectWin(winnerId));
     }
 
@@ -996,36 +997,18 @@ public class CarromNetworkManager : NetworkBehaviour
         CurrentpuckTag = punktag;
         BEKStudio.GameController.Instance.masterClientTag = punktag;
     }
-    [Command(requiresAuthority = false)]
-    public void CmdSwitchTurn(int currentTurnId)
-    {
-        if (gameEnded) return;
-        // AUTHORITATIVE debounce: only the player who currently HOLDS the turn may pass it.
-        // Duplicate/stale switch requests (double events, race bursts) otherwise re-flip the
-        // turn and desync the clients — same guard as 8-ball's CmdChangeTurn.
-        if (!string.IsNullOrEmpty(PlayercurrentTurnId) && currentTurnId.ToString() != PlayercurrentTurnId)
-        {
-            Debug.Log($"[Carrom][Server] Ignored stale CmdSwitchTurn from {currentTurnId} (current={PlayercurrentTurnId})");
-            return;
-        }
-
-        if (!ServerSwitchTurnFrom(currentTurnId.ToString(), allowOffline: true))
-        {
-            Debug.LogWarning($"[Carrom][Server] CmdSwitchTurn could not assign turn from {currentTurnId} yet.");
-        }
-    }
-
     /// <summary>
     /// Switches turn given the CURRENT player's ID string (no int.Parse required).
-    /// Used by RpcOnTimerEnd where int.Parse would throw on non-numeric player IDs.
+    /// Used by RpcOnTimerEnd and by GameController after a shot. (Player IDs are 10-character public IDs since 25 Nov;
+    /// the old CmdSwitchTurn(int) overload is gone - as a string it would clash with CmdSwitchTurn(string punktag).)
     /// </summary>
     [Command(requiresAuthority = false)]
     public void CmdSwitchTurnByPlayerId(string currentPlayerId)
     {
         if (gameEnded) return;
-        // Same authoritative debounce as CmdSwitchTurn(int): ignore a switch whose claimed
-        // "current" player is not the actual turn holder (duplicate/stale requests).
-        if (!string.IsNullOrEmpty(PlayercurrentTurnId) && currentPlayerId != PlayercurrentTurnId)
+        // AUTHORITATIVE debounce: only the player who currently HOLDS the turn may pass it. Duplicate/stale
+        // switch requests (double events, race bursts) otherwise re-flip the turn and desync the clients.
+        if (!string.IsNullOrEmpty(PlayercurrentTurnId) && !PlayerId.Same(currentPlayerId, PlayercurrentTurnId))
         {
             Debug.Log($"[Carrom][Server] Ignored stale CmdSwitchTurnByPlayerId from {currentPlayerId} (current={PlayercurrentTurnId})");
             return;
@@ -1823,7 +1806,7 @@ public class CarromNetworkManager : NetworkBehaviour
         }
     }
     [Command(requiresAuthority = false)]
-    public void CmdGameStateWin(int PlayerId)
+    public void CmdGameStateWin(string PlayerId)
     {
         MatchFlow.SendResult(BEKStudio.GameController.currentHomeScore == BEKStudio.GameController.currentAwayScore ? "draw"
             : BEKStudio.GameController.currentHomeScore > BEKStudio.GameController.currentAwayScore ? NetworkGameManager.Instance?.creatorData?.playerId
@@ -1841,7 +1824,7 @@ public class CarromNetworkManager : NetworkBehaviour
        });
     }
      [ClientRpc]
-    public void RpcGameStateWin(int PlayerId)
+    public void RpcGameStateWin(string PlayerId)
     {
         // ResultManagerForCarrom.instance.WinPlayer(true, PlayerId);
         if (ResultManager.GameSpawnedFinished == false)
@@ -1882,7 +1865,7 @@ public class CarromNetworkManager : NetworkBehaviour
         }
     }
     [Command(requiresAuthority = false)]
-    public void CmdGameStatelose(int PlayerId)
+    public void CmdGameStatelose(string PlayerId)
     {
         MatchFlow.SendResult(BEKStudio.GameController.currentHomeScore == BEKStudio.GameController.currentAwayScore ? "draw"
             : BEKStudio.GameController.currentHomeScore > BEKStudio.GameController.currentAwayScore ? NetworkGameManager.Instance?.creatorData?.playerId
@@ -1917,7 +1900,7 @@ public class CarromNetworkManager : NetworkBehaviour
         ClearStrikerNetworkTransformBuffers();
     }
     [ClientRpc]
-    public void RpcGameStatelose(int PlayerId)
+    public void RpcGameStatelose(string PlayerId)
     {
         // ResultManagerForCarrom.instance.WinPlayer(false, PlayerId);
         if (ResultManager.GameSpawnedFinished == false)

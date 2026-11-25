@@ -177,7 +177,7 @@ public partial class GameData
 				// !_ballOutcomeIsFromNetwork guard prevents double-send if this path were
 				// ever re-entered via UpdateCurrentBallFromNetwork (defensive coding).
 				CricketNetworkManager.instance.CmdBallOutcome(
-					staticVariables.UserProfiledata.user._id,
+					PlayerId.Me,
 					validBall, canCountBall, runsScored, extraRun,
 					batsmanID, isWicket, wicketType, bowlerID, catcherID, batsmanOut, isBoundary);
 				// Ship the free-hit verdict with the outcome. Both sides derive isLineFreeHitActive from
@@ -185,7 +185,7 @@ public partial class GameData
 				// 'lineball' and the other on 'overstep' and their bowlers then behaved differently.
 				if (groundController != null)
 					CricketNetworkManager.instance.CmdSyncFreeHitState(
-						staticVariables.UserProfiledata.user._id,
+						PlayerId.Me,
 						groundController.isLineFreeHitActive, groundController.lastBowledBallType);
 			}
 		}
@@ -523,7 +523,7 @@ public partial class GameData
 			&& CONTROLLER.myTeamIndex == CONTROLLER.BattingTeamIndex)
 		{
 			CricketNetworkManager.instance.CmdCorrectBallState(
-				staticVariables.UserProfiledata.user._id,
+				PlayerId.Me,
 				CONTROLLER.TeamList[CONTROLLER.BattingTeamIndex].currentMatchScores,
 				CONTROLLER.TeamList[CONTROLLER.BattingTeamIndex].currentMatchWickets,
 				Singleton<ScoreBoardBallList>.instance.ballCount,
@@ -538,7 +538,7 @@ public partial class GameData
 			var _sbl = Singleton<ScoreBoardBallList>.instance;
 			if (_sbl != null && _sbl.ballList != null && CricketNetworkManager.ReadyToSend)
 				CricketNetworkManager.instance.CmdSyncBallStrip(
-					staticVariables.UserProfiledata.user._id,
+					PlayerId.Me,
 					string.Join("|", _sbl.ballList),
 					(_sbl.extras != null) ? string.Join("|", _sbl.extras) : "");
 
@@ -1068,7 +1068,7 @@ public partial class GameData
 				&& CONTROLLER.myTeamIndex == CONTROLLER.BattingTeamIndex)
 			{
 				CricketNetworkManager.instance.CmdSyncStrikeAtOver(
-					staticVariables.UserProfiledata.user._id,
+					PlayerId.Me,
 					CONTROLLER.StrikerIndex,
 					CONTROLLER.NonStrikerIndex);
 			}

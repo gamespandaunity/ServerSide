@@ -756,13 +756,13 @@ public class GameOverDisplay : Singleton<GameOverDisplay>
             ConstantsData_M.Log("Jeet gaye hain janab");
             if (GameConstants.isWithAI == true)
             {
-                ApiAndRoomManager._instance.WinnerLossAIChallenge(staticVariables.UserProfiledata.user._id.ToString());
-                GetComponent<ResultManagerForCricket>().WinPlayer(true, staticVariables.UserProfiledata.user._id.ToString());
+                ApiAndRoomManager._instance.WinnerLossAIChallenge(PlayerId.Me);
+                GetComponent<ResultManagerForCricket>().WinPlayer(true, PlayerId.Me);
             }
             else
             {
-                ApiAndRoomManager._instance.WinnerLossChallenge(staticVariables.UserProfiledata.user._id.ToString());
-                GetComponent<ResultManagerForCricket>().WinPlayer(true, staticVariables.UserProfiledata.user._id.ToString());
+                ApiAndRoomManager._instance.WinnerLossChallenge(PlayerId.Me);
+                GetComponent<ResultManagerForCricket>().WinPlayer(true, PlayerId.Me);
 
             }
         }

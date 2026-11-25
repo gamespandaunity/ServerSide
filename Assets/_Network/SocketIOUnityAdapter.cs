@@ -124,7 +124,7 @@ public class SocketIOUnityAdapter : MonoBehaviour
                     JsonConvert.DeserializeObject<List<RoomList<RoomData>>>(response.ToString());
 
                 if (roomList[0].packet.type == "private" &&
-                    roomList[0].packet.second_player == staticVariables.UserProfiledata.user._id.ToString())
+                    PlayerId.IsMe(roomList[0].packet.second_player))
                 {
                     Debug.Log("PrivateRoomUser" + roomList[0].packet.second_player);
                     privateRooms.Add(roomList[0].packet);
@@ -156,7 +156,7 @@ public class SocketIOUnityAdapter : MonoBehaviour
                 RoomData room = publicRooms.FirstOrDefault(r => r.transaction_id == roomList[0].transaction_id)
                              ?? privateRooms.FirstOrDefault(r => r.transaction_id == roomList[0].transaction_id);
                 room.participants.Add(roomList[0].packet);
-                if (staticVariables.UserProfiledata.user._id == room.player_info_id)
+                if (PlayerId.IsMe(room.player_info_id))
                     ShowNotification(roomList[0].packet.notification_type, roomList[0].packet);
                 SaveMyChallenges(publicRooms);
                 RenderPublicRoomTables();
@@ -175,7 +175,7 @@ public class SocketIOUnityAdapter : MonoBehaviour
                 var packet = roomList[0];
 
                 // Only act if this event is for the current user (the challenge accepter)
-                if (packet.player_info_id != staticVariables.UserProfiledata.user._id) return;
+                if (!PlayerId.IsMe(packet.player_info_id)) return;
 
                 // Find room data to build opponent profile
                 tojoin = publicRooms.FirstOrDefault(r => r.transaction_id == packet.transaction_id)
@@ -217,7 +217,7 @@ public class SocketIOUnityAdapter : MonoBehaviour
                 var roomList = JsonConvert.DeserializeObject<List<RoomList<GamePacket>>>(response.ToString());
                 publicRooms
                     .FirstOrDefault(room => room.transaction_id == roomList[0].transaction_id)
-                    ?.participants.RemoveAll(p => p.player_info_id == roomList[0].player_info_id);
+                    ?.participants.RemoveAll(p => PlayerId.Same(p.player_info_id, roomList[0].player_info_id));
                 SaveMyChallenges(publicRooms);
                 RenderPublicRoomTables();
                 Debug.Log("childRemoved: " + response.GetValue().ToString());
@@ -269,7 +269,7 @@ public class SocketIOUnityAdapter : MonoBehaviour
     public void SaveMyChallenges(List<RoomData> list)
     {
         foreach (var room in list)
-            if (room.player_info_id == staticVariables.UserProfiledata.user._id)
+            if (PlayerId.IsMe(room.player_info_id))
                 myRooms.Add(room);
     }
 
@@ -300,12 +300,12 @@ public class SocketIOUnityAdapter : MonoBehaviour
             {
                 List<RoomData> allgold = currentroomList.Where(r =>
                     r.bet_type == "gold" && txt.game_id == r.game_id &&
-                    r.player_info_id.ToString() != staticVariables.UserProfiledata.user._id.ToString() &&
+                    !PlayerId.IsMe(r.player_info_id) &&
                     !RejectedChallengesTransactionId.Contains(r.transaction_id)).ToList();
 
                 List<RoomData> allsilver = currentroomList.Where(r =>
                     r.bet_type == "silver" && txt.game_id == r.game_id &&
-                    r.player_info_id.ToString() != staticVariables.UserProfiledata.user._id.ToString() &&
+                    !PlayerId.IsMe(r.player_info_id) &&
                     !RejectedChallengesTransactionId.Contains(r.transaction_id)).ToList();
 
                 txt.GameChallengestxt.GoldChallengestxt.text = ChallengeList_Count(allgold.Count());
@@ -330,7 +330,7 @@ public class SocketIOUnityAdapter : MonoBehaviour
             if (room.game_id != ApiAndRoomManager.currentGameId || isgold != staticVariables.isgoldcoins) continue;
             if (RejectedChallengesTransactionId.Contains(room.transaction_id)) continue;
 
-            if (staticVariables.UserProfiledata.user._id != room.player_info_id)
+            if (!PlayerId.IsMe(room.player_info_id))
             {
                 GameObject row = Instantiate(openChallengePrefab, contentForPublicRoom);
                 row.GetComponent<PlayerProfileUI>().Initialize(room);
@@ -417,7 +417,7 @@ public class SocketIOUnityAdapter : MonoBehaviour
         public int game_id;
         public string bet_type;
         public int bet_amount;
-        public int player_info_id;
+        public string player_info_id;
         public string transaction_id;
         public string bet_expires_sec;
         public string player_info_name;
@@ -437,7 +437,7 @@ public class SocketIOUnityAdapter : MonoBehaviour
         public int game_id;
         public string bet_type;
         public int bet_amount;
-        public int player_info_id;
+        public string player_info_id;
         public string transaction_id;
         public string bet_expires_sec;
         public string player_info_name;
@@ -452,7 +452,7 @@ public class SocketIOUnityAdapter : MonoBehaviour
     {
         public string room;
         public string transaction_id;
-        public int player_info_id;
+        public string player_info_id;
         public string server_address;
         public T packet;
     }

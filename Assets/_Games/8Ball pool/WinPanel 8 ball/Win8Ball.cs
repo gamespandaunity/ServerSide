@@ -13,10 +13,10 @@ public class PlayerDetails
 {
     public string playerName;
     public string PlayerUrl;
-    public int id;
+    public string id;   // public player id ("ai" for the AI)
     public bool isAI;
 
-    public PlayerDetails(int id, string name, string imgurl, bool isai = false)
+    public PlayerDetails(string id, string name, string imgurl, bool isai = false)
     {
         playerName = name;
         this.id = id;

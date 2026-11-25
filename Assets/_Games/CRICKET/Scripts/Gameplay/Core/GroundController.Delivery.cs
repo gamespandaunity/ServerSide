@@ -994,7 +994,7 @@ public partial class GroundController
                         if (_amBattingAuthority)
                         {
                             if (CricketNetworkManager.ReadyToSend && staticVariables.UserProfiledata?.user != null)
-                                CricketNetworkManager.instance.CmdRunOutVerdict(staticVariables.UserProfiledata.user._id, hasRunOutOccurred);
+                                CricketNetworkManager.instance.CmdRunOutVerdict(PlayerId.Me, hasRunOutOccurred);
                         }
                         else if (_relayedRunOutVerdict >= 0 && _relayedRunOutVerdict != (hasRunOutOccurred ? 1 : 0))
                         {
@@ -1704,7 +1704,7 @@ public partial class GroundController
                     //    view.RPC("RPC_ChangeBowlinSpot", RpcTarget.AllBuffered, new Vector3(-0.6f, 0.06f, 5.7f));  
                     //                      //Photon Removal
                     RPC_ChangeBowlinSpot(new Vector3(-0.6f, 0.06f, 5.7f));
-                    CricketNetworkManager.instance.CmdChangeBowlinSpot(staticVariables.UserProfiledata.user._id, new Vector3(-0.6f, 0.06f, 5.7f));
+                    CricketNetworkManager.instance.CmdChangeBowlinSpot(PlayerId.Me, new Vector3(-0.6f, 0.06f, 5.7f));
                 }
 
 
@@ -1716,7 +1716,7 @@ public partial class GroundController
                 {
                     //    view.RPC("RPC_ChangeBowlinSpot", RpcTarget.AllBuffered, new Vector3(0.6f, 0.06f, 5.7f));   
                     RPC_ChangeBowlinSpot(new Vector3(0.6f, 0.06f, 5.7f));
-                    CricketNetworkManager.instance.CmdChangeBowlinSpot(staticVariables.UserProfiledata.user._id, new Vector3(0.6f, 0.06f, 5.7f));                  //Photon Removal
+                    CricketNetworkManager.instance.CmdChangeBowlinSpot(PlayerId.Me, new Vector3(0.6f, 0.06f, 5.7f));                  //Photon Removal
                 }
 
 
@@ -2163,7 +2163,7 @@ public partial class GroundController
                 {
                     //    view.RPC("RPC_ChangeBowlinSpot", RpcTarget.AllBuffered, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));    //Photon Removal
                     RPC_ChangeBowlinSpot(new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
-                    CricketNetworkManager.instance.CmdChangeBowlinSpot(staticVariables.UserProfiledata.user._id, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
+                    CricketNetworkManager.instance.CmdChangeBowlinSpot(PlayerId.Me, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                 }
 
 
@@ -2193,7 +2193,7 @@ public partial class GroundController
                         {
                             //    view.RPC("RPC_ChangeBowlinSpot", RpcTarget.AllBuffered, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));             //Photon Removal
                             RPC_ChangeBowlinSpot(new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
-                            CricketNetworkManager.instance.CmdChangeBowlinSpot(staticVariables.UserProfiledata.user._id, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
+                            CricketNetworkManager.instance.CmdChangeBowlinSpot(PlayerId.Me, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
 
                         }
 
@@ -2235,7 +2235,7 @@ public partial class GroundController
                         {
                             //    view.RPC("RPC_ChangeBowlinSpot", RpcTarget.AllBuffered, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));                                                                   //Photon Removal
                             RPC_ChangeBowlinSpot(new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
-                            CricketNetworkManager.instance.CmdChangeBowlinSpot(staticVariables.UserProfiledata.user._id, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
+                            CricketNetworkManager.instance.CmdChangeBowlinSpot(PlayerId.Me, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                         }
 
 
@@ -2265,7 +2265,7 @@ public partial class GroundController
                         if (GameConstants.isWithAI == false)
                         {
                             RPC_ChangeBowlinSpot(new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));                                                                                                                                     //Photon Removal
-                            CricketNetworkManager.instance.CmdChangeBowlinSpot(staticVariables.UserProfiledata.user._id, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
+                            CricketNetworkManager.instance.CmdChangeBowlinSpot(PlayerId.Me, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                             //    view.RPC("RPC_ChangeBowlinSpot", RpcTarget.AllBuffered, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                         }
                     }
@@ -2306,7 +2306,7 @@ public partial class GroundController
                         {
                             // view.RPC("RPC_ChangeBowlinSpot", RpcTarget.AllBuffered, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));                            //Photon Removal
                             RPC_ChangeBowlinSpot(new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
-                            CricketNetworkManager.instance.CmdChangeBowlinSpot(staticVariables.UserProfiledata.user._id, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
+                            CricketNetworkManager.instance.CmdChangeBowlinSpot(PlayerId.Me, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                         }
                     }
 
@@ -2328,7 +2328,7 @@ public partial class GroundController
                     {
                         //view.RPC("RPC_ChangeBowlinSpot", RpcTarget.AllBuffered, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                         RPC_ChangeBowlinSpot(new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
-                        CricketNetworkManager.instance.CmdChangeBowlinSpot(staticVariables.UserProfiledata.user._id, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
+                        CricketNetworkManager.instance.CmdChangeBowlinSpot(PlayerId.Me, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                     }
                     // Photon Removal
                 }
@@ -2341,7 +2341,7 @@ public partial class GroundController
                         {
                             //    view.RPC("RPC_ChangeBowlinSpot", RpcTarget.AllBuffered, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                             RPC_ChangeBowlinSpot(new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
-                            CricketNetworkManager.instance.CmdChangeBowlinSpot(staticVariables.UserProfiledata.user._id, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
+                            CricketNetworkManager.instance.CmdChangeBowlinSpot(PlayerId.Me, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                         }
 
                     }
@@ -2356,7 +2356,7 @@ public partial class GroundController
                     {
                         //    view.RPC("RPC_ChangeBowlinSpot", RpcTarget.AllBuffered, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                         RPC_ChangeBowlinSpot(new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
-                        CricketNetworkManager.instance.CmdChangeBowlinSpot(staticVariables.UserProfiledata.user._id, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
+                        CricketNetworkManager.instance.CmdChangeBowlinSpot(PlayerId.Me, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                     }
 
                 }
@@ -2369,7 +2369,7 @@ public partial class GroundController
                         {                                                                                                                                                           //Photon Removal
                                                                                                                                                                                     // view.RPC("RPC_ChangeBowlinSpot", RpcTarget.AllBuffered, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                             RPC_ChangeBowlinSpot(new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
-                            CricketNetworkManager.instance.CmdChangeBowlinSpot(staticVariables.UserProfiledata.user._id, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
+                            CricketNetworkManager.instance.CmdChangeBowlinSpot(PlayerId.Me, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                         }
 
                     }
@@ -2384,7 +2384,7 @@ public partial class GroundController
                     {
                         //view.RPC("RPC_ChangeBowlinSpot", RpcTarget.AllBuffered, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));                                                                                  //Photon Removal
                         RPC_ChangeBowlinSpot(new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
-                        CricketNetworkManager.instance.CmdChangeBowlinSpot(staticVariables.UserProfiledata.user._id, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
+                        CricketNetworkManager.instance.CmdChangeBowlinSpot(PlayerId.Me, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                     }
                 }
                 if (bowlingSpot.position.z > userBowlingMinimumLimit.transform.position.z)
@@ -2396,7 +2396,7 @@ public partial class GroundController
                         {                                                                                                                                                                                                                                               //Photon Removal
                                                                                                                                                                                                                                                                         //    view.RPC("RPC_ChangeBowlinSpot", RpcTarget.AllBuffered, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                             RPC_ChangeBowlinSpot(new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
-                            CricketNetworkManager.instance.CmdChangeBowlinSpot(staticVariables.UserProfiledata.user._id, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
+                            CricketNetworkManager.instance.CmdChangeBowlinSpot(PlayerId.Me, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                         }
                     }
                 }
@@ -2410,7 +2410,7 @@ public partial class GroundController
                     {
                         //view.RPC("RPC_ChangeBowlinSpot", RpcTarget.AllBuffered, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));                                                                             //Photon Removal
                         RPC_ChangeBowlinSpot(new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
-                        CricketNetworkManager.instance.CmdChangeBowlinSpot(staticVariables.UserProfiledata.user._id, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
+                        CricketNetworkManager.instance.CmdChangeBowlinSpot(PlayerId.Me, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                     }
 
 
@@ -2424,7 +2424,7 @@ public partial class GroundController
                         {
                             //view.RPC("RPC_ChangeBowlinSpot", RpcTarget.AllBuffered, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));                                                                                //Photon Removal
                             RPC_ChangeBowlinSpot(new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
-                            CricketNetworkManager.instance.CmdChangeBowlinSpot(staticVariables.UserProfiledata.user._id, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
+                            CricketNetworkManager.instance.CmdChangeBowlinSpot(PlayerId.Me, new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
                         }
 
 
@@ -2797,7 +2797,7 @@ public partial class GroundController
                 && CricketNetworkManager.instance != null && !isReplayModeActive)
             {
                 CricketNetworkManager.instance.CmdSyncBallTrajectory(
-                    staticVariables.UserProfiledata.user._id,
+                    PlayerId.Me,
                     matchBallTransform.position,
                     temporaryPosition,
                     _ballAngle,
@@ -3857,7 +3857,7 @@ public partial class GroundController
             int _deliverySeed = UnityEngine.Random.Range(int.MinValue / 2, int.MaxValue / 2);
             DeterministicRng.Seed(_deliverySeed);
             CricketNetworkManager.instance.CmdSyncBallRelease(
-                staticVariables.UserProfiledata.user._id,
+                PlayerId.Me,
                 matchBallTransform.position,
                 temporaryPosition,
                 _ballAngle,
@@ -3997,7 +3997,7 @@ public partial class GroundController
         if (GameConstants.isWithAI == false)
         {
             //Photon Removal     view.RPC("RPC_BowlerWaiting", RpcTarget.OthersBuffered);
-            CricketNetworkManager.instance.CmdBowlerWaiting(staticVariables.UserProfiledata.user._id);
+            CricketNetworkManager.instance.CmdBowlerWaiting(PlayerId.Me);
         }
 
         //TEST
@@ -4637,7 +4637,7 @@ public partial class GroundController
             {
 
                 //    view.RPC("RPC_FreezeBowlingSpot", RpcTarget.OthersBuffered);                                                                                        //Photon Removal
-                CricketNetworkManager.instance.CmdFreezeBowlingSpot(staticVariables.UserProfiledata.user._id);
+                CricketNetworkManager.instance.CmdFreezeBowlingSpot(PlayerId.Me);
             }
 
         }
@@ -4851,7 +4851,7 @@ public partial class GroundController
             // 36b38d60: 34x CmdUpdateCanBowlerBowl NRE, "turn miss after reconnect from bowler side").
             // Same ghost-session guard as the other Cmds.
             if (CricketNetworkManager.ReadyToSend)
-                CricketNetworkManager.instance.CmdUpdateCanBowlerBowl(staticVariables.UserProfiledata.user._id, CanBowlerBowl);
+                CricketNetworkManager.instance.CmdUpdateCanBowlerBowl(PlayerId.Me, CanBowlerBowl);
             else if (!_canBowlerBowlBlockedLogged)
             {
                 _canBowlerBowlBlockedLogged = true;

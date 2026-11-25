@@ -113,7 +113,7 @@ public partial class GroundController
         _lockstepInputKnown = true;
         _lockstepBatterX = _batsmanTransform != null ? _batsmanTransform.position.x : 0f;
         CricketNetworkManager.instance.CmdShotInput(
-            staticVariables.UserProfiledata.user._id,
+            PlayerId.Me,
             Mirror.NetworkTime.time,
             currentShotPlayed,
             currentBatsmanAnimation,

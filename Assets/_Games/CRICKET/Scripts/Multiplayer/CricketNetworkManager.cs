@@ -844,7 +844,7 @@ public class CricketNetworkManager : NetworkBehaviour
     /// The batting player receives the INVERTED side (left↔right mirror of the bowler's perspective).
     /// </summary>
     [Command(requiresAuthority = false)]
-    public void CmdSyncBowlerSide(int senderId, string bowlerSide)
+    public void CmdSyncBowlerSide(string senderId, string bowlerSide)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdSyncBowlerSide] senderId={senderId} bowlerSide={bowlerSide}");
         syncedBowlerSide = bowlerSide;
@@ -852,9 +852,9 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcSyncBowlerSide(int senderId, string bowlerSide)
+    public void RpcSyncBowlerSide(string senderId, string bowlerSide)
     {
-        if (senderId == staticVariables.UserProfiledata.user._id) return; // sender already applied locally
+        if (PlayerId.IsMe(senderId)) return; // sender already applied locally
         // Both players share the same batting-end camera (Y rotation = 0), so world-space
         // "left" is left for everyone. Apply the same side — no inversion.
         ConstantsData_M.MpLog($"[CricketNetworkManager][RpcSyncBowlerSide] Applying bowlerSide={bowlerSide}");
@@ -1187,13 +1187,13 @@ public class CricketNetworkManager : NetworkBehaviour
                 ConstantsData_M.MpLog("[CricketNetworkManager][ApplyReconnectState] Case: BattingScoreCard.");
                 "Batting Score Card Open".Show();
                 GameData.instance?.OnReconnection(true); // authoritative local reconnect restore — must bypass debounce
-                CmdNotifyOtherPlayerIAmReconnected(staticVariables.UserProfiledata?.user?._id ?? 0);
+                CmdNotifyOtherPlayerIAmReconnected(PlayerId.Me);
                 break;
             case PanelsInfo.BowlingScoreCard:
                 ConstantsData_M.MpLog("[CricketNetworkManager][ApplyReconnectState] Case: BowlingScoreCard.");
                 "Bowling Score Card Open".Show();
                 GameData.instance?.OnReconnection(true); // authoritative local reconnect restore — must bypass debounce
-                CmdNotifyOtherPlayerIAmReconnected(staticVariables.UserProfiledata?.user?._id ?? 0);
+                CmdNotifyOtherPlayerIAmReconnected(PlayerId.Me);
                 break;
             case PanelsInfo.AfterOverSummary:
                 ConstantsData_M.MpLog("[CricketNetworkManager][ApplyReconnectState] Case: AfterOverSummary.");
@@ -1205,7 +1205,7 @@ public class CricketNetworkManager : NetworkBehaviour
                 // BowlingScoreCard and got this notify by accident; now AfterOverSummary is cased correctly so it
                 // must do the notify itself or the staying-peer bowler is left un-armed.
                 GameData.instance?.OnReconnection(true);
-                CmdNotifyOtherPlayerIAmReconnected(staticVariables.UserProfiledata?.user?._id ?? 0);
+                CmdNotifyOtherPlayerIAmReconnected(PlayerId.Me);
                 break;
             case PanelsInfo.None:
                 ConstantsData_M.MpLog("[CricketNetworkManager][ApplyReconnectState] Case: None.");
@@ -1227,7 +1227,7 @@ public class CricketNetworkManager : NetworkBehaviour
                 // both NOW, exactly like the scorecard/over cases; the local CancelInFlightDeliveryForReconnect
                 // above already proves the GroundController + scene are ready, so no settle delay is needed.
                 GameData.instance?.OnReconnection(true); // authoritative local reconnect restore — must bypass debounce
-                CmdNotifyOtherPlayerIAmReconnected(staticVariables.UserProfiledata?.user?._id ?? 0);
+                CmdNotifyOtherPlayerIAmReconnected(PlayerId.Me);
                 "No Panel Open".Show();
                 break;
             default:
@@ -1355,17 +1355,17 @@ public class CricketNetworkManager : NetworkBehaviour
 
     }
     [Command(requiresAuthority = false)]
-    public void CmdNotifyOtherPlayerIAmReconnected(int senderId)
+    public void CmdNotifyOtherPlayerIAmReconnected(string senderId)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdNotifyOtherPlayerIAmReconnected] CMD received. senderId = {senderId}.");
         MatchFlow.Log("Cricket", $"{FlowWho(senderId)} reconnected" + (syncedCurrentInnings >= 0 ? $" ({FlowScoreSummary()})" : ""));
         RpcNotifyOtherPlayerIAmReconnected(senderId);
     }
     [ClientRpc]
-    public void RpcNotifyOtherPlayerIAmReconnected(int senderId)
+    public void RpcNotifyOtherPlayerIAmReconnected(string senderId)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcNotifyOtherPlayerIAmReconnected] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcNotifyOtherPlayerIAmReconnected] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcNotifyOtherPlayerIAmReconnected] Sender is local player. Returning early.");
             return;
@@ -1502,7 +1502,7 @@ public class CricketNetworkManager : NetworkBehaviour
             return;
         }
         ConstantsData_M.MpLog($"[CricketNetworkManager][AnnounceVictory] Called with reason = '{reason}'. Sending CMD.");
-        CmdAnnounceVictory(staticVariables.UserProfiledata.user._id, reason);
+        CmdAnnounceVictory(PlayerId.Me, reason);
     }
 
     private IEnumerator AnnounceVictoryAfterRestore(string reason)
@@ -1522,21 +1522,21 @@ public class CricketNetworkManager : NetworkBehaviour
             yield break;
         }
         ConstantsData_M.MpLog($"[CricketNetworkManager][AnnounceVictory] Proceeding after {_waited:F1}s — opponent still absent (players={_players}).");
-        CmdAnnounceVictory(staticVariables.UserProfiledata.user._id, reason);
+        CmdAnnounceVictory(PlayerId.Me, reason);
     }
     [Command(requiresAuthority = false)]
-    public void CmdAnnounceVictory(int playerId, string reaosn)
+    public void CmdAnnounceVictory(string playerId, string reaosn)
     {
         ClaimedWinGuard.Accept(playerId, "Cricket", reaosn, () => ServerAnnounceVictory(playerId, reaosn));
     }
 
     [Server]
-    private void ServerAnnounceVictory(int playerId, string reaosn)
+    private void ServerAnnounceVictory(string playerId, string reaosn)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdAnnounceVictory] CMD received. playerId = {playerId}, reason = '{reaosn}'.");
         MatchFlow.Log("Cricket", $"{FlowWho(playerId)} declared winner — {(string.IsNullOrEmpty(reaosn) ? "opponent disconnected" : reaosn)}");
-        MatchFlow.SendResult(playerId.ToString(), "opponent disconnected", FlowScoreSummary());
-        if (!_resultReported) { _resultReported = true; ApiAndRoomManager._instance.WinnerLossChallenge(playerId.ToString()); }
+        MatchFlow.SendResult(playerId, "opponent disconnected", FlowScoreSummary());
+        if (!_resultReported) { _resultReported = true; ApiAndRoomManager._instance.WinnerLossChallenge(playerId); }
         RpcAnnounceVictory(playerId);
         NetworkGameManager.Instance.creatorData.Scores = 0;
         NetworkGameManager.Instance.joinerData.Scores = 0;
@@ -1555,7 +1555,7 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcAnnounceVictory(int playerId)
+    public void RpcAnnounceVictory(string playerId)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][RpcAnnounceVictory] RPC received. playerId = {playerId}.");
         HideWaitingPanelsForResult();
@@ -1564,7 +1564,7 @@ public class CricketNetworkManager : NetworkBehaviour
             ResultManager.GameSpawnedFinished = true;
             GameObject prefab = Resources.Load<GameObject>("WinLoseGameManager");
             if (prefab != null)
-                Instantiate(prefab, Vector3.zero, Quaternion.identity).GetComponent<ResultManager>().HandleGameResultAltMultiplayer(true, playerId.ToString());
+                Instantiate(prefab, Vector3.zero, Quaternion.identity).GetComponent<ResultManager>().HandleGameResultAltMultiplayer(true, playerId);
             else
                 Debug.LogError("WinLose GameManager prefab not found!");
         }
@@ -1579,7 +1579,7 @@ public class CricketNetworkManager : NetworkBehaviour
     //         ResultManager.GameSpawnedFinished = true;
     //         GameObject prefab = Resources.Load<GameObject>("WinLoseGameManager");
     //         if (prefab != null)
-    //             Instantiate(prefab, Vector3.zero, Quaternion.identity).GetComponent<ResultManager>().HandleGameResultAltMultiplayer(result, staticVariables.UserProfiledata.user._id.ToString());
+    //             Instantiate(prefab, Vector3.zero, Quaternion.identity).GetComponent<ResultManager>().HandleGameResultAltMultiplayer(result, PlayerId.Me);
     //         else
     //             Debug.LogError("WinLose GameManager prefab not found!");
     //     }
@@ -1588,7 +1588,7 @@ public class CricketNetworkManager : NetworkBehaviour
         {
             if (result)
             {
-                // Victory(staticVariables.UserProfiledata.user._id, "Opponent has disconnected. You are declared the winner.");
+                // Victory(PlayerId.Me, "Opponent has disconnected. You are declared the winner.");
                 if (ResultManager.GameSpawnedFinished == false)
                 {
                     ResultManager.GameSpawnedFinished = true;
@@ -1599,7 +1599,7 @@ public class CricketNetworkManager : NetworkBehaviour
                         "1".Show();
                         // Spawn at position (0,0,0)
                         var gameObject = Instantiate(enemyPrefab, Vector3.zero, Quaternion.identity);
-                        gameObject.GetComponent<ResultManager>().HandleGameResultAltMultiplayer(true, staticVariables.UserProfiledata.user._id.ToString());
+                        gameObject.GetComponent<ResultManager>().HandleGameResultAltMultiplayer(true, PlayerId.Me);
                     }
                     else
                     {
@@ -1619,7 +1619,7 @@ public class CricketNetworkManager : NetworkBehaviour
                         "1".Show();
                         // Spawn at position (0,0,0)
                         var gameObject = Instantiate(enemyPrefab, Vector3.zero, Quaternion.identity);
-                        gameObject.GetComponent<ResultManager>().HandleGameResultAltMultiplayer(false, staticVariables.UserProfiledata.user._id.ToString());
+                        gameObject.GetComponent<ResultManager>().HandleGameResultAltMultiplayer(false, PlayerId.Me);
                     }
                     else
                     {
@@ -1895,7 +1895,7 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdSetOver(int senderId, int selectedTeamIndex)
+    public void CmdSetOver(string senderId, int selectedTeamIndex)
     {
         if (CONTROLLER.Overs != null && selectedTeamIndex >= 0 && selectedTeamIndex < CONTROLLER.Overs.Length && CONTROLLER.Overs[selectedTeamIndex] > 0)
             _matchBallLimit = CONTROLLER.Overs[selectedTeamIndex] * 6;
@@ -1907,10 +1907,10 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcSetOver(int senderId, int selectedTeamIndex)
+    public void RpcSetOver(string senderId, int selectedTeamIndex)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcSetOver] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcSetOver] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcSetOver] Sender is local player. Returning early.");
             return;
@@ -1934,17 +1934,17 @@ public class CricketNetworkManager : NetworkBehaviour
 
 
     [Command(requiresAuthority = false)]
-    public void CmdChangeMyTeamIndex(int senderId, int selectedTeamIndex)
+    public void CmdChangeMyTeamIndex(string senderId, int selectedTeamIndex)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdChangeMyTeamIndex] CMD received. senderId = {senderId}, selectedTeamIndex = {selectedTeamIndex}.");
         RpcChangeMyTeamIndex(senderId, selectedTeamIndex);
     }
 
     [ClientRpc]
-    public void RpcChangeMyTeamIndex(int senderId, int selectedTeamIndex)
+    public void RpcChangeMyTeamIndex(string senderId, int selectedTeamIndex)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcChangeMyTeamIndex] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcChangeMyTeamIndex] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcChangeMyTeamIndex] Sender is local player. Returning early.");
             return;
@@ -1982,7 +1982,7 @@ public class CricketNetworkManager : NetworkBehaviour
 
 
     [Command(requiresAuthority = false)]
-    public void CmdTossDecision(int senderId, bool ChoseBatting)
+    public void CmdTossDecision(string senderId, bool ChoseBatting)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdTossDecision] CMD received. senderId = {senderId}, ChoseBatting = {ChoseBatting}.");
         MatchFlow.Log("Cricket", $"toss: {FlowWho(senderId)} calls {(ChoseBatting ? "heads" : "tails")}");
@@ -1991,10 +1991,10 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcTossDecision(int senderId, bool ChoseBatting)
+    public void RpcTossDecision(string senderId, bool ChoseBatting)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcTossDecision] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcTossDecision] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcTossDecision] Sender is local player. Returning early.");
             return;
@@ -2003,7 +2003,7 @@ public class CricketNetworkManager : NetworkBehaviour
         TossPageTWO.instance.RPC_TossDecision(ChoseBatting);
     }
     [Command(requiresAuthority = false)]
-    public void CmdChoseTo(int senderId, bool ChoseBatting)
+    public void CmdChoseTo(string senderId, bool ChoseBatting)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdChoseTo] CMD received. senderId = {senderId}, ChoseBatting = {ChoseBatting}.");
         MatchFlow.Log("Cricket", $"toss: {FlowWho(senderId)} won, chose to {(ChoseBatting ? "bat" : "bowl")}");
@@ -2012,10 +2012,10 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcChoseTo(int senderId, bool ChoseBatting)
+    public void RpcChoseTo(string senderId, bool ChoseBatting)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcChoseTo] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcChoseTo] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcChoseTo] Sender is local player. Returning early.");
             return;
@@ -2040,7 +2040,7 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdCoinStatus(int senderId, string IsHeads)
+    public void CmdCoinStatus(string senderId, string IsHeads)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdCoinStatus] CMD received. senderId = {senderId}, IsHeads = {IsHeads}.");
         MatchFlow.Log("Cricket", $"toss: coin flipped by {FlowWho(senderId)} lands {(IsHeads == "heads" ? "heads" : "tails")}");
@@ -2048,10 +2048,10 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcCoinStatus(int senderId, string IsHeads)
+    public void RpcCoinStatus(string senderId, string IsHeads)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcCoinStatus] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcCoinStatus] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcCoinStatus] Sender is local player. Returning early.");
             return;
@@ -2069,17 +2069,17 @@ public class CricketNetworkManager : NetworkBehaviour
 
 
     [Command(requiresAuthority = false)]
-    public void CmdBattingScoreCardContinue(int senderId)
+    public void CmdBattingScoreCardContinue(string senderId)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdBattingScoreCardContinue] CMD received. senderId = {senderId}.");
         RpcBattingScoreCardContinue(senderId);
     }
 
     [ClientRpc]
-    public void RpcBattingScoreCardContinue(int senderId)
+    public void RpcBattingScoreCardContinue(string senderId)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcBattingScoreCardContinue] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcBattingScoreCardContinue] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcBattingScoreCardContinue] Sender is local player. Returning early.");
             return;
@@ -2090,7 +2090,7 @@ public class CricketNetworkManager : NetworkBehaviour
 
 
     [Command(requiresAuthority = false)]
-    public void CmdUpdateCanLoadGround(int senderId, bool canLoadGround)
+    public void CmdUpdateCanLoadGround(string senderId, bool canLoadGround)
     {
         if (canLoadGround == _lastCanLoadGroundSent) return;
         _lastCanLoadGroundSent = canLoadGround;
@@ -2098,24 +2098,24 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcUpdateCanLoadGround(int senderId, bool canLoadGround)
+    public void RpcUpdateCanLoadGround(string senderId, bool canLoadGround)
     {
-        if (senderId == staticVariables.UserProfiledata.user._id) return;
+        if (PlayerId.IsMe(senderId)) return;
         GroundController.instance.RPC_UpdateCanLoadGround(canLoadGround);
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdBowlingScoreCardContinue(int senderId)
+    public void CmdBowlingScoreCardContinue(string senderId)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdBowlingScoreCardContinue] CMD received. senderId = {senderId}.");
         RpcBowlingScoreCardContinue(senderId);
     }
 
     [ClientRpc]
-    public void RpcBowlingScoreCardContinue(int senderId)
+    public void RpcBowlingScoreCardContinue(string senderId)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcBowlingScoreCardContinue] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcBowlingScoreCardContinue] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcBowlingScoreCardContinue] Sender is local player. Returning early.");
             return;
@@ -2141,7 +2141,7 @@ public class CricketNetworkManager : NetworkBehaviour
     // signature: Mirror dispatches by NAME HASH, so adding a pair is safe while changing an existing
     // signature would silently break the old one across a mixed deploy.
     [Command(requiresAuthority = false)]
-    public void CmdSyncBowlerAbsolute(int senderId, int absoluteBowlerIndex)
+    public void CmdSyncBowlerAbsolute(string senderId, int absoluteBowlerIndex)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdSyncBowlerAbsolute] CMD received. senderId={senderId} absolute={absoluteBowlerIndex}.");
         // Persist it as well as relaying it: the Rpc below is one-shot, so a client that reconnects after
@@ -2153,7 +2153,7 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcSyncBowlerAbsolute(int senderId, int absoluteBowlerIndex)
+    public void RpcSyncBowlerAbsolute(string senderId, int absoluteBowlerIndex)
     {
         if (absoluteBowlerIndex < 0) return;
         if (CONTROLLER.CurrentBowlerIndex == absoluteBowlerIndex) return;   // already agreed
@@ -2171,17 +2171,17 @@ public class CricketNetworkManager : NetworkBehaviour
     // could never be read as one event. Deliberately a separate Cmd/Rpc pair: Mirror dispatches by name
     // hash, so adding a pair is safe where changing an existing signature would break the old one.
     [Command(requiresAuthority = false)]
-    public void CmdRequestPeerStall(int senderId, int stallEpisodeId)
+    public void CmdRequestPeerStall(string senderId, int stallEpisodeId)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdRequestPeerStall] CMD received. senderId={senderId} id={stallEpisodeId}.");
         RpcRequestPeerStall(senderId, stallEpisodeId);
     }
 
     [ClientRpc]
-    public void RpcRequestPeerStall(int senderId, int stallEpisodeId)
+    public void RpcRequestPeerStall(string senderId, int stallEpisodeId)
     {
         // The asker already printed its own [StuckTrace] for this id.
-        if (senderId == staticVariables.UserProfiledata.user._id) return;
+        if (PlayerId.IsMe(senderId)) return;
         var _gc = Singleton<GroundController>.instance;
         if (_gc != null) _gc.LogPeerStallState(stallEpisodeId);
     }
@@ -2191,16 +2191,16 @@ public class CricketNetworkManager : NetworkBehaviour
     // rather than extra fields on CmdBallOutcome: Mirror dispatches by name hash, so adding a pair is safe
     // where changing an existing signature would silently break the old one across a mixed deploy.
     [Command(requiresAuthority = false)]
-    public void CmdSyncFreeHitState(int senderId, bool lineFreeHitActive, string lastBallType)
+    public void CmdSyncFreeHitState(string senderId, bool lineFreeHitActive, string lastBallType)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdSyncFreeHitState] CMD received. senderId={senderId} lineFreeHit={lineFreeHitActive} lastBallType='{lastBallType}'.");
         RpcSyncFreeHitState(senderId, lineFreeHitActive, lastBallType);
     }
 
     [ClientRpc]
-    public void RpcSyncFreeHitState(int senderId, bool lineFreeHitActive, string lastBallType)
+    public void RpcSyncFreeHitState(string senderId, bool lineFreeHitActive, string lastBallType)
     {
-        if (senderId == staticVariables.UserProfiledata.user._id) return;   // the authority already has it
+        if (PlayerId.IsMe(senderId)) return;   // the authority already has it
         var _gc = Singleton<GroundController>.instance;
         if (_gc != null) _gc.ApplyAuthoritativeFreeHitState(lineFreeHitActive, lastBallType);
     }
@@ -2233,17 +2233,17 @@ public class CricketNetworkManager : NetworkBehaviour
             BowlingScoreCard.instance.RPC_SetBowler(newVal);
     }
     [Command(requiresAuthority = false)]
-    public void CmdToggleCanLoadBowlerScoreCard(int senderId, bool canLoad)
+    public void CmdToggleCanLoadBowlerScoreCard(string senderId, bool canLoad)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdToggleCanLoadBowlerScoreCard] CMD received. senderId = {senderId}, canLoad = {canLoad}.");
         RpcToggleCanLoadBowlerScoreCard(senderId, canLoad);
     }
 
     [ClientRpc]
-    public void RpcToggleCanLoadBowlerScoreCard(int senderId, bool canLoad)
+    public void RpcToggleCanLoadBowlerScoreCard(string senderId, bool canLoad)
     {
-        //   ConstantsData_M.MpLog($"[CricketNetworkManager][RpcToggleCanLoadBowlerScoreCard] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");//
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        //   ConstantsData_M.MpLog($"[CricketNetworkManager][RpcToggleCanLoadBowlerScoreCard] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");//
+        if (PlayerId.IsMe(senderId))
         {
             // ConstantsData_M.MpLog("[CricketNetworkManager][RpcToggleCanLoadBowlerScoreCard] Sender is local player. Returning early.");
             return;
@@ -2278,17 +2278,17 @@ public class CricketNetworkManager : NetworkBehaviour
         GroundController.instance.RPC_ActivateBowlerSideChangeViaUI(bowlerSide);
     }
     [Command(requiresAuthority = false)]
-    public void CmdAckForBowling(int senderId)
+    public void CmdAckForBowling(string senderId)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdAckForBowling] CMD received. senderId = {senderId}.");
         RpcAckForBowling(senderId);
     }
 
     [ClientRpc]
-    public void RpcAckForBowling(int senderId)
+    public void RpcAckForBowling(string senderId)
     {
-        //   ConstantsData_M.MpLog($"[CricketNetworkManager][RpcAckForBowling] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");//
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        //   ConstantsData_M.MpLog($"[CricketNetworkManager][RpcAckForBowling] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");//
+        if (PlayerId.IsMe(senderId))
         {
             //  ConstantsData_M.MpLog("[CricketNetworkManager][RpcAckForBowling] Sender is local player. Returning early.");
             return;
@@ -2297,17 +2297,17 @@ public class CricketNetworkManager : NetworkBehaviour
         GroundController.instance.AckForBowling();
     }
     [Command(requiresAuthority = false)]
-    public void CmdBowlerWaiting(int senderId)
+    public void CmdBowlerWaiting(string senderId)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdBowlerWaiting] CMD received. senderId = {senderId}.");
         RpcBowlerWaiting(senderId);
     }
 
     [ClientRpc]
-    public void RpcBowlerWaiting(int senderId)
+    public void RpcBowlerWaiting(string senderId)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcBowlerWaiting] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcBowlerWaiting] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcBowlerWaiting] Sender is local player. Returning early.");
             return;
@@ -2323,31 +2323,31 @@ public class CricketNetworkManager : NetworkBehaviour
     /// aligned with the authoritative ball release/spawn (both RPCs travel the same one-way latency).
     /// </summary>
     [Command(requiresAuthority = false)]
-    public void CmdSyncBowlerRunUp(int senderId, int animNumber, double startAtNetTime)
+    public void CmdSyncBowlerRunUp(string senderId, int animNumber, double startAtNetTime)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdSyncBowlerRunUp] CMD received. senderId={senderId} animNumber={animNumber}");
         RpcSyncBowlerRunUp(senderId, animNumber, startAtNetTime);
     }
 
     [ClientRpc]
-    public void RpcSyncBowlerRunUp(int senderId, int animNumber, double startAtNetTime)
+    public void RpcSyncBowlerRunUp(string senderId, int animNumber, double startAtNetTime)
     {
-        if (senderId == staticVariables.UserProfiledata.user._id) return;
+        if (PlayerId.IsMe(senderId)) return;
         GroundController.instance?.RPC_StartBowlerRunUp(animNumber, startAtNetTime);
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdChangeBallAngle(int senderId, float ballAngle, float horizontalSpeed, float ballProjectileAngle, float ballProjectileHeight, float ballTimingFirstBounceDistance, float ballProjectileAnglePerSecond, float ballBatMeetingHeight, float horizontalSpeedMultiplier, string ballstatus, bool edgeCatch, Vector3 contactPos)
+    public void CmdChangeBallAngle(string senderId, float ballAngle, float horizontalSpeed, float ballProjectileAngle, float ballProjectileHeight, float ballTimingFirstBounceDistance, float ballProjectileAnglePerSecond, float ballBatMeetingHeight, float horizontalSpeedMultiplier, string ballstatus, bool edgeCatch, Vector3 contactPos)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdChangeBallAngle] CMD received. senderId = {senderId}, ballAngle = {ballAngle}, ballstatus = {ballstatus}, edgeCatch = {edgeCatch}, contactPos = {contactPos}.");
         RpcChangeBallAngle(senderId, ballAngle, horizontalSpeed, ballProjectileAngle, ballProjectileHeight, ballTimingFirstBounceDistance, ballProjectileAnglePerSecond, ballBatMeetingHeight, horizontalSpeedMultiplier, ballstatus, edgeCatch, contactPos);
     }
 
     [ClientRpc]
-    public void RpcChangeBallAngle(int senderId, float ballAngle, float horizontalSpeed, float ballProjectileAngle, float ballProjectileHeight, float ballTimingFirstBounceDistance, float ballProjectileAnglePerSecond, float ballBatMeetingHeight, float horizontalSpeedMultiplier, string ballstatus, bool edgeCatch, Vector3 contactPos)
+    public void RpcChangeBallAngle(string senderId, float ballAngle, float horizontalSpeed, float ballProjectileAngle, float ballProjectileHeight, float ballTimingFirstBounceDistance, float ballProjectileAnglePerSecond, float ballBatMeetingHeight, float horizontalSpeedMultiplier, string ballstatus, bool edgeCatch, Vector3 contactPos)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcChangeBallAngle] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcChangeBallAngle] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcChangeBallAngle] Sender is local player. Returning early.");
             return;
@@ -2365,17 +2365,17 @@ public class CricketNetworkManager : NetworkBehaviour
     /// them and recomputes its own DRS availability (which is client-perspective).
     /// </summary>
     [Command(requiresAuthority = false)]
-    public void CmdSetUltraEdgeDecision(int senderId, string decision, bool isEdged)
+    public void CmdSetUltraEdgeDecision(string senderId, string decision, bool isEdged)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdSetUltraEdgeDecision] CMD received. senderId = {senderId}, decision = {decision}, isEdged = {isEdged}.");
         RpcSetUltraEdgeDecision(senderId, decision, isEdged);
     }
 
     [ClientRpc]
-    public void RpcSetUltraEdgeDecision(int senderId, string decision, bool isEdged)
+    public void RpcSetUltraEdgeDecision(string senderId, string decision, bool isEdged)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcSetUltraEdgeDecision] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcSetUltraEdgeDecision] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcSetUltraEdgeDecision] Sender is local player. Returning early.");
             return;
@@ -2385,17 +2385,17 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdMultiplayerReview(int senderId, bool tookReview)
+    public void CmdMultiplayerReview(string senderId, bool tookReview)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdMultiplayerReview] CMD received. senderId = {senderId}, tookReview = {tookReview}.");
         RpcMultiplayerReview(senderId, tookReview);
     }
 
     [ClientRpc]
-    public void RpcMultiplayerReview(int senderId, bool tookReview)
+    public void RpcMultiplayerReview(string senderId, bool tookReview)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcMultiplayerReview] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcMultiplayerReview] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcMultiplayerReview] Sender is local player. Returning early.");
             return;
@@ -2410,7 +2410,7 @@ public class CricketNetworkManager : NetworkBehaviour
     /// Both clients then simulate identically from the same state and see the same delivery.
     /// </summary>
     [Command(requiresAuthority = false)]
-    public void CmdSyncBallTrajectory(int senderId, Vector3 ballPos, Vector3 tempPos,
+    public void CmdSyncBallTrajectory(string senderId, Vector3 ballPos, Vector3 tempPos,
         float ballAngle, float curLaunchAngle, float curArcHeight,
         float curAngleChangeRate, float curHorizontalVelocity, int curBounceCount)
     {
@@ -2420,11 +2420,11 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcSyncBallTrajectory(int senderId, Vector3 ballPos, Vector3 tempPos,
+    public void RpcSyncBallTrajectory(string senderId, Vector3 ballPos, Vector3 tempPos,
         float ballAngle, float curLaunchAngle, float curArcHeight,
         float curAngleChangeRate, float curHorizontalVelocity, int curBounceCount)
     {
-        if (senderId == staticVariables.UserProfiledata.user._id) return; // sender already has correct state
+        if (PlayerId.IsMe(senderId)) return; // sender already has correct state
         ConstantsData_M.MpLog($"[CricketNetworkManager][RpcSyncBallTrajectory] Applying trajectory correction. pos={ballPos} angle={ballAngle} bounce={curBounceCount}");
         GroundController.instance?.RPC_SyncBallTrajectory(ballPos, tempPos, ballAngle,
             curLaunchAngle, curArcHeight, curAngleChangeRate, curHorizontalVelocity, curBounceCount);
@@ -2438,15 +2438,15 @@ public class CricketNetworkManager : NetworkBehaviour
     /// trajectory divergence (bat/pad hit-miss, bounce drift, frame-rate mismatch, etc.).
     /// </summary>
     [Command(requiresAuthority = false)]
-    public void CmdSyncBallPosition(int senderId, Vector3 ballPos, Vector3 tempPos, float curLaunchAngle)
+    public void CmdSyncBallPosition(string senderId, Vector3 ballPos, Vector3 tempPos, float curLaunchAngle)
     {
         RpcSyncBallPosition(senderId, ballPos, tempPos, curLaunchAngle);
     }
 
     [ClientRpc]
-    public void RpcSyncBallPosition(int senderId, Vector3 ballPos, Vector3 tempPos, float curLaunchAngle)
+    public void RpcSyncBallPosition(string senderId, Vector3 ballPos, Vector3 tempPos, float curLaunchAngle)
     {
-        if (senderId == staticVariables.UserProfiledata.user._id) return; // bowling player already has correct state
+        if (PlayerId.IsMe(senderId)) return; // bowling player already has correct state
         GroundController.instance?.RPC_SyncBallPosition(ballPos, tempPos, curLaunchAngle);
     }
 
@@ -2460,7 +2460,7 @@ public class CricketNetworkManager : NetworkBehaviour
     // which it armed the deterministic flight + the random friction it chose, so the bowling follower
     // integrates the SAME fixed-step path from the SAME start instant + friction → bit-matching flight.
     [Command(requiresAuthority = false)]
-    public void CmdSyncBallShot(int senderId, Vector3 ballPos, Vector3 tempPos, float ballAngle,
+    public void CmdSyncBallShot(string senderId, Vector3 ballPos, Vector3 tempPos, float ballAngle,
         float curLaunchAngle, float curArcHeight, float curAngleChangeRate,
         float curHorizontalVelocity, int curBounceCount, int curBoundaryType,
         double startNetTime, float dampFactor)
@@ -2471,12 +2471,12 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcSyncBallShot(int senderId, Vector3 ballPos, Vector3 tempPos, float ballAngle,
+    public void RpcSyncBallShot(string senderId, Vector3 ballPos, Vector3 tempPos, float ballAngle,
         float curLaunchAngle, float curArcHeight, float curAngleChangeRate,
         float curHorizontalVelocity, int curBounceCount, int curBoundaryType,
         double startNetTime, float dampFactor)
     {
-        if (senderId == staticVariables.UserProfiledata.user._id) return; // batting player already has correct state
+        if (PlayerId.IsMe(senderId)) return; // batting player already has correct state
         GroundController.instance?.RPC_SyncBallShot(ballPos, tempPos, ballAngle, curLaunchAngle,
             curArcHeight, curAngleChangeRate, curHorizontalVelocity, curBounceCount, curBoundaryType,
             startNetTime, dampFactor);
@@ -2493,7 +2493,7 @@ public class CricketNetworkManager : NetworkBehaviour
     /// RPC channel it arrives last and wins. Also persisted to SyncVars for reconnect.
     /// </summary>
     [Command(requiresAuthority = false)]
-    public void CmdSyncStrikeAtOver(int senderId, int strikerIndex, int nonStrikerIndex)
+    public void CmdSyncStrikeAtOver(string senderId, int strikerIndex, int nonStrikerIndex)
     {
         syncedStrikerIndex    = strikerIndex;
         syncedNonStrikerIndex = nonStrikerIndex;
@@ -2501,9 +2501,9 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcSyncStrikeAtOver(int senderId, int strikerIndex, int nonStrikerIndex)
+    public void RpcSyncStrikeAtOver(string senderId, int strikerIndex, int nonStrikerIndex)
     {
-        if (senderId == staticVariables.UserProfiledata.user._id) return; // batting player already swapped locally
+        if (PlayerId.IsMe(senderId)) return; // batting player already swapped locally
         CONTROLLER.StrikerIndex    = strikerIndex;
         CONTROLLER.NonStrikerIndex = nonStrikerIndex;
     }
@@ -2517,7 +2517,7 @@ public class CricketNetworkManager : NetworkBehaviour
     // startNetTime (deterministic delivery, Phase 2): the bowling authority's NetworkTime at release, so the
     // batting follower bases its fixed-step local delivery sim on the SAME release instant → identical flight.
     [Command(requiresAuthority = false)]
-    public void CmdSyncBallRelease(int senderId, Vector3 ballPos, Vector3 tempPos,
+    public void CmdSyncBallRelease(string senderId, Vector3 ballPos, Vector3 tempPos,
         float ballAngle, float curLaunchAngle, float curArcHeight,
         float curAngleChangeRate, float curHorizontalVelocity,
         float curSpinFactor, float curSwingIntensity, bool curIsFullToss, double startNetTime,
@@ -2531,13 +2531,13 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcSyncBallRelease(int senderId, Vector3 ballPos, Vector3 tempPos,
+    public void RpcSyncBallRelease(string senderId, Vector3 ballPos, Vector3 tempPos,
         float ballAngle, float curLaunchAngle, float curArcHeight,
         float curAngleChangeRate, float curHorizontalVelocity,
         float curSpinFactor, float curSwingIntensity, bool curIsFullToss, double startNetTime,
         int deliverySeed, float spotLength, bool overstepped, int fieldIdx, bool fieldRestriction, int bowlerIdx)
     {
-        if (senderId == staticVariables.UserProfiledata.user._id) return; // bowling player already has correct state
+        if (PlayerId.IsMe(senderId)) return; // bowling player already has correct state
         ConstantsData_M.MpLog($"[CricketNetworkManager][RpcSyncBallRelease] Applying release sync. pos={ballPos} angle={ballAngle} seed={deliverySeed}");
         // Deterministic lockstep: seed the shared per-delivery RNG stream BEFORE any gameplay roll of
         // this ball can run on this client (see Docs/DETERMINISTIC_LOCKSTEP.md).
@@ -2548,7 +2548,7 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdChangeBowlinSpot(int senderId, Vector3 bowlingSpot)
+    public void CmdChangeBowlinSpot(string senderId, Vector3 bowlingSpot)
     {
         if (bowlingSpot == _lastBowlingSpotSent) return;
         _lastBowlingSpotSent = bowlingSpot;
@@ -2556,9 +2556,9 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcChangeBowlinSpot(int senderId, Vector3 bowlingSpot)
+    public void RpcChangeBowlinSpot(string senderId, Vector3 bowlingSpot)
     {
-        if (senderId == staticVariables.UserProfiledata.user._id) return;
+        if (PlayerId.IsMe(senderId)) return;
         GroundController.instance.RPC_ChangeBowlinSpot(bowlingSpot);
     }
     [Command(requiresAuthority = false)]
@@ -2630,17 +2630,17 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdSetMultiplayerCollider(int senderId, string other, float savedBallRayCastConnectedZposition)
+    public void CmdSetMultiplayerCollider(string senderId, string other, float savedBallRayCastConnectedZposition)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdSetMultiplayerCollider] CMD received. senderId = {senderId}, other = {other}, savedBallRayCastConnectedZposition = {savedBallRayCastConnectedZposition}.");
         RpcSetMultiplayerCollider(senderId, other, savedBallRayCastConnectedZposition);
     }
 
     [ClientRpc]
-    public void RpcSetMultiplayerCollider(int senderId, string other, float savedBallRayCastConnectedZposition)
+    public void RpcSetMultiplayerCollider(string senderId, string other, float savedBallRayCastConnectedZposition)
     {
-        //   ConstantsData_M.MpLog($"[CricketNetworkManager][RpcSetMultiplayerCollider] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");//
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        //   ConstantsData_M.MpLog($"[CricketNetworkManager][RpcSetMultiplayerCollider] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");//
+        if (PlayerId.IsMe(senderId))
         {
             //  ConstantsData_M.MpLog("[CricketNetworkManager][RpcSetMultiplayerCollider] Sender is local player. Returning early.");
             return;
@@ -2650,17 +2650,17 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdChangeOppTutorial(int senderId, bool on)
+    public void CmdChangeOppTutorial(string senderId, bool on)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdChangeOppTutorial] CMD received. senderId = {senderId}, on = {on}.");
         RpcChangeOppTutorial(senderId, on);
     }
 
     [ClientRpc]
-    public void RpcChangeOppTutorial(int senderId, bool on)
+    public void RpcChangeOppTutorial(string senderId, bool on)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcChangeOppTutorial] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcChangeOppTutorial] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcChangeOppTutorial] Sender is local player. Returning early.");
             return;
@@ -2669,17 +2669,17 @@ public class CricketNetworkManager : NetworkBehaviour
         GroundController.instance.RPC_ChangeOppTutorial(on);
     }
     [Command(requiresAuthority = false)]
-    public void CmdWideBall(int senderId)
+    public void CmdWideBall(string senderId)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdWideBall] CMD received. senderId = {senderId}.");
         RpcWideBall(senderId);
     }
 
     [ClientRpc]
-    public void RpcWideBall(int senderId)
+    public void RpcWideBall(string senderId)
     {
-        //  ConstantsData_M.MpLog($"[CricketNetworkManager][RpcWideBall] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        //  ConstantsData_M.MpLog($"[CricketNetworkManager][RpcWideBall] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             // ConstantsData_M.MpLog("[CricketNetworkManager][RpcWideBall] Sender is local player. Returning early.");
             return;
@@ -2689,7 +2689,7 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdChangeBatsmanPosition(int senderId, Vector3 position)
+    public void CmdChangeBatsmanPosition(string senderId, Vector3 position)
     {
         if (position == _lastBatsmanPosSent) return;
         _lastBatsmanPosSent = position;
@@ -2697,24 +2697,24 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcChangeBatsmanPosition(int senderId, Vector3 position)
+    public void RpcChangeBatsmanPosition(string senderId, Vector3 position)
     {
-        if (senderId == staticVariables.UserProfiledata.user._id) return;
+        if (PlayerId.IsMe(senderId)) return;
         GroundController.instance.ChangeBatsmanPosition(position);
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdShotPlayed(int senderId, string shotPlayed, string batsmanAnim, float batReachingTimeForOptimalShotLength, float optimalShotActivationTime, bool powerShot)
+    public void CmdShotPlayed(string senderId, string shotPlayed, string batsmanAnim, float batReachingTimeForOptimalShotLength, float optimalShotActivationTime, bool powerShot)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdShotPlayed] CMD received. senderId = {senderId}, shotPlayed = {shotPlayed}, powerShot = {powerShot}.");
         RpcShotPlayed(senderId, shotPlayed, batsmanAnim, batReachingTimeForOptimalShotLength, optimalShotActivationTime, powerShot);
     }
 
     [ClientRpc]
-    public void RpcShotPlayed(int senderId, string shotPlayed, string batsmanAnim, float batReachingTimeForOptimalShotLength, float optimalShotActivationTime, bool powerShot)
+    public void RpcShotPlayed(string senderId, string shotPlayed, string batsmanAnim, float batReachingTimeForOptimalShotLength, float optimalShotActivationTime, bool powerShot)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcShotPlayed] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcShotPlayed] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcShotPlayed] Sender is local player. Returning early.");
             return;
@@ -2724,17 +2724,17 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdTouchCancelRun(int senderId, float timeDifference)
+    public void CmdTouchCancelRun(string senderId, float timeDifference)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdTouchCancelRun] CMD received. senderId = {senderId}, timeDifference = {timeDifference}.");
         RpcTouchCancelRun(senderId, timeDifference);
     }
 
     [ClientRpc]
-    public void RpcTouchCancelRun(int senderId, float timeDifference)
+    public void RpcTouchCancelRun(string senderId, float timeDifference)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcTouchCancelRun] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcTouchCancelRun] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcTouchCancelRun] Sender is local player. Returning early.");
             return;
@@ -2757,17 +2757,17 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdLBWDecision(int senderId, bool lbwAppeal, bool ballInLine, bool lbw)
+    public void CmdLBWDecision(string senderId, bool lbwAppeal, bool ballInLine, bool lbw)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdLBWDecision] CMD received. senderId = {senderId}, lbwAppeal = {lbwAppeal}, ballInLine = {ballInLine}, lbw = {lbw}.");
         RpcLBWDecision(senderId, lbwAppeal, ballInLine, lbw);
     }
 
     [ClientRpc]
-    public void RpcLBWDecision(int senderId, bool lbwAppeal, bool ballInLine, bool lbw)
+    public void RpcLBWDecision(string senderId, bool lbwAppeal, bool ballInLine, bool lbw)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcLBWDecision] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcLBWDecision] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcLBWDecision] Sender is local player. Returning early.");
             return;
@@ -2777,7 +2777,7 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdShotInput(int senderId, double swingNetTime, string shotPlayed, string batsmanAnimName,
+    public void CmdShotInput(string senderId, double swingNetTime, string shotPlayed, string batsmanAnimName,
         bool isPower, float angleValue, float batterX, bool squareLegGlance, float animSpeed, bool batsmanConfident,
         bool perfect, bool mistimed, float hSpeedAdj, float fbMult)
     {
@@ -2786,11 +2786,11 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcShotInput(int senderId, double swingNetTime, string shotPlayed, string batsmanAnimName,
+    public void RpcShotInput(string senderId, double swingNetTime, string shotPlayed, string batsmanAnimName,
         bool isPower, float angleValue, float batterX, bool squareLegGlance, float animSpeed, bool batsmanConfident,
         bool perfect, bool mistimed, float hSpeedAdj, float fbMult)
     {
-        if (senderId == staticVariables.UserProfiledata.user._id) return; // the batter armed itself locally
+        if (PlayerId.IsMe(senderId)) return; // the batter armed itself locally
         ConstantsData_M.MpLog($"[CricketNetworkManager][RpcShotInput] Applying lockstep swing: shot={shotPlayed}");
         GroundController.instance?.OnLockstepShotInput(swingNetTime, shotPlayed, batsmanAnimName, isPower, angleValue, batterX, squareLegGlance, animSpeed, batsmanConfident, perfect, mistimed, hSpeedAdj, fbMult);
     }
@@ -2810,17 +2810,17 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdInitRun(int senderId, float temp, bool boolean)
+    public void CmdInitRun(string senderId, float temp, bool boolean)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdInitRun] CMD received. senderId = {senderId}, temp = {temp}, boolean = {boolean}.");
         RpcInitRun(senderId, temp, boolean);
     }
 
     [ClientRpc]
-    public void RpcInitRun(int senderId, float temp, bool boolean)
+    public void RpcInitRun(string senderId, float temp, bool boolean)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcInitRun] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcInitRun] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcInitRun] Sender is local player. Returning early.");
             return;
@@ -2830,17 +2830,17 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdFreezeBowlingSpot(int senderId)
+    public void CmdFreezeBowlingSpot(string senderId)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdFreezeBowlingSpot] CMD received. senderId = {senderId}.");
         RpcFreezeBowlingSpot(senderId);
     }
 
     [ClientRpc]
-    public void RpcFreezeBowlingSpot(int senderId)
+    public void RpcFreezeBowlingSpot(string senderId)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcFreezeBowlingSpot] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcFreezeBowlingSpot] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcFreezeBowlingSpot] Sender is local player. Returning early.");
             return;
@@ -2896,15 +2896,15 @@ public class CricketNetworkManager : NetworkBehaviour
     // remote calls by NAME HASH, so a peer that does not know this one simply drops it, whereas changing an
     // existing signature would silently stop the existing call from being delivered at all.
     [Command(requiresAuthority = false)]
-    public void CmdSyncBallStrip(int senderId, string ballListInfo, string ballExtras)
+    public void CmdSyncBallStrip(string senderId, string ballListInfo, string ballExtras)
     {
         RpcSyncBallStrip(senderId, ballListInfo, ballExtras);
     }
 
     [ClientRpc]
-    public void RpcSyncBallStrip(int senderId, string ballListInfo, string ballExtras)
+    public void RpcSyncBallStrip(string senderId, string ballListInfo, string ballExtras)
     {
-        if (staticVariables.UserProfiledata?.user != null && staticVariables.UserProfiledata.user._id == senderId)
+        if (PlayerId.IsMe(senderId))
             return;   // the authority already has it
         var sbl = Singleton<ScoreBoardBallList>.instance;
         if (sbl == null || sbl.ballList == null) return;
@@ -2930,16 +2930,16 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdRelayStallReArm(int senderId)
+    public void CmdRelayStallReArm(string senderId)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdRelayStallReArm] CMD received. senderId={senderId}.");
         RpcRelayStallReArm(senderId);
     }
 
     [ClientRpc]
-    public void RpcRelayStallReArm(int senderId)
+    public void RpcRelayStallReArm(string senderId)
     {
-        if (staticVariables.UserProfiledata?.user != null && staticVariables.UserProfiledata.user._id == senderId)
+        if (PlayerId.IsMe(senderId))
             return;   // the sender already re-armed locally
         ConstantsData_M.MpLog($"[CricketNetworkManager][RpcRelayStallReArm] RPC received from {senderId} — applying the same re-arm here.");
         if (GroundController.instance != null)
@@ -2947,14 +2947,14 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdBoundaryVerdict(int senderId, int runs, bool hitBat)
+    public void CmdBoundaryVerdict(string senderId, int runs, bool hitBat)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdBoundaryVerdict] CMD received. senderId={senderId} runs={runs} hitBat={hitBat}.");
         RpcBoundaryVerdict(senderId, runs, hitBat);
     }
 
     [ClientRpc]
-    public void RpcBoundaryVerdict(int senderId, int runs, bool hitBat)
+    public void RpcBoundaryVerdict(string senderId, int runs, bool hitBat)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][RpcBoundaryVerdict] RPC received. senderId={senderId} runs={runs} hitBat={hitBat}.");
         if (GroundController.instance != null)
@@ -2966,14 +2966,14 @@ public class CricketNetworkManager : NetworkBehaviour
     // call that the two sides judged differently showed OUT on one screen and NOT OUT on the other for a
     // delivery both had already counted as a wicket (tester 12-08 #3). Same shape as CmdThrowTarget below.
     [Command(requiresAuthority = false)]
-    public void CmdRunOutVerdict(int senderId, bool isOut)
+    public void CmdRunOutVerdict(string senderId, bool isOut)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdRunOutVerdict] CMD received. senderId={senderId} isOut={isOut}.");
         RpcRunOutVerdict(senderId, isOut);
     }
 
     [ClientRpc]
-    public void RpcRunOutVerdict(int senderId, bool isOut)
+    public void RpcRunOutVerdict(string senderId, bool isOut)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][RpcRunOutVerdict] RPC received. senderId={senderId} isOut={isOut}.");
         if (GroundController.instance != null)
@@ -2981,14 +2981,14 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdThrowTarget(int senderId, string target)
+    public void CmdThrowTarget(string senderId, string target)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdThrowTarget] CMD received. senderId={senderId} target={target}.");
         RpcThrowTarget(senderId, target);
     }
 
     [ClientRpc]
-    public void RpcThrowTarget(int senderId, string target)
+    public void RpcThrowTarget(string senderId, string target)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][RpcThrowTarget] RPC received. senderId={senderId} target={target}.");
         if (GroundController.instance != null)
@@ -2996,17 +2996,17 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdEnableContinueBtn(int senderId)
+    public void CmdEnableContinueBtn(string senderId)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdEnableContinueBtn] CMD received. senderId = {senderId}.");
         RpcEnableContinueBtn(senderId);
     }
 
     [ClientRpc]
-    public void RpcEnableContinueBtn(int senderId)
+    public void RpcEnableContinueBtn(string senderId)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcEnableContinueBtn] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcEnableContinueBtn] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcEnableContinueBtn] Sender is local player. Returning early.");
             return;
@@ -3015,17 +3015,17 @@ public class CricketNetworkManager : NetworkBehaviour
         GroundController.instance.RPC_EnableContinueBtn();
     }
     [Command(requiresAuthority = false)]
-    public void CmdUpdateCanBowlerBowl(int senderId, bool canBowlerBowl)
+    public void CmdUpdateCanBowlerBowl(string senderId, bool canBowlerBowl)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdUpdateCanBowlerBowl] CMD received. senderId = {senderId}, canBowlerBowl = {canBowlerBowl}.");
         RpcUpdateCanBowlerBowl(senderId, canBowlerBowl);
     }
 
     [ClientRpc]
-    public void RpcUpdateCanBowlerBowl(int senderId, bool canBowlerBowl)
+    public void RpcUpdateCanBowlerBowl(string senderId, bool canBowlerBowl)
     {
-        // ConstantsData_M.MpLog($"[CricketNetworkManager][RpcUpdateCanBowlerBowl] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        // ConstantsData_M.MpLog($"[CricketNetworkManager][RpcUpdateCanBowlerBowl] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             // ConstantsData_M.MpLog("[CricketNetworkManager][RpcUpdateCanBowlerBowl] Sender is local player. Returning early.");
             return;
@@ -3064,17 +3064,17 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdChangeBallData(int senderId, string score, string extraInfo)
+    public void CmdChangeBallData(string senderId, string score, string extraInfo)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdChangeBallData] CMD received. senderId = {senderId}, score = {score}, extraInfo = {extraInfo}.");
         RpcChangeBallData(senderId, score, extraInfo);
     }
 
     [ClientRpc]
-    public void RpcChangeBallData(int senderId, string score, string extraInfo)
+    public void RpcChangeBallData(string senderId, string score, string extraInfo)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcChangeBallData] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcChangeBallData] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcChangeBallData] Sender is local player. Returning early.");
             return;
@@ -3084,7 +3084,7 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdCallCheckForOverComplete(int senderId)
+    public void CmdCallCheckForOverComplete(string senderId)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdCallCheckForOverComplete] CMD received. senderId = {senderId}.");
         MatchFlow.Log("Cricket", $"end of over {(syncedMatchBalls < 0 ? 0 : syncedMatchBalls / 6)} — {syncedMatchScores}/{syncedMatchWickets}");
@@ -3092,7 +3092,7 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcCallCheckForOverComplete(int senderId)
+    public void RpcCallCheckForOverComplete(string senderId)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][RpcCallCheckForOverComplete] RPC received. senderId={senderId} — triggering on all clients.");
         ScoreBoardBallList.instance.RPC_CallCheckForOverComplete();
@@ -3115,7 +3115,7 @@ public class CricketNetworkManager : NetworkBehaviour
     // DRS-board fix (#2): 3-arg form — carries the authoritative isOut so the remote (bowling) client can
     // render the OUT/NOT-OUT board instead of silently resolving. ALL call sites migrated atomically.
     [Command(requiresAuthority = false)]
-    public void CmdDRS_Decision(int senderId, bool decision, bool isOut)
+    public void CmdDRS_Decision(string senderId, bool decision, bool isOut)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdDRS_Decision] CMD received. senderId = {senderId}, decision = {decision}, isOut = {isOut}.");
         MatchFlow.Log("Cricket", decision ? $"DRS review ({FlowWho(senderId)}): {(isOut ? "OUT" : "NOT OUT")}" : $"DRS: {FlowWho(senderId)} did not review");
@@ -3123,10 +3123,10 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcDRS_Decision(int senderId, bool decision, bool isOut)
+    public void RpcDRS_Decision(string senderId, bool decision, bool isOut)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcDRS_Decision] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}, decision = {decision}, isOut = {isOut}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcDRS_Decision] RPC received. senderId = {senderId}, localId = {PlayerId.Me}, decision = {decision}, isOut = {isOut}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcDRS_Decision] Sender is local player. Returning early.");
             return;
@@ -3156,22 +3156,22 @@ public class CricketNetworkManager : NetworkBehaviour
     // DRS review-timer SYNC: the batting authority relays the shared review-start NetworkTime so BOTH clients
     // run the identical 6s countdown off the synced clock (the timer was local-only -> different on each side).
     [Command(requiresAuthority = false)]
-    public void CmdSyncDrsTimer(int senderId, double startNetTime)
+    public void CmdSyncDrsTimer(string senderId, double startNetTime)
     {
         RpcSyncDrsTimer(senderId, startNetTime);
     }
 
     [ClientRpc]
-    public void RpcSyncDrsTimer(int senderId, double startNetTime)
+    public void RpcSyncDrsTimer(string senderId, double startNetTime)
     {
-        if (senderId == staticVariables.UserProfiledata.user._id) return; // sender already anchored locally
+        if (PlayerId.IsMe(senderId)) return; // sender already anchored locally
         if (DRS.instance != null) DRS.instance.ApplySyncedTimerAnchor(startNetTime);
     }
 
     // Review-sync fix (#5): batting authority broadcasts the third-umpire/stumping review onset +
     // outcome so the bowling client shows the same review board instead of just the pitch.
     [Command(requiresAuthority = false)]
-    public void CmdShowThirdUmpireReview(int senderId, bool playerStumped)
+    public void CmdShowThirdUmpireReview(string senderId, bool playerStumped)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdShowThirdUmpireReview] CMD received. senderId = {senderId}, playerStumped = {playerStumped}.");
         MatchFlow.Log("Cricket", $"third umpire stumping review: {(playerStumped ? "OUT" : "NOT OUT")}");
@@ -3179,10 +3179,10 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcShowThirdUmpireReview(int senderId, bool playerStumped)
+    public void RpcShowThirdUmpireReview(string senderId, bool playerStumped)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcShowThirdUmpireReview] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcShowThirdUmpireReview] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcShowThirdUmpireReview] Sender is local player. Returning early.");
             return;
@@ -3195,33 +3195,33 @@ public class CricketNetworkManager : NetworkBehaviour
     // stump so the bowling follower shows the SAME stump falling (the clip is otherwise chosen from each
     // client's slightly-diverged local ball X, so screens could disagree on which stump breaks).
     [Command(requiresAuthority = false)]
-    public void CmdSyncStumpAnim(int senderId, string clip, int stumpSide)
+    public void CmdSyncStumpAnim(string senderId, string clip, int stumpSide)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdSyncStumpAnim] CMD received. senderId = {senderId}, clip = {clip}, stumpSide = {stumpSide}.");
         RpcSyncStumpAnim(senderId, clip, stumpSide);
     }
 
     [ClientRpc]
-    public void RpcSyncStumpAnim(int senderId, string clip, int stumpSide)
+    public void RpcSyncStumpAnim(string senderId, string clip, int stumpSide)
     {
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        if (PlayerId.IsMe(senderId))
             return;
         if (GroundController.instance != null)
             GroundController.instance.OnSyncedStumpAnim(clip, stumpSide);
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdPauseGame(int senderId)
+    public void CmdPauseGame(string senderId)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdPauseGame] CMD received. senderId = {senderId}.");
         RpcPauseGame(senderId);
     }
 
     [ClientRpc]
-    public void RpcPauseGame(int senderId)
+    public void RpcPauseGame(string senderId)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcPauseGame] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcPauseGame] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcPauseGame] Sender is local player. Returning early.");
             return;
@@ -3230,17 +3230,17 @@ public class CricketNetworkManager : NetworkBehaviour
         Scoreboard.instance.RPC_PauseGame();
     }
     [Command(requiresAuthority = false)]
-    public void CmdReBowlLastBall(int senderId)
+    public void CmdReBowlLastBall(string senderId)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdReBowlLastBall] CMD received. senderId = {senderId}.");
         RpcReBowlLastBall(senderId);
     }
 
     [ClientRpc]
-    public void RpcReBowlLastBall(int senderId)
+    public void RpcReBowlLastBall(string senderId)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcReBowlLastBall] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcReBowlLastBall] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcReBowlLastBall] Sender is local player. Returning early.");
             return;
@@ -3250,17 +3250,17 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdCallRebowl(int senderId, bool rebowl)
+    public void CmdCallRebowl(string senderId, bool rebowl)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdCallRebowl] CMD received. senderId = {senderId}, rebowl = {rebowl}.");
         RpcCallRebowl(senderId, rebowl);
     }
 
     [ClientRpc]
-    public void RpcCallRebowl(int senderId, bool rebowl)
+    public void RpcCallRebowl(string senderId, bool rebowl)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcCallRebowl] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcCallRebowl] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcCallRebowl] Sender is local player. Returning early.");
             return;
@@ -3270,15 +3270,15 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdEqualScore(int senderId, int currentMatchScores, int ballCount, int matchBalls, int currentMatchWickets, int currentBallNumber)
+    public void CmdEqualScore(string senderId, int currentMatchScores, int ballCount, int matchBalls, int currentMatchWickets, int currentBallNumber)
     {
         RpcEqualScore(senderId, currentMatchScores, ballCount, matchBalls, currentMatchWickets, currentBallNumber);
     }
 
     [ClientRpc]
-    public void RpcEqualScore(int senderId, int currentMatchScores, int ballCount, int matchBalls, int currentMatchWickets, int currentBallNumber)
+    public void RpcEqualScore(string senderId, int currentMatchScores, int ballCount, int matchBalls, int currentMatchWickets, int currentBallNumber)
     {
-        if (senderId == staticVariables.UserProfiledata.user._id) return;
+        if (PlayerId.IsMe(senderId)) return;
         Launcher.Instance.RPC_EqualScore(currentMatchScores, ballCount, matchBalls, currentMatchWickets, currentBallNumber);
     }
 
@@ -3291,7 +3291,7 @@ public class CricketNetworkManager : NetworkBehaviour
     /// wrong wickets, wrong target, wrong win/lose panel).
     /// </summary>
     [Command(requiresAuthority = false)]
-    public void CmdBallOutcome(int senderId, int validBall, int canCountBall, int runsScored,
+    public void CmdBallOutcome(string senderId, int validBall, int canCountBall, int runsScored,
                                int extraRun, int batsmanID, int isWicket, int wicketType,
                                int bowlerID, int catcherID, int batsmanOut, bool isBoundary)
     {
@@ -3310,7 +3310,7 @@ public class CricketNetworkManager : NetworkBehaviour
     /// this authoritative call. Both sides run identical code = identical outcome.
     /// </summary>
     [ClientRpc]
-    public void RpcBallOutcome(int senderId, int validBall, int canCountBall, int runsScored,
+    public void RpcBallOutcome(string senderId, int validBall, int canCountBall, int runsScored,
                                int extraRun, int batsmanID, int isWicket, int wicketType,
                                int bowlerID, int catcherID, int batsmanOut, bool isBoundary)
     {
@@ -3321,7 +3321,7 @@ public class CricketNetworkManager : NetworkBehaviour
         // SIX panel was missing/badly delayed while the bowler's showed promptly. Show the banner for the
         // batting authority here too (direct ShowMe only — purely visual, auto-hides ~2.5s; NOT
         // InitAnimation, which would wrongly schedule AnimationCompleted), then skip the rest.
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        if (PlayerId.IsMe(senderId))
         {
             if (isBoundary && (runsScored == 4 || runsScored == 6)
                 && Singleton<BoundaryAnimation2>.instance != null)
@@ -3369,7 +3369,7 @@ public class CricketNetworkManager : NetworkBehaviour
     ///      authoritative values — fixing score mismatch, wrong target, wrong win/lose.
     /// </summary>
     [Command(requiresAuthority = false)]
-    public void CmdCorrectBallState(int senderId, int scores, int wickets, int ballCount,
+    public void CmdCorrectBallState(string senderId, int scores, int wickets, int ballCount,
                                      int matchBalls, int ballNumber,
                                      int strikerIndex, int nonStrikerIndex, int batsmanEntryIndex)
     {
@@ -3383,7 +3383,7 @@ public class CricketNetworkManager : NetworkBehaviour
             if (syncedCurrentInnings == 1 && scores > syncedTeam1Scores)
             {
                 MatchFlow.Log("Cricket", $"target {syncedTeam1Scores + 1} chased — {FlowWho(senderId)} wins with {10 - wickets} wicket(s) left");
-                MatchFlow.SendResult(senderId.ToString(), "target chased", $"{syncedTeam1Scores}/{syncedTeam1Wickets} vs {scores}/{wickets} ({FlowOvers(matchBalls)} ov)");
+                MatchFlow.SendResult(senderId, "target chased", $"{syncedTeam1Scores}/{syncedTeam1Wickets} vs {scores}/{wickets} ({FlowOvers(matchBalls)} ov)");
             }
             else if (syncedCurrentInnings == 1 && wickets >= 10 && scores == syncedTeam1Scores)
             {
@@ -3399,7 +3399,7 @@ public class CricketNetworkManager : NetworkBehaviour
         if (syncedCurrentInnings == 1)
         {
             string ending = null, winner = null;
-            if (scores > syncedTeam1Scores) { winner = senderId.ToString(); ending = "target chased"; }
+            if (scores > syncedTeam1Scores) { winner = senderId; ending = "target chased"; }
             else if (wickets >= 10 || (_matchBallLimit > 0 && matchBalls >= _matchBallLimit))
             {
                 ending = wickets >= 10 ? "chasing side all out" : "overs complete";
@@ -3427,12 +3427,12 @@ public class CricketNetworkManager : NetworkBehaviour
     /// caused by local physics non-determinism (e.g. keeper catch vs boundary).
     /// </summary>
     [ClientRpc]
-    public void RpcCorrectBallState(int senderId, int scores, int wickets, int ballCount,
+    public void RpcCorrectBallState(string senderId, int scores, int wickets, int ballCount,
                                      int matchBalls, int ballNumber,
                                      int strikerIndex, int nonStrikerIndex, int batsmanEntryIndex)
     {
         // Batting player already has the correct state — nothing to do.
-        if (senderId == staticVariables.UserProfiledata.user._id) return;
+        if (PlayerId.IsMe(senderId)) return;
 
         ConstantsData_M.MpLog($"[CricketNetworkManager][RpcCorrectBallState] Correcting bowling-side state: " +
                   $"scores={scores} wickets={wickets} ballCount={ballCount} ballNum={ballNumber}");
@@ -3486,17 +3486,17 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     [Command(requiresAuthority = false)]
-    public void CmdCheckScore(int senderId, int currentMatchScores, int ballCount, int currentMatchWickets)
+    public void CmdCheckScore(string senderId, int currentMatchScores, int ballCount, int currentMatchWickets)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdCheckScore] CMD received. senderId = {senderId}, currentMatchScores = {currentMatchScores}, ballCount = {ballCount}, currentMatchWickets = {currentMatchWickets}.");
         RpcCheckScore(senderId, currentMatchScores, ballCount, currentMatchWickets);
     }
 
     [ClientRpc]
-    public void RpcCheckScore(int senderId, int currentMatchScores, int ballCount, int currentMatchWickets)
+    public void RpcCheckScore(string senderId, int currentMatchScores, int ballCount, int currentMatchWickets)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcCheckScore] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcCheckScore] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcCheckScore] Sender is local player. Returning early.");
             return;
@@ -3505,17 +3505,17 @@ public class CricketNetworkManager : NetworkBehaviour
         Launcher.Instance.RPC_CheckScore(currentMatchScores, ballCount, currentMatchWickets);
     }
     [Command(requiresAuthority = false)]
-    public void CmdCheckScene(int senderId, string sceneName, int meFirstBatting)
+    public void CmdCheckScene(string senderId, string sceneName, int meFirstBatting)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdCheckScene] CMD received. senderId = {senderId}, sceneName = {sceneName}, meFirstBatting = {meFirstBatting}.");
         RpcCheckScene(senderId, sceneName, meFirstBatting);
     }
 
     [ClientRpc]
-    public void RpcCheckScene(int senderId, string sceneName, int meFirstBatting)
+    public void RpcCheckScene(string senderId, string sceneName, int meFirstBatting)
     {
-        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcCheckScene] RPC received. senderId = {senderId}, localId = {staticVariables.UserProfiledata.user._id}.");
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        ConstantsData_M.MpLog($"[CricketNetworkManager][RpcCheckScene] RPC received. senderId = {senderId}, localId = {PlayerId.Me}.");
+        if (PlayerId.IsMe(senderId))
         {
             ConstantsData_M.MpLog("[CricketNetworkManager][RpcCheckScene] Sender is local player. Returning early.");
             return;
@@ -3528,20 +3528,20 @@ public class CricketNetworkManager : NetworkBehaviour
     // Wording only: read state, never change it. MatchFlow writes only on the dedicated server.
 
     /// <summary>Display name for a user id sent by a client (creator / joiner name).</summary>
-    static string FlowWho(int id) => MatchFlow.Who(id.ToString());
+    static string FlowWho(string id) => MatchFlow.Who(id);
 
     /// <summary>The OTHER player's id (creator ↔ joiner), or null when it cannot be mapped.</summary>
-    static string FlowOpponentId(int id)
+    static string FlowOpponentId(string id)
     {
         var ngm = NetworkGameManager.Instance;
         if (ngm == null || ngm.creatorData == null || ngm.joinerData == null) return null;
-        string s = id.ToString();
-        if (ngm.creatorData.playerId == s) return ngm.joinerData.playerId;
-        if (ngm.joinerData.playerId == s) return ngm.creatorData.playerId;
+        string s = id;
+        if (PlayerId.Same(ngm.creatorData.playerId, s)) return ngm.joinerData.playerId;
+        if (PlayerId.Same(ngm.joinerData.playerId, s)) return ngm.creatorData.playerId;
         return null;
     }
 
-    static string FlowOpponent(int id)
+    static string FlowOpponent(string id)
     {
         string o = FlowOpponentId(id);
         return string.IsNullOrEmpty(o) ? "opponent" : MatchFlow.Who(o);
@@ -3572,7 +3572,7 @@ public class CricketNetworkManager : NetworkBehaviour
     }
 
     /// <summary>One delivery from CmdBallOutcome's raw params, e.g. "over 2.3 — Sara bowls, Ali hits FOUR".</summary>
-    string FlowBall(int senderId, int validBall, int canCountBall, int runsScored, int extraRun,
+    string FlowBall(string senderId, int validBall, int canCountBall, int runsScored, int extraRun,
                     int isWicket, int wicketType, bool isBoundary)
     {
         string bat = FlowWho(senderId);

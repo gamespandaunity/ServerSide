@@ -98,7 +98,7 @@ public class LoginUIManager : MonoBehaviour
 
     //bool OnGoogleLogin = false;
     //GoogleSignInUser googleUser = null;
-    int userId;
+    string userId;
     double otpForPasswordReset;
     string resetToken;
    [FormerlySerializedAs("isSocialOtp")] public bool isSocialOtp;
@@ -446,7 +446,7 @@ public class LoginUIManager : MonoBehaviour
                 bool status = SerializedString["status"].Value<bool>();
                 if (status)
                 {
-                    userId = (int)SerializedString["_id"];
+                    userId = PlayerId.Of(SerializedString["_id"]?.ToString());
                     //otpResetNew = (double)SerializedString["data"]["OTP"];
 
 
@@ -522,7 +522,7 @@ public class LoginUIManager : MonoBehaviour
                     if (status)
                     {
                         resetToken = serializedData["reset_token"].Value<string>();
-                        int _id = serializedData["_id"].Value<int>();
+                        string _id = PlayerId.Of(serializedData["_id"]?.ToString());
                         string message = serializedData["message"].Value<string>();
 
 
@@ -893,7 +893,7 @@ public class LoginUIManager : MonoBehaviour
         [Serializable]
         public class Data
         {
-            public int _id;
+            public string _id;
             public int OTP;
         }
     }

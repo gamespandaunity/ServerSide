@@ -1739,7 +1739,7 @@ private void OnEnable()
         {
             if (result)
             {
-                // Victory(staticVariables.UserProfiledata.user._id, "Opponent has disconnected. You are declared the winner.");
+                // Victory(PlayerId.Me, "Opponent has disconnected. You are declared the winner.");
                 if (ResultManager.GameSpawnedFinished == false)
                 {
                     ResultManager.GameSpawnedFinished = true;
@@ -1750,7 +1750,7 @@ private void OnEnable()
                         "1".Show();
                         // Spawn at position (0,0,0)
                         var gameObject = Instantiate(enemyPrefab, Vector3.zero, Quaternion.identity);
-                        gameObject.GetComponent<ResultManager>().HandleGameResultAltMultiplayer(true, staticVariables.UserProfiledata.user._id.ToString());
+                        gameObject.GetComponent<ResultManager>().HandleGameResultAltMultiplayer(true, PlayerId.Me);
                     }
                     else
                     {
@@ -1770,7 +1770,7 @@ private void OnEnable()
                         "1".Show();
                         // Spawn at position (0,0,0)
                         var gameObject = Instantiate(enemyPrefab, Vector3.zero, Quaternion.identity);
-                        gameObject.GetComponent<ResultManager>().HandleGameResultAltMultiplayer(false, staticVariables.UserProfiledata.user._id.ToString());
+                        gameObject.GetComponent<ResultManager>().HandleGameResultAltMultiplayer(false, PlayerId.Me);
                     }
                     else
                     {
@@ -1933,7 +1933,7 @@ private void OnEnable()
             {
                 //ConstantsData_M.MpLog("KI=onsaa Collkider : " + Other);
                 //Photon Removal view.RPC("RPC_SetMultiplayerCollider", RpcTarget.OthersBuffered, Other, SavedBallRayCastConnectedZposition);
-                if (CricketNetworkManager.ReadyToSend) CricketNetworkManager.instance.CmdSetMultiplayerCollider(staticVariables.UserProfiledata.user._id, Other, SavedBallRayCastConnectedZposition);
+                if (CricketNetworkManager.ReadyToSend) CricketNetworkManager.instance.CmdSetMultiplayerCollider(PlayerId.Me, Other, SavedBallRayCastConnectedZposition);
             }
 
             yield return new WaitForSeconds(0.08f);
@@ -1965,7 +1965,7 @@ private void OnEnable()
             if (GameConstants.isWithAI == false)
             {
                 //    view.RPC("RPC_WideBall", RpcTarget.OthersBuffered);                                                                         //Photon Removal
-                CricketNetworkManager.instance.CmdWideBall(staticVariables.UserProfiledata.user._id);
+                CricketNetworkManager.instance.CmdWideBall(PlayerId.Me);
             }
             yield return new WaitForSeconds(0.05f);
             retries++;
@@ -1993,7 +1993,7 @@ private void OnEnable()
             if (GameConstants.isWithAI == false)
             {
                 //    view.RPC("RPC_ShotPlayed", RpcTarget.OthersBuffered, SHOTPLAYED, BATSMANANIM, BatReachingTimeForOptimalShotLength, OptimalShotActivationTime, PowerShot);
-                CricketNetworkManager.instance.CmdShotPlayed(staticVariables.UserProfiledata.user._id, SHOTPLAYED, BATSMANANIM, BatReachingTimeForOptimalShotLength, OptimalShotActivationTime, PowerShot);
+                CricketNetworkManager.instance.CmdShotPlayed(PlayerId.Me, SHOTPLAYED, BATSMANANIM, BatReachingTimeForOptimalShotLength, OptimalShotActivationTime, PowerShot);
                 yield break;
             }
 
@@ -2027,7 +2027,7 @@ private void OnEnable()
         {
             if (GameConstants.isWithAI == false)
             {
-                CricketNetworkManager.instance.CmdChangeBallAngle(staticVariables.UserProfiledata.user._id, BallAngle, HorizontalSpeed, BallProjectileAngle, BallProjectileHeight, BallTimingFirstBounceDistance, BallProjectileAnglePerSecond, BallBatMeetingHeight, HorizontalSpeedMultiplier, Ballstatus, EdgeCatch, ContactPos);
+                CricketNetworkManager.instance.CmdChangeBallAngle(PlayerId.Me, BallAngle, HorizontalSpeed, BallProjectileAngle, BallProjectileHeight, BallTimingFirstBounceDistance, BallProjectileAnglePerSecond, BallBatMeetingHeight, HorizontalSpeedMultiplier, Ballstatus, EdgeCatch, ContactPos);
                 //    //ConstantsData_M.MpLog("ANGLE : " + BallAngle + " HOrizontal Speed : " + HorizontalSpeed);
                 //    view.RPC("RPC_ChangeBallAngle", RpcTarget.OthersBuffered, BallAngle, HorizontalSpeed, BallProjectileAngle, BallProjectileHeight
                 //  , BallTimingFirstBounceDistance, BallProjectileAnglePerSecond, BallBatMeetingHeight, HorizontalSpeedMultiplier, Ballstatus, EdgeCatch);
@@ -2130,7 +2130,7 @@ private void OnEnable()
                 int planDeliverySeed = UnityEngine.Random.Range(int.MinValue / 2, int.MaxValue / 2);
                 DeterministicRng.Seed(planDeliverySeed);
                 CricketNetworkManager.instance.CmdSyncBallRelease(
-                    staticVariables.UserProfiledata.user._id,
+                    PlayerId.Me,
                     matchBallTransform.position,
                     temporaryPosition,
                     _ballAngle,
@@ -2151,7 +2151,7 @@ private void OnEnable()
                 ConstantsData_M.MpLog($"[Lockstep] Delivery PLAN minted+shipped pre-run-up: angle={_ballAngle:F1} hVel={horizontalVelocity:F1} spin={spinFactor:F2} swing={swingIntensity:F2} spotLen={ballSpotLength:F1} seed={planDeliverySeed}");
             }
             CricketNetworkManager.instance.CmdSyncBowlerRunUp(
-                staticVariables.UserProfiledata.user._id, bowlerAnimationNumber, runUpStartAt);
+                PlayerId.Me, bowlerAnimationNumber, runUpStartAt);
             // Plan-mode: THIS side's run-up (and hence its anim-event flight anchor) runs the configured
             // delay behind the batter's — the whole bowling presentation follows, internally seamless.
             double myRunUpStartAt = runUpStartAt
@@ -2184,7 +2184,7 @@ private void OnEnable()
             && CricketNetworkManager.instance != null)
         {
             CricketNetworkManager.instance.CmdSyncBowlerRunUp(
-                staticVariables.UserProfiledata.user._id, bowlerAnimationNumber, 0d);
+                PlayerId.Me, bowlerAnimationNumber, 0d);
         }
     }
 
@@ -2203,7 +2203,7 @@ private void OnEnable()
         if (GameConstants.isWithAI == false && CricketNetworkManager.instance != null)
         {
             //Photon Removal  view.RPC("AckForBowling", RpcTarget.OthersBuffered);
-            CricketNetworkManager.instance.CmdAckForBowling(staticVariables.UserProfiledata.user._id);
+            CricketNetworkManager.instance.CmdAckForBowling(PlayerId.Me);
         }
         yield break;
     }
@@ -2436,7 +2436,7 @@ private void OnEnable()
                 // CmdSetBowler that means the bowler is never assigned or relayed, i.e. the two sides end up
                 // with different bowlers. Only the sends actually seen throwing are guarded.
                 if (CricketNetworkManager.ReadyToSend)
-                    CricketNetworkManager.instance.CmdUpdateCanLoadGround(staticVariables.UserProfiledata.user._id, CanLoadGround);
+                    CricketNetworkManager.instance.CmdUpdateCanLoadGround(PlayerId.Me, CanLoadGround);
                 else
                     ConstantsData_M.MpLog("[GhostSend] UpdateCanLoadGround BLOCKED — network manager not ready (ghost session); caller continues instead of throwing.");
             }
@@ -3733,7 +3733,7 @@ private void OnEnable()
         if (GameConstants.isWithAI == false && CONTROLLER.myTeamIndex == CONTROLLER.BowlingTeamIndex
             && CricketNetworkManager.instance != null && !reconnectRestorePending)
         {
-            CricketNetworkManager.instance.CmdSyncBowlerSide(staticVariables.UserProfiledata.user._id, bowlerSide);
+            CricketNetworkManager.instance.CmdSyncBowlerSide(PlayerId.Me, bowlerSide);
         }
         if (UnityEngine.Random.Range(0f, 10f) < 5f)
         {
@@ -3931,10 +3931,9 @@ private void OnEnable()
 
     // Receiver for the batting authority's 4-vs-6 verdict (see the rope-cross relay above). Runs on
     // every client via ClientRpc; the sender recognises its own echo by senderId and ignores it.
-    public void OnBoundaryVerdictRelayed(int senderId, int runs, bool hitBat)
+    public void OnBoundaryVerdictRelayed(string senderId, int runs, bool hitBat)
     {
-        if (staticVariables.UserProfiledata != null && staticVariables.UserProfiledata.user != null
-            && staticVariables.UserProfiledata.user._id == senderId)
+        if (PlayerId.IsMe(senderId))
             return;   // own echo
         _relayedBoundaryRuns = runs;
         _relayedBoundaryHitBat = hitBat;
@@ -3995,10 +3994,9 @@ private void OnEnable()
         else mainUmpireAnim.CrossFade("Crouch_toNotOut_New");
     }
 
-    public void OnRunOutVerdictRelayed(int senderId, bool isOut)
+    public void OnRunOutVerdictRelayed(string senderId, bool isOut)
     {
-        if (staticVariables.UserProfiledata != null && staticVariables.UserProfiledata.user != null
-            && staticVariables.UserProfiledata.user._id == senderId)
+        if (PlayerId.IsMe(senderId))
             return;   // own echo
         int _want = isOut ? 1 : 0;
         _relayedRunOutVerdict = _want;
@@ -4026,10 +4024,9 @@ private void OnEnable()
         else mainUmpireAnim.CrossFade("Crouch_toNotOut_New");
     }
 
-    public void OnThrowTargetRelayed(int senderId, string target)
+    public void OnThrowTargetRelayed(string senderId, string target)
     {
-        if (staticVariables.UserProfiledata != null && staticVariables.UserProfiledata.user != null
-            && staticVariables.UserProfiledata.user._id == senderId)
+        if (PlayerId.IsMe(senderId))
             return;   // own echo
         if (string.IsNullOrEmpty(target)) return;
         _relayedThrowTarget = target;
@@ -4329,7 +4326,7 @@ private void OnEnable()
             // NREs on every call (report 62250255, 2026-07-20).
             if (CricketNetworkManager.ReadyToSend)
             {
-                CricketNetworkManager.instance.CmdChangeOppTutorial(staticVariables.UserProfiledata.user._id, On);
+                CricketNetworkManager.instance.CmdChangeOppTutorial(PlayerId.Me, On);
             }
 
         }
@@ -4517,7 +4514,7 @@ private void OnEnable()
                 && CONTROLLER.BattingTeamIndex == CONTROLLER.myTeamIndex && CricketNetworkManager.ReadyToSend)
             {
                 ConstantsData_M.MpLog($"[GroundController][BoundaryVerdict] Authority sending verdict: runs={runsScoredThisBall} hitBat={didBallHitBat} ballY={matchBallTransform.position.y:F2} status={currentBallStatus}.");
-                CricketNetworkManager.instance.CmdBoundaryVerdict(staticVariables.UserProfiledata.user._id, runsScoredThisBall, didBallHitBat);
+                CricketNetworkManager.instance.CmdBoundaryVerdict(PlayerId.Me, runsScoredThisBall, didBallHitBat);
             }
             if (currentWicketKeeperStatus == "catchMissed")
             {
@@ -4972,7 +4969,7 @@ private void OnEnable()
                         _useDeterministicBallStep = true;
                     }
                     CricketNetworkManager.instance.CmdSyncBallShot(
-                        staticVariables.UserProfiledata.user._id,
+                        PlayerId.Me,
                         matchBallTransform.position,
                         temporaryPosition,
                         _ballAngle,
@@ -4988,7 +4985,7 @@ private void OnEnable()
                 else
                 {
                     CricketNetworkManager.instance.CmdSyncBallPosition(
-                        staticVariables.UserProfiledata.user._id,
+                        PlayerId.Me,
                         matchBallTransform.position,
                         temporaryPosition,
                         launchAngle);
@@ -5560,7 +5557,7 @@ private void OnEnable()
                 if (GameConstants.isWithAI == false)
                 {
                     //    view.RPC("RPC_LBWDecision", RpcTarget.OthersBuffered, CONTROLLER.LBWAPPEAL, CONTROLLER.BALLINLINE, CONTROLLER.Lbw);
-                    CricketNetworkManager.instance.CmdLBWDecision(staticVariables.UserProfiledata.user._id, CONTROLLER.LBWAPPEAL, CONTROLLER.BALLINLINE, CONTROLLER.Lbw);  //Photon Addition
+                    CricketNetworkManager.instance.CmdLBWDecision(PlayerId.Me, CONTROLLER.LBWAPPEAL, CONTROLLER.BALLINLINE, CONTROLLER.Lbw);  //Photon Addition
                 }
 
                 // Pad contact: stop any in-flight "shotSuccess" coroutine and override with correct "onPads" status.
@@ -6171,7 +6168,7 @@ private void OnEnable()
         if (GameConstants.isWithAI == false)
         {                                                                                                                                                                                                  //Photon Removal
                                                                                                                                                                                                            //view.RPC("RPC_EnableContinueBtn", RpcTarget.OthersBuffered);
-            CricketNetworkManager.instance.CmdEnableContinueBtn(staticVariables.UserProfiledata.user._id);
+            CricketNetworkManager.instance.CmdEnableContinueBtn(PlayerId.Me);
         }
 
     }

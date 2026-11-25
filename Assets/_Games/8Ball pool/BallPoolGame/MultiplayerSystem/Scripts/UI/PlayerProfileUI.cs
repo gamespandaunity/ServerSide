@@ -61,7 +61,7 @@ public class PlayerProfileUI : MonoBehaviour
     public async void Initialize(RoomData data)
     {
         roomData = data;
-        Id = data.player_info_id.ToString();
+        Id = PlayerId.Of(data.player_info_id);
         userName.text = data.player_info_name;
         silverBet.text = "" + data.bet_amount;
         if (ChallengeText) ChallengeText.text = data.bet_type == "gold" ? "Gold Challenge" : "Silver Challenge";

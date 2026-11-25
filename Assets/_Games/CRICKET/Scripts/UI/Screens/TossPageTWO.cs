@@ -245,7 +245,7 @@ public class TossPageTWO : Singleton<TossPageTWO>
                  if (GameConstants.isWithAI == false)
                 {
                     //Photon Removal       photonView.RPC("RPC_TossDecision", RpcTarget.OthersBuffered, false);
-					CricketNetworkManager.instance.CmdTossDecision(staticVariables.UserProfiledata.user._id,false);
+					CricketNetworkManager.instance.CmdTossDecision(PlayerId.Me,false);
                 }
 
                
@@ -266,7 +266,7 @@ public class TossPageTWO : Singleton<TossPageTWO>
                 if (GameConstants.isWithAI == false)
                 {
                     //Photon Removal      photonView.RPC("RPC_ChoseTo", RpcTarget.OthersBuffered, true);
-                CricketNetworkManager.instance.CmdChoseTo(staticVariables.UserProfiledata.user._id,true);
+                CricketNetworkManager.instance.CmdChoseTo(PlayerId.Me,true);
 				}
 
 
@@ -407,7 +407,7 @@ public class TossPageTWO : Singleton<TossPageTWO>
                   if (GameConstants.isWithAI == false)
                 {
                         // photonView.RPC("RPC_TossDecision", RpcTarget.OthersBuffered, true);
-						 CricketNetworkManager.instance.CmdTossDecision(staticVariables.UserProfiledata.user._id,true);
+						 CricketNetworkManager.instance.CmdTossDecision(PlayerId.Me,true);
                 }
 
 
@@ -432,7 +432,7 @@ public class TossPageTWO : Singleton<TossPageTWO>
                 }
 				if (GameConstants.isWithAI == false)
                 {
-                CricketNetworkManager.instance.CmdChoseTo(staticVariables.UserProfiledata.user._id,false);
+                CricketNetworkManager.instance.CmdChoseTo(PlayerId.Me,false);
 				}
 
             }
@@ -686,7 +686,7 @@ public class TossPageTWO : Singleton<TossPageTWO>
               if (GameConstants.isWithAI == false)
             {
                 //Photon Removal      photonView.RPC("RPC_CoinStatus", RpcTarget.OthersBuffered, coinStatus);
-				CricketNetworkManager.instance.CmdCoinStatus(staticVariables.UserProfiledata.user._id,coinStatus);
+				CricketNetworkManager.instance.CmdCoinStatus(PlayerId.Me,coinStatus);
             }
 
          

@@ -472,7 +472,7 @@ public class HighwayCarNetwork : NetworkBehaviour
     }
 
     [Command]
-    public void CmdPlayerFinished(int PlayerId)
+    public void CmdPlayerFinished(string PlayerId)
     {
         MatchFlow.Log("Highway Racer", $"{HR_NetworkManager.FlowWho(netIdentity)} reports reaching the finish");
         ServerValidateFinishRequest();
@@ -534,7 +534,7 @@ public class HighwayCarNetwork : NetworkBehaviour
             HR_NetworkManager.Instance.ShowServerWinner(playerId);
     }
     [Command]
-    public void CmdWinText(int PlayerId)
+    public void CmdWinText(string PlayerId)
     {
         // PlayerId is intentionally ignored. The server derives the player from
         // this owned car's connection after validating its synced position.
@@ -601,7 +601,7 @@ public class HighwayCarNetwork : NetworkBehaviour
     }
 
     // [Command]
-    // public void CmdPlayerFinished(int PlayerId)
+    // public void CmdPlayerFinished(string PlayerId)
     // {
     //     Debug.Log("CmdPlayerFinished - Car");
     //     RpcActivateUIAndHandleResult(true, PlayerId.ToString());
@@ -625,13 +625,13 @@ public class HighwayCarNetwork : NetworkBehaviour
         CmdAnnounceVictory(staticVariables.UserProfiledata.user._id, reason);
     }
     [Command(requiresAuthority = false)]
-    public void CmdAnnounceVictory(int playerId, string reaosn)
+    public void CmdAnnounceVictory(string playerId, string reaosn)
     {
         ClaimedWinGuard.Accept(playerId, "Highway", reaosn, () => ServerAnnounceVictory(playerId, reaosn));
     }
 
     [Server]
-    private void ServerAnnounceVictory(int playerId, string reaosn)
+    private void ServerAnnounceVictory(string playerId, string reaosn)
     {
         MatchFlow.Log("Highway Racer", $"victory announced: {MatchFlow.Who(playerId.ToString())} — {reaosn}");
         MatchFlow.SendResult(playerId.ToString(), "victory announced: " + reaosn);
@@ -650,13 +650,13 @@ public class HighwayCarNetwork : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcAnnounceVictory(int playerId, string reason)
+    public void RpcAnnounceVictory(string playerId, string reason)
     {
         Victory(playerId, reason);
 
     }
     
-    public void Victory(int id, string reason)
+    public void Victory(string id, string reason)
     {
         
         if (ResultManager.isGameFinished == false)

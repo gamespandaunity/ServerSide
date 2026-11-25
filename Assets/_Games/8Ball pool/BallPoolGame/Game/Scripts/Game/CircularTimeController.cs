@@ -80,9 +80,9 @@ public class CircularTimeController : TimeController
         if (isMyTurnUi
             && BallPool.BallPoolGameLogic.isOnLine
             && MyEightBallNetwork.Instance != null
-            && MyEightBallNetwork.Instance.CurrentTurnId != -1
+            && !string.IsNullOrEmpty(MyEightBallNetwork.Instance.CurrentTurnId)
             && staticVariables.UserProfiledata != null && staticVariables.UserProfiledata.user != null
-            && MyEightBallNetwork.Instance.CurrentTurnId != staticVariables.UserProfiledata.user._id)
+            && !PlayerId.IsMe(MyEightBallNetwork.Instance.CurrentTurnId))
         {
             isMyTurnUi = false;
         }

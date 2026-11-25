@@ -943,7 +943,7 @@ public partial class GroundController
                         if (GameConstants.isWithAI == false)
                         {
                             //    view.RPC("ChangeBatsmanPosition", RpcTarget.OthersBuffered, _batsmanTransform.position);                                              //Photon Removal
-                            if (CricketNetworkManager.ReadyToSend) CricketNetworkManager.instance.CmdChangeBatsmanPosition(staticVariables.UserProfiledata.user._id, _batsmanTransform.position);
+                            if (CricketNetworkManager.ReadyToSend) CricketNetworkManager.instance.CmdChangeBatsmanPosition(PlayerId.Me, _batsmanTransform.position);
                         }
                     }
                 }
@@ -955,7 +955,7 @@ public partial class GroundController
                         if (GameConstants.isWithAI == false)
                         {
                             // view.RPC("ChangeBatsmanPosition", RpcTarget.OthersBuffered, _batsmanTransform.position);
-                            if (CricketNetworkManager.ReadyToSend) CricketNetworkManager.instance.CmdChangeBatsmanPosition(staticVariables.UserProfiledata.user._id, _batsmanTransform.position);
+                            if (CricketNetworkManager.ReadyToSend) CricketNetworkManager.instance.CmdChangeBatsmanPosition(PlayerId.Me, _batsmanTransform.position);
                         }
 
                     }
@@ -983,7 +983,7 @@ public partial class GroundController
                     if (CONTROLLER.PlayModeSelected == 8)
                     {
                         if (GameConstants.isWithAI == false)
-                            if (CricketNetworkManager.ReadyToSend) CricketNetworkManager.instance.CmdChangeBatsmanPosition(staticVariables.UserProfiledata.user._id, _batsmanTransform.position);
+                            if (CricketNetworkManager.ReadyToSend) CricketNetworkManager.instance.CmdChangeBatsmanPosition(PlayerId.Me, _batsmanTransform.position);
                         //{
                         //    view.RPC("ChangeBatsmanPosition", RpcTarget.OthersBuffered, _batsmanTransform.position);                                    //Photon Removal
                         //}
@@ -997,7 +997,7 @@ public partial class GroundController
                     if (CONTROLLER.PlayModeSelected == 8)
                     {
                         if (GameConstants.isWithAI == false)
-                            if (CricketNetworkManager.ReadyToSend) CricketNetworkManager.instance.CmdChangeBatsmanPosition(staticVariables.UserProfiledata.user._id, _batsmanTransform.position);
+                            if (CricketNetworkManager.ReadyToSend) CricketNetworkManager.instance.CmdChangeBatsmanPosition(PlayerId.Me, _batsmanTransform.position);
                         //{
                         //    view.RPC("ChangeBatsmanPosition", RpcTarget.OthersBuffered, _batsmanTransform.position);
                         //}
@@ -2318,7 +2318,7 @@ public partial class GroundController
                 if (GameConstants.isWithAI == false)
                 {
                     //    view.RPC("RPC_touchCancelRun", RpcTarget.OthersBuffered, (Time.time - ballConnectionTiming));                                            //Photon Removal
-                    CricketNetworkManager.instance.CmdTouchCancelRun(staticVariables.UserProfiledata.user._id, (Time.time - ballConnectionTiming));  //Photon Addition
+                    CricketNetworkManager.instance.CmdTouchCancelRun(PlayerId.Me, (Time.time - ballConnectionTiming));  //Photon Addition
                 }
             }
             else
@@ -2613,7 +2613,7 @@ public partial class GroundController
                 if (GameConstants.isWithAI == false)
                 {
                     // view.RPC("RPC_InitRun", RpcTarget.OthersBuffered, temp, boolean);
-                    CricketNetworkManager.instance.CmdInitRun(staticVariables.UserProfiledata.user._id, temp, boolean);
+                    CricketNetworkManager.instance.CmdInitRun(PlayerId.Me, temp, boolean);
                 }
 
 
@@ -2623,7 +2623,7 @@ public partial class GroundController
                 if (GameConstants.isWithAI == false)
                 {
                     //   view.RPC("RPC_InitRun", RpcTarget.OthersBuffered, temp, boolean);
-                    CricketNetworkManager.instance.CmdInitRun(staticVariables.UserProfiledata.user._id, temp, boolean);
+                    CricketNetworkManager.instance.CmdInitRun(PlayerId.Me, temp, boolean);
                 }
 
 

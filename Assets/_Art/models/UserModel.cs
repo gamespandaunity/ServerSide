@@ -74,7 +74,7 @@ public class JoinBetResponseModel
         public string bet_type;
         public int bet_amount;
         public string bet_expires_sec;
-        public int player_info_id;
+        public string player_info_id;
         public string player_info_name;
         public string player_info_snap;
     }
@@ -84,7 +84,7 @@ public class User
 {
 
     public string file_url;
-    public int _id;
+    public string _id;
     public string first_name = "you";
     public string last_name = "";
     public string full_name;
@@ -119,9 +119,9 @@ public class User
 [System.Serializable]
 public class CreateBorrowRequest
 {
-    public int sender;
+    public string sender;
 
-    public int receiver;
+    public string receiver;
 
     public string gold_coin;
 
@@ -141,7 +141,7 @@ public class CreateBorrowRequest_ResponseDetail
     public string transaction_id;
     public string borrow_type;
     public int borrow_amount;
-    public int player_info_id;
+    public string player_info_id;
     public string player_info_name;
     public string player_info_snap;
 }
@@ -159,8 +159,8 @@ public class BorrowReceiver_Parent
 public class BorrowReceiver_Model
 {
     public int _id;
-    public int sender;
-    public int receiver;
+    public string sender;
+    public string receiver;
 
     public string gold_coin;
 
@@ -186,8 +186,8 @@ public class BorrowReceiver_Model
 public class SenderBorrowRequestModel
 {
     public int _id;
-    public int sender;
-    public int receiver;
+    public string sender;
+    public string receiver;
     public string gold_coin;
     public string silver_coin;
     public string status;
@@ -234,7 +234,7 @@ public class AcceptReject_Borrow
 public class UserDataParent
 {
 
-    public int _id;
+    public string _id;
     public string first_name;
     public string user_ip;
     public string block;
@@ -274,7 +274,7 @@ public class CreateNewPlayer
 {
     public bool status;
     public string message;
-    public int _id;
+    public string _id;
     public string player_status;
 }
 #endregion
@@ -294,7 +294,7 @@ public class GENERATE_OTP_RESPONSE
 {
     public bool status;
     public int otp;
-    public int _id;
+    public string _id;
 }
 
 #endregion
@@ -313,7 +313,7 @@ public class ResetPAssword_RESPONSE
 public class DailyRewardHistoryData
 {
     public int _id;
-    public int user_id;
+    public string user_id;
     public string country;
     public DateTime createdAt;
     public DateTime updatedAt;
@@ -482,8 +482,8 @@ public class Gamehistory
 public class BorrowHistoryModel
 {
     public int _id;
-    public int sender;
-    public int receiver;
+    public string sender;
+    public string receiver;
     public string gold_coin;
     public string silver_coin;
     public string status;
@@ -695,7 +695,7 @@ public class MerchantsDetail
     public string country;
     public DateTime createdAt;
     public DateTime updatedAt;
-    public int client_id;
+    public string client_id;
     public string remarks;
     public int silver_balance;
     public int gold_balance;

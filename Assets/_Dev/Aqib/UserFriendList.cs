@@ -247,7 +247,7 @@ public class UserFriendList : MonoBehaviour
 [Serializable]
 public class FriendsModel
 {
-    public int _id;
+    public string _id;
     public string first_name;
     public string last_name;
     public string country;

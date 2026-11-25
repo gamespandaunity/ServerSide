@@ -192,7 +192,7 @@ public class HomeMenuManager : MonoBehaviour
     {
         if (player != null)
         {
-            networkGameAdapter.OnMainPlayerLoaded(int.Parse(player.userId), player.userName, player.coins, player.image, player.imageURL, player.prize);
+            networkGameAdapter.OnMainPlayerLoaded(PlayerId.Normalize(player.userId), player.userName, player.coins, player.image, player.imageURL, player.prize);
 
             challengePrizeInput.text = player.prize + "";
         }

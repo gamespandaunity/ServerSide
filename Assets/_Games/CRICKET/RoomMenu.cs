@@ -126,7 +126,7 @@ public class RoomMenu : NetworkBehaviour
            if (GameConstants.isWithAI == false)
            {
         //      photonView.RPC("SetOvers", RpcTarget.OthersBuffered, CONTROLLER.oversSelectedIndex);  
-        CricketNetworkManager.instance.CmdSetOver(staticVariables.UserProfiledata.user._id,CONTROLLER.oversSelectedIndex);                      //Photon Removal
+        CricketNetworkManager.instance.CmdSetOver(PlayerId.Me,CONTROLLER.oversSelectedIndex);                      //Photon Removal
            }
         }
         SelectButton.interactable = false;

@@ -383,8 +383,8 @@ public class NetworkGameManager : NetworkBehaviour
     public string OtherPlayerId(string playerId)
     {
         if (string.IsNullOrEmpty(playerId) || creatorData == null || joinerData == null) return null;
-        if (playerId == creatorData.playerId) return joinerData.playerId;
-        if (playerId == joinerData.playerId) return creatorData.playerId;
+        if (PlayerId.Same(playerId, creatorData.playerId)) return joinerData.playerId;
+        if (PlayerId.Same(playerId, joinerData.playerId)) return creatorData.playerId;
         return null;
     }
 
@@ -889,7 +889,7 @@ public class NetworkGameManager : NetworkBehaviour
     // ─── Result ────────────────────────────────────────────────────────────────
 
     [Command(requiresAuthority = false)]
-    public void CmdPlayerFinished(bool isWin, int playerId)
+    public void CmdPlayerFinished(bool isWin, string playerId)
     {
         Debug.Log("CmdPlayerFinished");
         // Ludo (server authority off) ends here, and this only showed the result screens: a Ludo win was never reported,
@@ -901,7 +901,7 @@ public class NetworkGameManager : NetworkBehaviour
             && !LudoNetworkManager.ServerAuthority)
         {
             string winner = isWin ? playerId.ToString() : OtherPlayerId(playerId.ToString());
-            if (!string.IsNullOrEmpty(winner) && (winner == creatorData?.playerId || winner == joinerData?.playerId))
+            if (!string.IsNullOrEmpty(winner) && (PlayerId.Same(winner, creatorData?.playerId) || PlayerId.Same(winner, joinerData?.playerId)))
             {
                 MatchFlow.Log("Ludo", $"result reported by a player: {(isWin ? "win" : "loss")} for {playerId} — winner {winner}");
                 ApiAndRoomManager._instance.WinnerLossChallenge(winner);

@@ -490,7 +490,7 @@ public partial class GroundController
                         && CONTROLLER.BattingTeamIndex == CONTROLLER.myTeamIndex
                         && CricketNetworkManager.instance != null)
                     {
-                        CricketNetworkManager.instance.CmdShowThirdUmpireReview(staticVariables.UserProfiledata.user._id, false);
+                        CricketNetworkManager.instance.CmdShowThirdUmpireReview(PlayerId.Me, false);
                     }
                     sideUmpireAnim.CrossFade("Crouch_toNotOut_New");
                     currentWicketKeeperStatus = "Show3rdUmpireResult";
@@ -508,7 +508,7 @@ public partial class GroundController
                     	&& CONTROLLER.BattingTeamIndex == CONTROLLER.myTeamIndex
                     	&& CricketNetworkManager.instance != null)
                     {
-                    	CricketNetworkManager.instance.CmdShowThirdUmpireReview(staticVariables.UserProfiledata.user._id, isPlayerStumped);
+                    	CricketNetworkManager.instance.CmdShowThirdUmpireReview(PlayerId.Me, isPlayerStumped);
                     }
                     currentWicketKeeperStatus = "waitForStumpingResult";
                     Singleton<GameData>.instance.canPauseGameplay = false;
@@ -1801,7 +1801,7 @@ public partial class GroundController
                 && CricketNetworkManager.instance != null)
             {
                 int stumpSide = (stump == stumpRight) ? 1 : 0;
-                CricketNetworkManager.instance.CmdSyncStumpAnim(staticVariables.UserProfiledata.user._id, empty, stumpSide);
+                CricketNetworkManager.instance.CmdSyncStumpAnim(PlayerId.Me, empty, stumpSide);
             }
         }
         else if (isReplayModeActive)

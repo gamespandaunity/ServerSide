@@ -10,8 +10,8 @@ public interface NetworkGameAdapter
     {
         get;
     }
-    void SetTurn(int turnId);
-    void OnMainPlayerLoaded (int playerId, string name, int coins, object avatar, string avatarURL, int prize);
+    void SetTurn(string turnId);
+    void OnMainPlayerLoaded (string playerId, string name, int coins, object avatar, string avatarURL, int prize);
 	void OnUpdateMainPlayerName (string name);
 	void OnUpdatePrize (int prize);
 	void OnUpdateOver (int Over);

@@ -736,16 +736,16 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
 
     }
     [Command(requiresAuthority = false)]
-    public void CmdWaitForOtherPlayersToJoinBeforeStart(int id, float startWaitTime)
+    public void CmdWaitForOtherPlayersToJoinBeforeStart(string id, float startWaitTime)
     {
         TPLog.Change("TeenPattiNNetworkManager", "cmdWait", "CmdWaitForOtherPlayersToJoinBeforeStart from user " + id + " -> broadcasting countdown " + startWaitTime.ToString("0.0"));
         RpcWaitForOtherPlayersToJoinBeforeStart(id, startWaitTime);
     }
 
     [ClientRpc]
-    public void RpcWaitForOtherPlayersToJoinBeforeStart(int id, float startWaitTime)
+    public void RpcWaitForOtherPlayersToJoinBeforeStart(string id, float startWaitTime)
     {
-        if (id == staticVariables.UserProfiledata.user._id)
+        if (PlayerId.IsMe(id))
         {
             TPLog.Change("TeenPattiNNetworkManager", "rpcWaitSelf", "RpcWaitForOtherPlayersToJoinBeforeStart IGNORED - this countdown was sent by me (" + id + ")");
             return;
@@ -754,16 +754,16 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
         GameStartManager.Instance.WaitForOtherPlayersToJoinBeforeStart(startWaitTime);
     }
     [Command(requiresAuthority = false)]
-    public void CmdSetRoundValue(int senderId, string currentRoundID)
+    public void CmdSetRoundValue(string senderId, string currentRoundID)
     {
         TPLog.Flow("TeenPattiNNetworkManager", "CmdSetRoundValue from user " + senderId + " roundId=" + currentRoundID);
         RpcSetRoundValue(senderId, currentRoundID);
     }
 
     [ClientRpc]
-    public void RpcSetRoundValue(int senderId, string currentRoundID)
+    public void RpcSetRoundValue(string senderId, string currentRoundID)
     {
-        if (senderId == staticVariables.UserProfiledata.user._id)
+        if (PlayerId.IsMe(senderId))
         {
             TPLog.Flow("TeenPattiNNetworkManager", "RpcSetRoundValue IGNORED - I am the sender (" + senderId + ")");
             return;

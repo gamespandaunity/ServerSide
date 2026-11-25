@@ -173,7 +173,7 @@ public class Scoreboard : Singleton<Scoreboard>
 				if (GameConstants.isWithAI == false)
 				{                                                                                                                                                                      //Photon Removal
 																																													   //photonView.RPC("RPC_PauseGame", RpcTarget.OthersBuffered);
-					CricketNetworkManager.instance.CmdPauseGame(staticVariables.UserProfiledata.user._id);
+					CricketNetworkManager.instance.CmdPauseGame(PlayerId.Me);
 				}
 
 
@@ -198,7 +198,7 @@ public class Scoreboard : Singleton<Scoreboard>
 			if (GameConstants.isWithAI == false)
 			{
 				//Photon Removal       photonView.RPC("RPC_PauseGame", RpcTarget.OthersBuffered);
-				CricketNetworkManager.instance.CmdPauseGame(staticVariables.UserProfiledata.user._id);
+				CricketNetworkManager.instance.CmdPauseGame(PlayerId.Me);
 			}
 
 

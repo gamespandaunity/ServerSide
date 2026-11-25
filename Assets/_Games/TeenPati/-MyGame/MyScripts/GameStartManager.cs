@@ -476,7 +476,7 @@ namespace TeenPattiGame
                        // Sent straight out as the ClientRpc rather than through the Cmd: the server IS the
                        // origin now. RpcSetRoundValue skips the sender, so 0 (no real user id) makes every
                        // client apply it.
-                       TeenPattiNNetworkManager.instance.RpcSetRoundValue(0, staticVariables.CurrentRoundID);
+                       TeenPattiNNetworkManager.instance.RpcSetRoundValue("", staticVariables.CurrentRoundID);
              }, withSettlementAuth: true));
         }
 

@@ -146,7 +146,7 @@ public class DRS : Singleton<DRS>
 				bool isOut = gc.IsLbwSavedDecision;
 				if (userReviewPanel.activeInHierarchy && CricketNetworkManager.instance != null)
 				{
-					CricketNetworkManager.instance.CmdDRS_Decision(staticVariables.UserProfiledata.user._id, true, isOut);
+					CricketNetworkManager.instance.CmdDRS_Decision(PlayerId.Me, true, isOut);
 				}
 				gc.ShowDrsDecisionBoardOnly(isOut);
 			}
@@ -159,7 +159,7 @@ public class DRS : Singleton<DRS>
 				if (CONTROLLER.PlayModeSelected == 8 && GameConstants.isWithAI == false
 					&& userReviewPanel.activeInHierarchy && CricketNetworkManager.instance != null)
 				{
-					CricketNetworkManager.instance.CmdDRS_Decision(staticVariables.UserProfiledata.user._id, true, false);
+					CricketNetworkManager.instance.CmdDRS_Decision(PlayerId.Me, true, false);
 				}
 				Singleton<StandbyCam>.instance.PauseTween();
 				CONTROLLER.canShowReplay = true;
@@ -191,7 +191,7 @@ public class DRS : Singleton<DRS>
 			if (GameConstants.isWithAI == false && CricketNetworkManager.instance != null)
 			{
 				//Photon Removal — 3-arg form; the isOut arg is unused on the NOT-OUT/decline path (signature parity).
-				CricketNetworkManager.instance.CmdDRS_Decision(staticVariables.UserProfiledata.user._id, false, false);
+				CricketNetworkManager.instance.CmdDRS_Decision(PlayerId.Me, false, false);
 			}
 
 
@@ -231,7 +231,7 @@ public class DRS : Singleton<DRS>
 			&& DrsReviewAnchorNetTime < 0.0)
 		{
 			DrsReviewAnchorNetTime = Mirror.NetworkTime.time;
-			CricketNetworkManager.instance.CmdSyncDrsTimer(staticVariables.UserProfiledata.user._id, DrsReviewAnchorNetTime);
+			CricketNetworkManager.instance.CmdSyncDrsTimer(PlayerId.Me, DrsReviewAnchorNetTime);
 		}
 		StartDrsTimerCountdown();
 	}

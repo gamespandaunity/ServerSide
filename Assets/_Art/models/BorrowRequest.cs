@@ -2,7 +2,7 @@
 public class BorrowRequest
 {
     public bool check;
-    public int receiver;
+    public string receiver;
     public string sender;
     public string gold_coin;
     public string silver_coin;

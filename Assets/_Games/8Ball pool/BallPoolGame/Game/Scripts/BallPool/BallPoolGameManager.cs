@@ -388,7 +388,7 @@ namespace BallPool
                     || (shot.cuePhysicsManager != null && shot.cuePhysicsManager.IsInMove));
         }
 
-        public virtual void OnForceGoHome(int winnerId)
+        public virtual void OnForceGoHome(string winnerId)
         {
             BallPoolPlayer.SetWinner(winnerId);
         }

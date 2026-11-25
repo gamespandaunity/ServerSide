@@ -1497,7 +1497,7 @@ namespace Snake_Ladder
         // ========== CLEANUP ==========
 
         [Command(requiresAuthority = false)]
-        public void CmdPlayerFinished(int ignoredPlayerId, NetworkConnectionToClient sender = null)
+        public void CmdPlayerFinished(string ignoredPlayerId, NetworkConnectionToClient sender = null)
         {
             if (!TryResolveConnection(sender, out string authoritativePlayerId, out _))
                 return;
@@ -1513,7 +1513,7 @@ namespace Snake_Ladder
             ShowServerWinner(playerId);
         }
          [Command(requiresAuthority = false)]
-        public void CmdTimerEnd(int ignoredPlayerId)
+        public void CmdTimerEnd(string ignoredPlayerId)
         {
             Debug.LogWarning("[SnakeServerResult] Legacy client timer result ignored; the server timer owns the result.");
         }

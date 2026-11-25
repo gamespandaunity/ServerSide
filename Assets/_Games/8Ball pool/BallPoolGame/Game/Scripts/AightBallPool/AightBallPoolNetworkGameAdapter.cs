@@ -20,18 +20,12 @@ public class AightBallPoolNetworkGameAdapter : NetworkGameAdapter
     {
         _homeMenuManager = homeMenuManager;
     }
-    public void SetTurn(int turnId)
+    public void SetTurn(string turnId)
     {
-        if (turnId == 0)
-            BallPoolPlayer.turnId = staticVariables.UserProfiledata.user._id;
-        else
-        {
-            BallPoolPlayer.turnId = int.Parse(EightBallPoolNetworkManager.opponentPlayer.userId);
-
-        }
-        BallPoolPlayer.turnId = turnId;
+        // turnId is the public player id of the player to move (the old 0/1 branch was always overwritten).
+        BallPoolPlayer.turnId = PlayerId.Normalize(turnId);
     }
-    public void OnMainPlayerLoaded(int playerId, string name, int coins, object avatar, string avatarURL, int prize)
+    public void OnMainPlayerLoaded(string playerId, string name, int coins, object avatar, string avatarURL, int prize)
     {
         if (!BallPoolPlayer.initialized)
         {
@@ -57,11 +51,12 @@ public class AightBallPoolNetworkGameAdapter : NetworkGameAdapter
         BallPoolGameLogic.playMode = BallPool.PlayMode.PlayerAI;
         ////Debug.Log("wow :" + NetworkManager.mainPlayer.coins);
         BallPoolPlayer.players[0].SetCoins(EightBallPoolNetworkManager.mainPlayer.coins);
-        BallPoolPlayer.players[1] = new AightBallPoolPlayer(1, name, coins, avatar, avatarURL);
+        // playerId is ignored (callers still pass the old int 1): the AI's id is always "ai".
+        BallPoolPlayer.players[1] = new AightBallPoolPlayer(PlayerId.Ai, name, coins, avatar, avatarURL);
         Dictionary<string, string> betRequestDict = new Dictionary<string, string>();
 
         // Assign values to the BetRequest fields
-        betRequestDict["first_player"] = staticVariables.UserProfiledata.user._id.ToString();
+        betRequestDict["first_player"] = PlayerId.Me;
         betRequestDict["second_player"] = "ai";
         betRequestDict["game_id"] = ApiAndRoomManager.currentGameId.ToString();
         betRequestDict["remark"] = "Multipler with Golden Coins";

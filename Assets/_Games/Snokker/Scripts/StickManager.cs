@@ -739,13 +739,13 @@ public class StickManager : NetworkBehaviour
         SnokerNetwork.Instance.RpcShowNotification(text, isFoul);
     }
     [Command(requiresAuthority = false)]
-    public void CmdAnnounceVictory(int playerId, string reaosn)
+    public void CmdAnnounceVictory(string playerId, string reaosn)
     {
         ClaimedWinGuard.Accept(playerId, "Snooker", reaosn, () => ServerAnnounceVictory(playerId, reaosn));
     }
 
     [Server]
-    private void ServerAnnounceVictory(int playerId, string reaosn)
+    private void ServerAnnounceVictory(string playerId, string reaosn)
     {
         SnookerFlow.SendResult(playerId.ToString(), "victory announced: " + reaosn);
         ApiAndRoomManager._instance.WinnerLossChallenge(playerId.ToString());
@@ -764,7 +764,7 @@ public class StickManager : NetworkBehaviour
     }
 
     [ClientRpc]
-    public void RpcAnnounceVictory(int playerId, string reason)
+    public void RpcAnnounceVictory(string playerId, string reason)
     {
         SnokerNetwork.Instance.Victory(playerId, reason);
 

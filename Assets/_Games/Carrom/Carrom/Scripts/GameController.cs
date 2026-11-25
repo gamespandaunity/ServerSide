@@ -625,7 +625,7 @@ namespace BEKStudio
             // Manual test turn switch
             if (Input.GetKeyDown(KeyCode.T))
             {
-                CarromNetworkManager.instance.CmdSwitchTurn(staticVariables.UserProfiledata.user._id);
+                CarromNetworkManager.instance.CmdSwitchTurnByPlayerId(staticVariables.UserProfiledata.user._id);
             }
             if (Input.GetKeyDown(KeyCode.R))
             {
@@ -1390,7 +1390,7 @@ namespace BEKStudio
                     }
                     else
                     {
-                        CarromNetworkManager.instance.CmdSwitchTurn(staticVariables.UserProfiledata.user._id);
+                        CarromNetworkManager.instance.CmdSwitchTurnByPlayerId(staticVariables.UserProfiledata.user._id);
 
                     }
                 }

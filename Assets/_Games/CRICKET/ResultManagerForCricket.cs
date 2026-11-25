@@ -61,7 +61,7 @@ public class ResultManagerForCricket : MonoBehaviour
                 });
             if (IsWin)
             {
-                if (PlayerId == staticVariables.UserProfiledata.user._id.ToString())
+                if (global::PlayerId.IsMe(PlayerId))
                 {
                     WinnerInitialize(staticVariables.ProfilePicture, staticVariables.UserProfiledata.user.first_name + " " + staticVariables.UserProfiledata.user.last_name);
                     ConfettiEffect1.SetActive(true);
@@ -78,7 +78,7 @@ public class ResultManagerForCricket : MonoBehaviour
             }
             else
             {
-                if (PlayerId == staticVariables.UserProfiledata.user._id.ToString())
+                if (global::PlayerId.IsMe(PlayerId))
                 {
                     LooserInitialize(staticVariables.ProfilePicture, staticVariables.UserProfiledata.user.first_name);
                     WinnerInitialize(staticVariables.opponentImage, staticVariables.OpponetProfile.userName);
@@ -100,7 +100,7 @@ public class ResultManagerForCricket : MonoBehaviour
             Rematch.SetActive(false);
             if (IsWin)
             {
-                if (PlayerId == staticVariables.UserProfiledata.user._id.ToString())
+                if (global::PlayerId.IsMe(PlayerId))
                 {
                     WinnerInitialize(staticVariables.ProfilePicture, staticVariables.UserProfiledata.user.first_name);
                     LooserInitialize(SpritesManager.Instance.spritesScriptable.aiImg, "AI");
@@ -119,7 +119,7 @@ public class ResultManagerForCricket : MonoBehaviour
             }
             else
             {
-                if (PlayerId == staticVariables.UserProfiledata.user._id.ToString())
+                if (global::PlayerId.IsMe(PlayerId))
                 {
                     LooserInitialize(staticVariables.ProfilePicture, staticVariables.UserProfiledata.user.first_name);
                     WinnerInitialize(SpritesManager.Instance.spritesScriptable.aiImg, "AI");
@@ -178,7 +178,7 @@ public class ResultManagerForCricket : MonoBehaviour
 
         staticVariables.screenstatus = "sad";
         Dictionary<string, string> betRequestDict = new Dictionary<string, string>();
-        betRequestDict["first_player"] = staticVariables.UserProfiledata.user._id.ToString();
+        betRequestDict["first_player"] = PlayerId.Me;
         betRequestDict["second_player"] = staticVariables.lastOpponentId.ToString();
         betRequestDict["game_id"] = ApiAndRoomManager.currentGameId.ToString();
         betRequestDict["remark"] = "Multipler with Golden Coins";

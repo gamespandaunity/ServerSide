@@ -555,7 +555,7 @@ public class GameManager : MonoBehaviour
         if (prefab != null)
             Instantiate(prefab, Vector3.zero, Quaternion.identity)
                 .GetComponent<ResultManager>()
-                .HandleGameResultAltMultiplayer(result, staticVariables.UserProfiledata.user._id.ToString());
+                .HandleGameResultAltMultiplayer(result, PlayerId.Me);
         else
             Debug.LogError("[8Ball] WinLoseGameManager prefab not found on reconnect!");
     }
@@ -838,7 +838,7 @@ public class GameManager : MonoBehaviour
         }
 
         bool isMultiplayer = PlayerPrefs.GetInt("EightballMultiplayer") == 1;
-        bool isMainPlayer = player.playerId == staticVariables.UserProfiledata.user._id;
+        bool isMainPlayer = PlayerId.IsMe(player.playerId);
 
         Debug.Log($"[GameManager] _OnSetPlayer - IsMultiplayer: {isMultiplayer}, IsMainPlayer: {isMainPlayer}, PlayerId: {player.playerId}");
 
@@ -895,7 +895,7 @@ public class GameManager : MonoBehaviour
     }
     void _OnSetActiveBallsIds(BallPoolPlayer player)
     {
-        if (player.playerId == staticVariables.UserProfiledata.user._id)
+        if (PlayerId.IsMe(player.playerId))
         {
             mainPlayerUI.SetActiveBallsIds(player);
         }
@@ -939,7 +939,7 @@ public class GameManager : MonoBehaviour
 
 
         //RAR
-        if (player.playerId == staticVariables.UserProfiledata.user._id)
+        if (PlayerId.IsMe(player.playerId))
         {
             mainPlayerUI.SetActive(true);
         }

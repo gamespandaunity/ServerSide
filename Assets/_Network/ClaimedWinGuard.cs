@@ -24,14 +24,14 @@ public static class ClaimedWinGuard
 
     /// <summary>Run <paramref name="accept"/> when the claim holds now, or once the opponent has gone within
     /// RecheckSeconds; otherwise log the refusal. Each claim is accepted at most once.</summary>
-    public static void Accept(int claimedWinnerId, string game, string reason, Action accept)
+    public static void Accept(string claimedWinnerId, string game, string reason, Action accept)
     {
         if (Allow(claimedWinnerId, game, reason, logRefusal: false)) { accept(); return; }
         Debug.Log($"[ClaimedWin][{game}] Win claim for {claimedWinnerId} held: the opponent is still connected; re-checking for {RecheckSeconds:0} s.");
         MatchServerApi.Run(RecheckClaim(claimedWinnerId, game, reason, accept));
     }
 
-    static IEnumerator RecheckClaim(int claimedWinnerId, string game, string reason, Action accept)
+    static IEnumerator RecheckClaim(string claimedWinnerId, string game, string reason, Action accept)
     {
         float until = Time.realtimeSinceStartup + RecheckSeconds;
         while (Time.realtimeSinceStartup < until)
@@ -47,7 +47,7 @@ public static class ClaimedWinGuard
         Allow(claimedWinnerId, game, reason, logRefusal: true);
     }
 
-    public static bool Allow(int claimedWinnerId, string game, string reason, bool logRefusal = true)
+    public static bool Allow(string claimedWinnerId, string game, string reason, bool logRefusal = true)
     {
         var connected = new List<string>();
         foreach (NetworkConnectionToClient conn in NetworkServer.connections.Values)
@@ -57,16 +57,16 @@ public static class ClaimedWinGuard
             if (player != null && !string.IsNullOrEmpty(player.playerId)) connected.Add(player.playerId);
         }
 
-        string claimed = claimedWinnerId.ToString();
-        if (connected.Count == 1 && connected[0] == claimed) return true;
+        string claimed = PlayerId.Normalize(claimedWinnerId);
+        if (connected.Count == 1 && PlayerId.Same(connected[0], claimed)) return true;
 
         // The opponent announced they are going (Leave, or their app quitting): the remaining player's app claims the
         // win at once, while that connection is still closing. Accept it for the other player of this match only.
         var ngm = NetworkGameManager.Instance;
         string leaver = ngm != null ? ngm.ExplicitLeaverId : null;
-        if (!string.IsNullOrEmpty(leaver) && leaver != claimed && ngm.creatorData != null && ngm.joinerData != null
-            && (claimed == ngm.creatorData.playerId || claimed == ngm.joinerData.playerId)
-            && (leaver == ngm.creatorData.playerId || leaver == ngm.joinerData.playerId))
+        if (!string.IsNullOrEmpty(leaver) && !PlayerId.Same(leaver, claimed) && ngm.creatorData != null && ngm.joinerData != null
+            && (PlayerId.Same(claimed, ngm.creatorData.playerId) || PlayerId.Same(claimed, ngm.joinerData.playerId))
+            && (PlayerId.Same(leaver, ngm.creatorData.playerId) || PlayerId.Same(leaver, ngm.joinerData.playerId)))
         {
             Debug.Log($"[ClaimedWin][{game}] Accepted the win claim for {claimed}: {leaver} announced they are leaving.");
             return true;

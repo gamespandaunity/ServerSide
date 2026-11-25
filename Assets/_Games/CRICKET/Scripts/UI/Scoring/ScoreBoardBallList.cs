@@ -82,7 +82,7 @@ public class ScoreBoardBallList : Singleton<ScoreBoardBallList>
 		{
 			//print("CHECK CALLED");
 			//Photon Removal      photonView.RPC("RPC_ChangeBallData", RpcTarget.OthersBuffered, Score, ExtraInfo);
-			CricketNetworkManager.instance.CmdChangeBallData(staticVariables.UserProfiledata.user._id, Score, ExtraInfo);
+			CricketNetworkManager.instance.CmdChangeBallData(PlayerId.Me, Score, ExtraInfo);
 		}
 
 
@@ -113,7 +113,7 @@ public class ScoreBoardBallList : Singleton<ScoreBoardBallList>
 			if (!Launcher.Instance.IsReConnecting())
 			{
 				//Photon Removal   photonView.RPC("RPC_CallCheckForOverComplete", RpcTarget.OthersBuffered);
-				CricketNetworkManager.instance.CmdCallCheckForOverComplete(staticVariables.UserProfiledata.user._id);
+				CricketNetworkManager.instance.CmdCallCheckForOverComplete(PlayerId.Me);
 
 				Invoke("CallCheckOverComplete", 1f);
 			}
@@ -169,7 +169,7 @@ public class ScoreBoardBallList : Singleton<ScoreBoardBallList>
 				if (GameConstants.isWithAI == false)
 				{
 					//Photon Removal        photonView.RPC("RPC_ReBowlLastBall", RpcTarget.OthersBuffered);
-					CricketNetworkManager.instance.CmdReBowlLastBall(staticVariables.UserProfiledata.user._id);
+					CricketNetworkManager.instance.CmdReBowlLastBall(PlayerId.Me);
 				}
 
 

@@ -755,7 +755,7 @@ public class BattingScoreCard : Singleton<BattingScoreCard>
 					// CmdSetBowler that means the bowler is never assigned or relayed, i.e. the two sides end up
 					// with different bowlers. Only the sends actually seen throwing are guarded.
 					if (CricketNetworkManager.ReadyToSend)
-					    CricketNetworkManager.instance.CmdToggleCanLoadBowlerScoreCard(staticVariables.UserProfiledata.user._id, false);
+					    CricketNetworkManager.instance.CmdToggleCanLoadBowlerScoreCard(PlayerId.Me, false);
 					else
 					    ConstantsData_M.MpLog("[GhostSend] ToggleCanLoadBowlerScoreCard(false) BLOCKED — network manager not ready (ghost session); caller continues instead of throwing.");
 				}
@@ -938,7 +938,7 @@ public class BattingScoreCard : Singleton<BattingScoreCard>
 				// CmdSetBowler that means the bowler is never assigned or relayed, i.e. the two sides end up
 				// with different bowlers. Only the sends actually seen throwing are guarded.
 				if (CricketNetworkManager.ReadyToSend)
-				    CricketNetworkManager.instance.CmdToggleCanLoadBowlerScoreCard(staticVariables.UserProfiledata.user._id, true);
+				    CricketNetworkManager.instance.CmdToggleCanLoadBowlerScoreCard(PlayerId.Me, true);
 				else
 				    ConstantsData_M.MpLog("[GhostSend] ToggleCanLoadBowlerScoreCard(true) BLOCKED — network manager not ready (ghost session); caller continues instead of throwing.");
 
@@ -966,7 +966,7 @@ public class BattingScoreCard : Singleton<BattingScoreCard>
 			if (CricketNetworkManager.instance == null)
 				yield break;
 			if (GameConstants.isWithAI == false)
-				CricketNetworkManager.instance.CmdBattingScoreCardContinue(staticVariables.UserProfiledata.user._id);
+				CricketNetworkManager.instance.CmdBattingScoreCardContinue(PlayerId.Me);
 			//{																																		   //Photon Removal
 			//    photonView.RPC("RPC_Continue", RpcTarget.OthersBuffered);
 			//}

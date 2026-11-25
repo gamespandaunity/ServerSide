@@ -39,7 +39,7 @@ namespace BEKStudio
             LooserName.text = name;
         }
         //Photon Removal  [PunRPC]
-        public void WinPlayer(bool IsWin, int playerId)
+        public void WinPlayer(bool IsWin, string playerId)
         {
             IsCarromWin = true;
             FinishPanel.SetActive(true);
@@ -73,7 +73,7 @@ namespace BEKStudio
                     NetworkGameManager.OnRematchRecived += RematchRequestRecived;
                     if (IsWin)
                     {
-                        if (playerId == staticVariables.UserProfiledata.user._id)
+                        if (PlayerId.IsMe(playerId))
                         {
                             // Local player is winner
                             Debug.Log("🏆 Local Player Wins");
@@ -102,7 +102,7 @@ namespace BEKStudio
                     // ---------------- LOSE CASE ----------------
                     else
                     {
-                        if (playerId == staticVariables.UserProfiledata.user._id)
+                        if (PlayerId.IsMe(playerId))
                         {
                             // Local player loses
                             Debug.Log("💀 Local Player Loses");
@@ -136,7 +136,7 @@ namespace BEKStudio
                     Rematch.SetActive(false);
                     if (IsWin)
                     {
-                        if (playerId == staticVariables.UserProfiledata.user._id)
+                        if (PlayerId.IsMe(playerId))
                         {
                             WinnerInitialize(staticVariables.ProfilePicture, staticVariables.UserProfiledata.user.first_name + " " + staticVariables.UserProfiledata.user.last_name);
                             ApiAndRoomManager._instance.WinnerLossAIChallenge(staticVariables.UserProfiledata.user._id.ToString());
@@ -154,7 +154,7 @@ namespace BEKStudio
                     }
                     else
                     {
-                        if (playerId == staticVariables.UserProfiledata.user._id)
+                        if (PlayerId.IsMe(playerId))
                         {
                             LooserInitialize(staticVariables.ProfilePicture, staticVariables.UserProfiledata.user.first_name + " " + staticVariables.UserProfiledata.user.last_name);
                             WinnerInitialize(SpritesManager.Instance.spritesScriptable.aiImg, "AI");

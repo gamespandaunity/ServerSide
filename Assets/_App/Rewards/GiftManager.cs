@@ -185,8 +185,8 @@ public class GiftManager : MonoBehaviour
 public class GiftPlayerData
 {
     public int _id;
-    public int sender_id;
-    public int receiver_id;
+    public string sender_id;
+    public string receiver_id;
     public int is_claimed;
     public int silver;
     public int gold;

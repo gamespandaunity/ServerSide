@@ -137,7 +137,7 @@ public partial class GroundController
         if (CONTROLLER.PlayModeSelected == 8 && CONTROLLER.BattingTeamIndex == CONTROLLER.myTeamIndex
             && GameConstants.isWithAI == false && CricketNetworkManager.instance != null)
         {
-            CricketNetworkManager.instance.CmdShowThirdUmpireReview(staticVariables.UserProfiledata.user._id, isPlayerStumped);
+            CricketNetworkManager.instance.CmdShowThirdUmpireReview(PlayerId.Me, isPlayerStumped);
         }
         Time.timeScale = 1f;
         Singleton<GameData>.instance.GameIsNotOnStumpingReplay();
@@ -1672,7 +1672,7 @@ public partial class GroundController
         {
             if (GameConstants.isWithAI == false && CricketNetworkManager.instance != null)
             {
-                CricketNetworkManager.instance.CmdSetUltraEdgeDecision(staticVariables.UserProfiledata.user._id, umpireInitialDecision, hasEdgeOccurred);
+                CricketNetworkManager.instance.CmdSetUltraEdgeDecision(PlayerId.Me, umpireInitialDecision, hasEdgeOccurred);
             }
         }
 

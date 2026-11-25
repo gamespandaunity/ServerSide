@@ -158,8 +158,8 @@ namespace BallPool
         // rules) the turn player, exactly as before.
         private AightBallPoolPlayer ResolveRuleShooter()
         {
-            int shooterId = (BallPoolGameLogic.isOnLine && Mirror.NetworkServer.active && MyEightBallNetwork.Instance != null)
-                ? MyEightBallNetwork.Instance.ActiveShotPlayerId : -1;
+            string shooterId = (BallPoolGameLogic.isOnLine && Mirror.NetworkServer.active && MyEightBallNetwork.Instance != null)
+                ? MyEightBallNetwork.Instance.ActiveShotPlayerId : "";
             return ResolveShotPlayer(shooterId);
         }
         bool isHighlighterShowed = false;
@@ -346,13 +346,13 @@ namespace BallPool
             return true;
         }
 
-        private AightBallPoolPlayer ResolveShotPlayer(int shooterPlayerId)
+        private AightBallPoolPlayer ResolveShotPlayer(string shooterPlayerId)
         {
-            if (shooterPlayerId > 0 && BallPoolPlayer.players != null)
+            if (!string.IsNullOrEmpty(shooterPlayerId) && BallPoolPlayer.players != null)
             {
                 foreach (BallPoolPlayer player in BallPoolPlayer.players)
                 {
-                    if (player != null && player.playerId == shooterPlayerId)
+                    if (player != null && PlayerId.Same(player.playerId, shooterPlayerId))
                     {
                         return player as AightBallPoolPlayer;
                     }
@@ -380,7 +380,7 @@ namespace BallPool
             return null;
         }
 
-        public void OnEndShot(bool blackBallInPocket, out bool gameIsEnd, int shooterPlayerId = -1)
+        public void OnEndShot(bool blackBallInPocket, out bool gameIsEnd, string shooterPlayerId = "")
         {
             gameIsEnd = false;
             CircularTimeController.isSoundPlaying = false;

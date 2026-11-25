@@ -383,7 +383,7 @@ public class GameGUIController : NetworkBehaviour
         {
             for (int j = 0; j < PlayersIDs.Count - 1; j++)
             {
-                if (string.Compare(playerObjects[j].id, playerObjects[j + 1].id) == 1)
+                if (string.CompareOrdinal(playerObjects[j].id, playerObjects[j + 1].id) > 0)
                 {
                     // swaap ids
                     PlayerObject temp = playerObjects[j + 1];
@@ -1813,7 +1813,7 @@ public class GameGUIController : NetworkBehaviour
     {
         var ngm = NetworkGameManager.Instance;
         if (ngm == null || ngm.creatorData == null || ngm.joinerData == null) return pl == 0;
-        bool creatorFirst = string.Compare(ngm.creatorData.playerId, ngm.joinerData.playerId) != 1;
+        bool creatorFirst = string.CompareOrdinal(ngm.creatorData.playerId, ngm.joinerData.playerId) <= 0;
         return (pl == 0) == creatorFirst;
     }
 

@@ -204,7 +204,7 @@ public partial class GroundController
         if (!CricketNetworkManager.ReadyToSend || bowlingSpot == null) return;
 
         Vector3 spot = bowlingSpot.position;
-        CricketNetworkManager.instance.CmdChangeBowlinSpot(staticVariables.UserProfiledata.user._id, spot);
+        CricketNetworkManager.instance.CmdChangeBowlinSpot(PlayerId.Me, spot);
         ConstantsData_M.MpLog($"[GroundController][ReBroadcastBowlingSpot] Bowling side re-sent spot {spot} for the rejoining opponent.");
     }
 
@@ -697,7 +697,7 @@ public partial class GroundController
             && CricketNetworkManager.ReadyToSend && staticVariables.UserProfiledata?.user != null)
         {
             ConstantsData_M.MpLog("[GroundController][DeliveryWatchdog] Relaying the re-arm to the opponent so both sides re-arm identically.");
-            CricketNetworkManager.instance.CmdRelayStallReArm(staticVariables.UserProfiledata.user._id);
+            CricketNetworkManager.instance.CmdRelayStallReArm(PlayerId.Me);
         }
     }
 
@@ -766,7 +766,7 @@ public partial class GroundController
             && Time.unscaledTime - _stallPeerAskedAt >= STALL_PEER_ASK_EVERY)
         {
             _stallPeerAskedAt = Time.unscaledTime;
-            CricketNetworkManager.instance.CmdRequestPeerStall(staticVariables.UserProfiledata.user._id, _stallEpisodeId);
+            CricketNetworkManager.instance.CmdRequestPeerStall(PlayerId.Me, _stallEpisodeId);
         }
     }
 
@@ -1248,7 +1248,7 @@ public partial class GroundController
         // so both markers agree from the first re-bowled ball (same relay a manual drag uses; idempotent).
         if (GameConstants.isWithAI == false && CricketNetworkManager.instance != null && bowlingSpot != null)
         {
-            CricketNetworkManager.instance.CmdChangeBowlinSpot(staticVariables.UserProfiledata.user._id,
+            CricketNetworkManager.instance.CmdChangeBowlinSpot(PlayerId.Me,
                 new Vector3(bowlingSpot.position.x, bowlingSpot.position.y, bowlingSpot.position.z));
             ConstantsData_M.MpLog($"[GroundController][ShowReconnectHudForBowler] Re-broadcast bowling spot {bowlingSpot.position} so both indicators agree.");
         }

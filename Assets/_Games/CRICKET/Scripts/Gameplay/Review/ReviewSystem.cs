@@ -128,7 +128,7 @@ public class ReviewSystem : Singleton<ReviewSystem>
 		{
 			if (GameConstants.isWithAI == false && CricketNetworkManager.instance != null)
 			{
-				CricketNetworkManager.instance.CmdMultiplayerReview(staticVariables.UserProfiledata.user._id, true);
+				CricketNetworkManager.instance.CmdMultiplayerReview(PlayerId.Me, true);
 			}
 		}
 
@@ -176,7 +176,7 @@ public class ReviewSystem : Singleton<ReviewSystem>
 		{
 			if (GameConstants.isWithAI == false && CricketNetworkManager.instance != null)
 			{
-				CricketNetworkManager.instance.CmdMultiplayerReview(staticVariables.UserProfiledata.user._id, false);
+				CricketNetworkManager.instance.CmdMultiplayerReview(PlayerId.Me, false);
 			}
 		}
         if (!askedForReview && !Singleton<GroundController>.instance.canAIAskForReview && CONTROLLER.PlayModeSelected != 8)

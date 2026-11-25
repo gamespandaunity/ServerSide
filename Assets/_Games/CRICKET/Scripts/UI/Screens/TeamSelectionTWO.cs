@@ -278,7 +278,7 @@ public class TeamSelectionTWO : Singleton<TeamSelectionTWO>
 			if (GameConstants.isWithAI == false)
 			{
 				//Photon Removal       photonView.RPC("RPC_ChangeMyTeamIndex", RpcTarget.OthersBuffered, CONTROLLER.myTeamIndex);
-				CricketNetworkManager.instance.CmdChangeMyTeamIndex(staticVariables.UserProfiledata.user._id, CONTROLLER.myTeamIndex);
+				CricketNetworkManager.instance.CmdChangeMyTeamIndex(PlayerId.Me, CONTROLLER.myTeamIndex);
 			}
 
 
@@ -319,7 +319,7 @@ public class TeamSelectionTWO : Singleton<TeamSelectionTWO>
 			if (GameConstants.isWithAI == false)
 			{
 				//Photon Removal       photonView.RPC("RPC_ChangeMyTeamIndex", RpcTarget.OthersBuffered, CONTROLLER.myTeamIndex);
-				CricketNetworkManager.instance.CmdChangeMyTeamIndex(staticVariables.UserProfiledata.user._id, CONTROLLER.myTeamIndex);
+				CricketNetworkManager.instance.CmdChangeMyTeamIndex(PlayerId.Me, CONTROLLER.myTeamIndex);
 			}
 
 
@@ -543,7 +543,7 @@ public class TeamSelectionTWO : Singleton<TeamSelectionTWO>
 			if (GameConstants.isWithAI == false)
 			{
 				//Photon Removal       photonView.RPC("RPC_ChangeMyTeamIndex", RpcTarget.OthersBuffered, CONTROLLER.myTeamIndex);
-				CricketNetworkManager.instance.CmdChangeMyTeamIndex(staticVariables.UserProfiledata.user._id, CONTROLLER.myTeamIndex);
+				CricketNetworkManager.instance.CmdChangeMyTeamIndex(PlayerId.Me, CONTROLLER.myTeamIndex);
 			}
 			PaidContinue();
 		}
@@ -742,7 +742,7 @@ public class TeamSelectionTWO : Singleton<TeamSelectionTWO>
 			}
 			if (GameConstants.isWithAI == false)
 			{
-				CricketNetworkManager.instance.CmdChangeMyTeamIndex(staticVariables.UserProfiledata.user._id, CONTROLLER.myTeamIndex);
+				CricketNetworkManager.instance.CmdChangeMyTeamIndex(PlayerId.Me, CONTROLLER.myTeamIndex);
 			}
 		}
 		//Singleton<NavigationBack>.instance.deviceBack = Back;

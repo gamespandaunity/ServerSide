@@ -134,7 +134,7 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
             return;
         }
 
-        NetworkGameManager.Instance.CmdPlayerFinished(true, int.Parse(winnerID));
+        NetworkGameManager.Instance.CmdPlayerFinished(true, winnerID);
     }
     #endregion
     void Awake()
@@ -225,8 +225,8 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
         else
         {
             var ngm = NetworkGameManager.Instance;
-            // Phones bubble-sort playerObjects with string.Compare(a, b) == 1 → swap; the first one starts (firstPlayerInGame = 0).
-            creatorPl = string.Compare(ngm.creatorData.playerId, ngm.joinerData.playerId) == 1 ? 1 : 0;
+            // Phones bubble-sort playerObjects with string.CompareOrdinal(a, b) > 0 → swap; the first one starts (firstPlayerInGame = 0).
+            creatorPl = string.CompareOrdinal(ngm.creatorData.playerId, ngm.joinerData.playerId) > 0 ? 1 : 0;
             board = new LudoServerBoard(0, System.Environment.TickCount);
         }
         serverAuthority = true;
@@ -524,7 +524,7 @@ public class LudoNetworkManager : NetworkBehaviour, IMultiSeatTable
             LudoFourPlayerResult.Show(winnerId, othersPlaying == 0 ? "Last player at the table" : "All 4 tokens home");
             return;
         }
-        NetworkGameManager.Instance.CmdPlayerFinished(true, int.Parse(winnerId));
+        NetworkGameManager.Instance.CmdPlayerFinished(true, winnerId);
     }
 
     // ═══════════════════════ N-PLAYER SEATS (MaxPlayers > 2, ludo-4-player plan §4.2–4.4) ═══════════════════════

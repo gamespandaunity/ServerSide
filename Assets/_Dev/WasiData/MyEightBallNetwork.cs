@@ -44,7 +44,7 @@ public class MyEightBallNetwork : NetworkBehaviour
 
 
     [SyncVar(hook = nameof(OnTurnChanged))]
-    private int currentTurnId = -1;
+    private string currentTurnId = "";
 
     [SyncVar(hook = nameof(OnShotPhaseChanged))]
     private int shotPhase = (int)EightBallShotPhase.WaitingForPlayers;
@@ -123,8 +123,8 @@ public class MyEightBallNetwork : NetworkBehaviour
     // stick every frame from SyncWithNetwork ("stick on both sides after reconnect"). The reconnect
     // restore replays this cached value so the rejoining client converges to the real visibility.
     private bool lastCueVisible = true;
-    private int pendingScratchPlayerId = -1;
-    private int activeShotPlayerId = -1;
+    private string pendingScratchPlayerId = "";
+    private string activeShotPlayerId = "";
 
 
     private float activeShotStartedAtRealtime = 0f;
@@ -153,7 +153,7 @@ public class MyEightBallNetwork : NetworkBehaviour
     // does not prove the shot ended; the reliable final board must arrive before scoring it.
     private const float ShooterFrameStarvationSeconds = 1.0f;
     public int ActiveShotSequence => latestStartedShotSequence > activeShotSequence ? latestStartedShotSequence : activeShotSequence;
-    public int ActiveShotPlayerId => activeShotPlayerId;
+    public string ActiveShotPlayerId => activeShotPlayerId;
 
 
 
@@ -165,8 +165,8 @@ public class MyEightBallNetwork : NetworkBehaviour
 
 
     private float lastTurnPlayTime = 0f;
-    private int pendingTimerRewardReconnectPlayerId = -1;
-    private int pendingTimerRewardTurnPlayerId = -1;
+    private string pendingTimerRewardReconnectPlayerId = "";
+    private string pendingTimerRewardTurnPlayerId = "";
     private bool timerConnectionMonitorReady = false;
     private bool player1WasConnectedForTimer = false;
     private bool player2WasConnectedForTimer = false;
@@ -203,12 +203,12 @@ public class MyEightBallNetwork : NetworkBehaviour
     private int _flowLastPotShot = -1;
     private int _flowLastOpenTableShot = -1;
 
-    private static string FlowWho(int playerId) => MatchFlow.Who(playerId.ToString());
+    private static string FlowWho(string playerId) => MatchFlow.Who(playerId);
 
-    private int FlowOpponent(int playerId)
+    private string FlowOpponent(string playerId)
     {
-        if (!int.TryParse(player1Id, out int p1) || !int.TryParse(player2Id, out int p2)) return -1;
-        return playerId == p1 ? p2 : p1;
+        if (string.IsNullOrEmpty(player1Id) || string.IsNullOrEmpty(player2Id)) return "";
+        return PlayerId.Same(playerId, player1Id) ? player2Id : player1Id;
     }
 
     public Win8Ball winPanel;
@@ -252,8 +252,8 @@ public class MyEightBallNetwork : NetworkBehaviour
         {
             yield return new WaitForSecondsRealtime(0.1f);
 
-            if (!int.TryParse(player1Id, out int p1Id) || !int.TryParse(player2Id, out int p2Id)
-                || p1Id <= 0 || p2Id <= 0)
+            string p1Id = player1Id, p2Id = player2Id;
+            if (string.IsNullOrEmpty(p1Id) || string.IsNullOrEmpty(p2Id))
                 continue;
 
             bool p1Connected = IsPlayerConnected(p1Id);
@@ -306,8 +306,8 @@ public class MyEightBallNetwork : NetworkBehaviour
                 !string.IsNullOrEmpty(NetworkGameManager.Instance.joinerData.playerId))
             {
 
-                player1Id = NetworkGameManager.Instance.creatorData.playerId;
-                player2Id = NetworkGameManager.Instance.joinerData.playerId;
+                player1Id = PlayerId.Normalize(NetworkGameManager.Instance.creatorData.playerId);
+                player2Id = PlayerId.Normalize(NetworkGameManager.Instance.joinerData.playerId);
 
                 Debug.Log($"[Server] Player1 (Creator): {player1Id}, Player2 (Joiner): {player2Id}");
 
@@ -316,21 +316,13 @@ public class MyEightBallNetwork : NetworkBehaviour
 
                 if (randomTurn == 0)
                 {
-
-                    if (int.TryParse(player1Id, out int p1Id))
-                    {
-                        currentTurnId = p1Id;
-                        Debug.Log($"[Server] Turn set to Player1 (Creator): {currentTurnId}");
-                    }
+                    currentTurnId = player1Id;
+                    Debug.Log($"[Server] Turn set to Player1 (Creator): {currentTurnId}");
                 }
                 else
                 {
-
-                    if (int.TryParse(player2Id, out int p2Id))
-                    {
-                        currentTurnId = p2Id;
-                        Debug.Log($"[Server] Turn set to Player2 (Joiner): {currentTurnId}");
-                    }
+                    currentTurnId = player2Id;
+                    Debug.Log($"[Server] Turn set to Player2 (Joiner): {currentTurnId}");
                 }
 
 
@@ -356,7 +348,7 @@ public class MyEightBallNetwork : NetworkBehaviour
     private int turnApplySeq = 0;
 
     [ClientRpc]
-    private void RpcNotifyTurnSet(int turnPlayerId)
+    private void RpcNotifyTurnSet(string turnPlayerId)
     {
         Debug.Log($"[Client] Server decided turn for Player: {turnPlayerId}");
         IsTossDone = true;
@@ -386,7 +378,7 @@ public class MyEightBallNetwork : NetworkBehaviour
             ResultManager.GameSpawnedFinished = false;
         }
 
-        if (PlayerPrefs.GetInt("EightballMultiplayer") == 1 && currentTurnId != -1)
+        if (PlayerPrefs.GetInt("EightballMultiplayer") == 1 && !string.IsNullOrEmpty(currentTurnId))
         {
             turnApplySeq++;
             StartCoroutine(WaitAndApplyTurn(currentTurnId, turnApplySeq));
@@ -413,7 +405,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         }
     }
 
-    private System.Collections.IEnumerator WaitAndApplyTurn(int playerId, int seq)
+    private System.Collections.IEnumerator WaitAndApplyTurn(string playerId, int seq)
     {
 
         float timeout = 10f;
@@ -429,7 +421,7 @@ public class MyEightBallNetwork : NetworkBehaviour
             {
 
 
-                ApplyTurn(currentTurnId != -1 ? currentTurnId : playerId);
+                ApplyTurn(!string.IsNullOrEmpty(currentTurnId) ? currentTurnId : playerId);
                 yield break;
             }
 
@@ -459,7 +451,7 @@ public class MyEightBallNetwork : NetworkBehaviour
     // in the static players array, so a turn that flipped while this device was disconnected leaves
     // myTurn=true until ApplyTurn runs — long enough for turn-gated UI (power slider) to show on
     // BOTH devices at once after a reconnect.
-    public int CurrentTurnId => currentTurnId;
+    public string CurrentTurnId => currentTurnId;
 
 
 
@@ -468,10 +460,9 @@ public class MyEightBallNetwork : NetworkBehaviour
     {
         if (PlayerPrefs.GetInt("EightballMultiplayer") != 1) return true;
         if (staticVariables.UserProfiledata == null || staticVariables.UserProfiledata.user == null) return false;
-        int localId = staticVariables.UserProfiledata.user._id;
         return canShoot
             && !postShotControlLocked
-            && currentTurnId == localId
+            && PlayerId.IsMe(currentTurnId)
             && (shotPhase == (int)EightBallShotPhase.Aiming || shotPhase == (int)EightBallShotPhase.BallInHand);
     }
 
@@ -483,7 +474,7 @@ public class MyEightBallNetwork : NetworkBehaviour
     void OnCanShootChanged(bool oldValue, bool newValue)
     {
         if (PlayerPrefs.GetInt("EightballMultiplayer") != 1) return;
-        if (newValue && !postShotControlLocked && currentTurnId != -1)
+        if (newValue && !postShotControlLocked && !string.IsNullOrEmpty(currentTurnId))
             RefreshLocalTurnControl(currentTurnId, "server opened shooting (canShoot)");
     }
 
@@ -497,13 +488,13 @@ public class MyEightBallNetwork : NetworkBehaviour
         poolMessenger.shotController.ApplyNetworkBallDragging(newValue);
     }
 
-    void OnTurnChanged(int oldTurn, int newTurn)
+    void OnTurnChanged(string oldTurn, string newTurn)
     {
 
 
 
-        if (PlayerPrefs.GetInt("EightballMultiplayer") != 1 || newTurn == -1) return;
-        if (oldTurn != -1)
+        if (PlayerPrefs.GetInt("EightballMultiplayer") != 1 || string.IsNullOrEmpty(newTurn)) return;
+        if (!string.IsNullOrEmpty(oldTurn))
         {
 
 
@@ -547,7 +538,7 @@ public class MyEightBallNetwork : NetworkBehaviour
     }
 
     /// <summary>
-    /// The first cut of this called ApplyTurn directly and bailed on currentTurnId == -1. Tester logs from
+    /// The first cut of this called ApplyTurn directly and bailed on an empty currentTurnId (was -1). Tester logs from
     /// 2026-07-17 (27 reconnects) show it NEVER fired: the players finish rebuilding before the currentTurnId
     /// SyncVar has landed, so the early-return swallowed every call and issues 4/6 survived. Wait for the turn
     /// to be known instead, then apply it to the (by now definitely rebuilt) live player objects. Bounded so a
@@ -556,12 +547,12 @@ public class MyEightBallNetwork : NetworkBehaviour
     System.Collections.IEnumerator ReapplyTurnWhenKnown()
     {
         float deadline = Time.realtimeSinceStartup + 10f;
-        while (Time.realtimeSinceStartup < deadline && currentTurnId == -1)
+        while (Time.realtimeSinceStartup < deadline && string.IsNullOrEmpty(currentTurnId))
             yield return null;
 
-        if (currentTurnId == -1)
+        if (string.IsNullOrEmpty(currentTurnId))
         {
-            Debug.LogWarning("[8Ball][TurnControl] Re-apply skipped — currentTurnId still -1 after 10s.");
+            Debug.LogWarning("[8Ball][TurnControl] Re-apply skipped — currentTurnId still empty after 10s.");
             yield break;
         }
 
@@ -569,7 +560,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         ApplyTurn(currentTurnId);
     }
 
-    void ApplyTurn(int playerId)
+    void ApplyTurn(string playerId)
     {
 
         if (BallPoolPlayer.players == null || BallPoolPlayer.players.Length < 2)
@@ -584,11 +575,11 @@ public class MyEightBallNetwork : NetworkBehaviour
         ShowTurnNotification(playerId, turnPlayerName);
     }
 
-    private void RefreshLocalTurnControl(int turnPlayerId, string reason)
+    private void RefreshLocalTurnControl(string turnPlayerId, string reason)
     {
         if (PlayerPrefs.GetInt("EightballMultiplayer") != 1)
             return;
-        if (turnPlayerId <= 0)
+        if (string.IsNullOrEmpty(turnPlayerId))
             return;
         if (!NetworkClient.active)
             return;
@@ -621,7 +612,7 @@ public class MyEightBallNetwork : NetworkBehaviour
             return;
         }
 
-        bool isMyTurn = turnPlayerId == staticVariables.UserProfiledata.user._id;
+        bool isMyTurn = PlayerId.IsMe(turnPlayerId);
         bool canControl = LocalPlayerCanShoot() || BallPoolGameLogic.playMode == BallPool.PlayMode.HotSeat;
         bool physicsMoving = shot.cuePhysicsManager != null && shot.cuePhysicsManager.IsInMove;
         if (!shot.isMoving && !physicsMoving)
@@ -638,14 +629,14 @@ public class MyEightBallNetwork : NetworkBehaviour
         StartCoroutine(RefreshLocalTurnControlDelayed(turnPlayerId, reason));
     }
 
-    private System.Collections.IEnumerator RefreshLocalTurnControlDelayed(int turnPlayerId, string reason)
+    private System.Collections.IEnumerator RefreshLocalTurnControlDelayed(string turnPlayerId, string reason)
     {
         float timeout = 6f;
         while (timeout > 0f)
         {
             yield return null;
 
-            if (currentTurnId != -1 && currentTurnId != turnPlayerId)
+            if (!string.IsNullOrEmpty(currentTurnId) && currentTurnId != turnPlayerId)
                 yield break;
 
             ShotController shot = poolMessenger != null && poolMessenger.shotController != null
@@ -664,7 +655,7 @@ public class MyEightBallNetwork : NetworkBehaviour
                 continue;
             }
 
-            bool isMyTurn = turnPlayerId == staticVariables.UserProfiledata.user._id;
+            bool isMyTurn = PlayerId.IsMe(turnPlayerId);
             bool canControl = LocalPlayerCanShoot() || BallPoolGameLogic.playMode == BallPool.PlayMode.HotSeat;
             shot.ActivateControl(canControl);
             Debug.Log($"[8Ball][TurnControl] Delayed {reason}: localUser={staticVariables.UserProfiledata.user._id}, turn={turnPlayerId}, isMyTurn={isMyTurn}, canControl={canControl}, canShoot={canShoot}, phase={(EightBallShotPhase)shotPhase}.");
@@ -686,7 +677,7 @@ public class MyEightBallNetwork : NetworkBehaviour
     private const float MaxShotSeconds = 15.0f;
     private int postShotBarrierToken = 0;
     private int activeBarrierToken = -1;
-    private int activeBarrierTurnId = -1;
+    private string activeBarrierTurnId = "";
     private readonly System.Collections.Generic.HashSet<int> barrierReadyConnIds
         = new System.Collections.Generic.HashSet<int>();
 
@@ -747,7 +738,7 @@ public class MyEightBallNetwork : NetworkBehaviour
     }
 
     [Server]
-    private void OpenTurnControlBarrier(int turnPlayerId)
+    private void OpenTurnControlBarrier(string turnPlayerId)
     {
         postShotBarrierToken++;
         activeBarrierToken = postShotBarrierToken;
@@ -762,7 +753,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         if (activeBarrierToken == -1)
             return;
         int token = activeBarrierToken;
-        int turnId = activeBarrierTurnId;
+        string turnId = activeBarrierTurnId;
         activeBarrierToken = -1;
         barrierReadyConnIds.Clear();
         Debug.Log($"[8Ball][TurnControl] Opening turn control on all clients ({reason}); token={token}, turn={turnId}.");
@@ -794,9 +785,9 @@ public class MyEightBallNetwork : NetworkBehaviour
 
 
     [ClientRpc]
-    private void RpcOpenTurnControl(int turnPlayerId, int barrierToken)
+    private void RpcOpenTurnControl(string turnPlayerId, int barrierToken)
     {
-        if (PlayerPrefs.GetInt("EightballMultiplayer") != 1 || turnPlayerId == -1)
+        if (PlayerPrefs.GetInt("EightballMultiplayer") != 1 || string.IsNullOrEmpty(turnPlayerId))
             return;
         if (!postShotControlLocked)
             return;
@@ -813,9 +804,9 @@ public class MyEightBallNetwork : NetworkBehaviour
 
 
     [ClientRpc]
-    private void RpcEngagePostShotBarrier(int turnPlayerId, int barrierToken)
+    private void RpcEngagePostShotBarrier(string turnPlayerId, int barrierToken)
     {
-        if (PlayerPrefs.GetInt("EightballMultiplayer") != 1 || turnPlayerId == -1)
+        if (PlayerPrefs.GetInt("EightballMultiplayer") != 1 || string.IsNullOrEmpty(turnPlayerId))
             return;
         if (!NetworkClient.active)
             return;
@@ -826,7 +817,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         if (shot != null)
         {
             bool isMyTurn = staticVariables.UserProfiledata != null && staticVariables.UserProfiledata.user != null
-                && turnPlayerId == staticVariables.UserProfiledata.user._id;
+                && PlayerId.IsMe(turnPlayerId);
             if (isMyTurn)
                 shot.ActivateControl(false);
             shot.SuppressCueVisualsWhileShotSettling();
@@ -834,7 +825,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         StartCoroutine(SettleThenSendPostShotReady("same-turn post-shot"));
     }
 
-    private string GetPlayerName(int playerId)
+    private string GetPlayerName(string playerId)
     {
         if (BallPoolPlayer.players != null)
         {
@@ -845,7 +836,7 @@ public class MyEightBallNetwork : NetworkBehaviour
             }
         }
 
-        string playerIdStr = playerId.ToString();
+        string playerIdStr = playerId;
         NetworkGameManager networkGame = NetworkGameManager.Instance;
 
         if (networkGame?.creatorData != null && networkGame.creatorData.playerId == playerIdStr
@@ -872,11 +863,11 @@ public class MyEightBallNetwork : NetworkBehaviour
 
     private Coroutine pendingTurnNotification;
 
-    private void ShowTurnNotification(int playerId, string playerName)
+    private void ShowTurnNotification(string playerId, string playerName)
     {
         bool isMyTurn = staticVariables.UserProfiledata != null
             && staticVariables.UserProfiledata.user != null
-            && playerId == staticVariables.UserProfiledata.user._id;
+            && PlayerId.IsMe(playerId);
 
         if (isMyTurn)
         {
@@ -895,7 +886,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         pendingTurnNotification = StartCoroutine(ShowTurnNotificationWhenNameReady(playerId));
     }
 
-    private System.Collections.IEnumerator ShowTurnNotificationWhenNameReady(int playerId)
+    private System.Collections.IEnumerator ShowTurnNotificationWhenNameReady(string playerId)
     {
         float timeout = 5f;
         while (timeout > 0f && currentTurnId == playerId)
@@ -932,12 +923,13 @@ public class MyEightBallNetwork : NetworkBehaviour
 
 
     [Command(requiresAuthority = false)]
-    public void CmdChangeTurn(int CurrentPlayerId, int requestReason, NetworkConnectionToClient sender = null)
+    public void CmdChangeTurn(string CurrentPlayerId, int requestReason, NetworkConnectionToClient sender = null)
     {
+        CurrentPlayerId = PlayerId.Normalize(CurrentPlayerId);
         if (PlayerPrefs.GetInt("EightballMultiplayer") != 1)
             return;
 
-        int senderPlayerId = ResolvePlayerId(sender);
+        string senderPlayerId = ResolvePlayerId(sender);
         if (sender != null && senderPlayerId != CurrentPlayerId)
         {
             Debug.LogWarning($"[8Ball][TurnGuard] Ignored spoofed turn request. sender={senderPlayerId}, payload={CurrentPlayerId}.");
@@ -953,7 +945,7 @@ public class MyEightBallNetwork : NetworkBehaviour
 
         if (reason == NetworkTurnChangeReason.Timeout)
         {
-            if (activeShotPlayerId != -1 || IsPoolPhysicsMoving())
+            if (!string.IsNullOrEmpty(activeShotPlayerId) || IsPoolPhysicsMoving())
             {
                 Debug.LogWarning($"[8Ball][TurnGuard] Ignored timeout turn request from {CurrentPlayerId}; shot is still active for {activeShotPlayerId}.");
                 return;
@@ -968,10 +960,11 @@ public class MyEightBallNetwork : NetworkBehaviour
     }
 
     [Server]
-    private bool TryChangeTurnOnServer(int CurrentPlayerId, string reason, bool clearActiveShot = true)
+    private bool TryChangeTurnOnServer(string CurrentPlayerId, string reason, bool clearActiveShot = true)
     {
 
-        if (!int.TryParse(player1Id, out int p1Id) || !int.TryParse(player2Id, out int p2Id))
+        string p1Id = player1Id, p2Id = player2Id;
+        if (string.IsNullOrEmpty(p1Id) || string.IsNullOrEmpty(p2Id))
         {
             Debug.LogError("[Server] Player IDs not properly set for turn change");
             return false;
@@ -983,20 +976,20 @@ public class MyEightBallNetwork : NetworkBehaviour
 
 
 
-        if (currentTurnId != -1 && CurrentPlayerId != currentTurnId)
+        if (!string.IsNullOrEmpty(currentTurnId) && CurrentPlayerId != currentTurnId)
         {
             Debug.Log($"[Server] Ignored stale CmdChangeTurn from {CurrentPlayerId} (current turn={currentTurnId})");
             return false;
         }
 
 
-        int nextPlayerId = (CurrentPlayerId == p1Id) ? p2Id : p1Id;
+        string nextPlayerId = (CurrentPlayerId == p1Id) ? p2Id : p1Id;
         currentTurnId = nextPlayerId;
         ClearPendingReconnectTimerReward("turn changed");
         // Safety: never carry a stuck drag flag across a turn (e.g. a player who dropped mid-drag).
         ballIsDragging = false;
         if (clearActiveShot)
-            activeShotPlayerId = -1;
+            activeShotPlayerId = "";
 
 
         lastTurnPlayTime = 0f;
@@ -1034,7 +1027,7 @@ public class MyEightBallNetwork : NetworkBehaviour
 
         RpcNotifyTurnChanged(nextPlayerId, activeBarrierToken);
         if (pendingScratchPlayerId == CurrentPlayerId)
-            pendingScratchPlayerId = -1;
+            pendingScratchPlayerId = "";
         return true;
     }
 
@@ -1045,7 +1038,7 @@ public class MyEightBallNetwork : NetworkBehaviour
     // armed and is re-sent at the end of its reconnect restore (GetBallsmechanicalStateData), so
     // the turn can never advance past a player who never saw their turn end. The token guards
     // against stale/duplicate acks; any successful turn change clears the pending request.
-    private int pendingTurnAckPlayerId = -1;
+    private string pendingTurnAckPlayerId = "";
     private int pendingTurnAckToken = 0;
     private string pendingTurnAckReason = string.Empty;
     private bool pendingTurnAckClearActiveShot = true;
@@ -1053,13 +1046,13 @@ public class MyEightBallNetwork : NetworkBehaviour
     [Server]
     private void ClearPendingTurnAck()
     {
-        pendingTurnAckPlayerId = -1;
+        pendingTurnAckPlayerId = "";
         pendingTurnAckReason = string.Empty;
         pendingTurnAckClearActiveShot = true;
     }
 
     [Server]
-    private NetworkConnectionToClient FindConnectionForPlayer(int playerId)
+    private NetworkConnectionToClient FindConnectionForPlayer(string playerId)
     {
         foreach (NetworkConnectionToClient conn in NetworkServer.connections.Values)
         {
@@ -1067,18 +1060,18 @@ public class MyEightBallNetwork : NetworkBehaviour
                 continue;
             var player = conn.identity.GetComponent<MirrorPlayerPrefab>();
             if (player != null && player.playerData != null
-                && int.TryParse(player.playerData.playerId, out int id) && id == playerId)
+                && PlayerId.Same(player.playerData.playerId, playerId))
                 return conn;
         }
         return null;
     }
 
     [Server]
-    private void RequestTurnShiftAck(int currentPlayerId, string reason, bool clearActiveShot)
+    private void RequestTurnShiftAck(string currentPlayerId, string reason, bool clearActiveShot)
     {
         if (isGameOver)
             return;
-        if (currentTurnId != -1 && currentPlayerId != currentTurnId)
+        if (!string.IsNullOrEmpty(currentTurnId) && currentPlayerId != currentTurnId)
         {
             Debug.Log($"[8Ball][TurnAck] Not arming turn-shift receipt for stale player {currentPlayerId} (current turn={currentTurnId}).");
             return;
@@ -1114,19 +1107,19 @@ public class MyEightBallNetwork : NetworkBehaviour
     {
         if (isGameOver)
             return;
-        if (pendingTurnAckPlayerId == -1 || token != pendingTurnAckToken)
+        if (string.IsNullOrEmpty(pendingTurnAckPlayerId) || token != pendingTurnAckToken)
         {
             Debug.Log($"[8Ball][TurnAck] Ignored stale turn-shift ack (token={token}, pending token={pendingTurnAckToken}, pending player={pendingTurnAckPlayerId}).");
             return;
         }
-        int senderPlayerId = ResolvePlayerId(sender);
+        string senderPlayerId = ResolvePlayerId(sender);
         if (sender != null && senderPlayerId != pendingTurnAckPlayerId)
         {
             Debug.LogWarning($"[8Ball][TurnAck] Ignored turn-shift ack from wrong player {senderPlayerId}; expected {pendingTurnAckPlayerId}.");
             return;
         }
 
-        int playerId = pendingTurnAckPlayerId;
+        string playerId = pendingTurnAckPlayerId;
         string reason = pendingTurnAckReason;
         bool clearActiveShot = pendingTurnAckClearActiveShot;
         ClearPendingTurnAck();
@@ -1143,14 +1136,14 @@ public class MyEightBallNetwork : NetworkBehaviour
 
 
 
-        if (activeShotPlayerId == -1)
+        if (string.IsNullOrEmpty(activeShotPlayerId))
         {
             Debug.LogWarning("[8Ball][TurnGuard] Ignored server shot end with no active shot (duplicate/stale completion).");
             return;
         }
 
-        int shotPlayerId = activeShotPlayerId;
-        activeShotPlayerId = -1;
+        string shotPlayerId = activeShotPlayerId;
+        activeShotPlayerId = "";
         activeShotImpulse = string.Empty;
         activeShotBallPositions = new Vector3[0];
 
@@ -1222,11 +1215,11 @@ public class MyEightBallNetwork : NetworkBehaviour
     }
 
     [ClientRpc]
-    private void RpcNotifyTurnChanged(int newTurnPlayerId, int barrierToken)
+    private void RpcNotifyTurnChanged(string newTurnPlayerId, int barrierToken)
     {
         string playerName = GetPlayerName(newTurnPlayerId);
         Debug.Log($"[Client] Turn changed to: {playerName} (ID: {newTurnPlayerId})");
-        if (PlayerPrefs.GetInt("EightballMultiplayer") == 1 && newTurnPlayerId != -1)
+        if (PlayerPrefs.GetInt("EightballMultiplayer") == 1 && !string.IsNullOrEmpty(newTurnPlayerId))
         {
 
 
@@ -1374,7 +1367,7 @@ public class MyEightBallNetwork : NetworkBehaviour
 
         bool showReconnectLoadingOverlay = ShouldShowReconnectStateLoading(showLoadingOverlay, sender);
 
-        if (shotPhase == (int)EightBallShotPhase.Simulating && activeShotPlayerId != -1)
+        if (shotPhase == (int)EightBallShotPhase.Simulating && !string.IsNullOrEmpty(activeShotPlayerId))
         {
             float shotAge = Time.realtimeSinceStartup - activeShotStartedAtRealtime;
             float staleGrace = MaxShotSeconds + 2.0f;
@@ -1452,7 +1445,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         if (AightBallPoolGameLogic.gameState != null
             && AightBallPoolGameLogic.gameState.cueBallInHand
             && AightBallPoolGameLogic.gameState.needToChangeTurn
-            && pendingScratchPlayerId != -1
+            && !string.IsNullOrEmpty(pendingScratchPlayerId)
             && currentTurnId == pendingScratchPlayerId)
         {
             TryChangeTurnOnServer(pendingScratchPlayerId, "scratch reconnect recovery", clearActiveShot: false);
@@ -1615,7 +1608,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         // HELD. Re-send it now that they are back; their ack completes the deferred turn change.
         // (If the scratch-recovery block above already advanced the turn, TryChangeTurnOnServer
         // cleared the pending request and this is skipped.)
-        if (pendingTurnAckPlayerId != -1 && ResolvePlayerId(sender) == pendingTurnAckPlayerId)
+        if (!string.IsNullOrEmpty(pendingTurnAckPlayerId) && ResolvePlayerId(sender) == pendingTurnAckPlayerId)
         {
             Debug.Log($"[8Ball][TurnAck] Replaying pending turn-shift receipt request to reconnected player {pendingTurnAckPlayerId}, token={pendingTurnAckToken}.");
             TargetRpcRequestTurnShiftAck(sender, pendingTurnAckToken);
@@ -1628,12 +1621,12 @@ public class MyEightBallNetwork : NetworkBehaviour
     }
 
     [Server]
-    public void ServerRegisterPlayerDisconnectedForTurnTimer(int disconnectedPlayerId)
+    public void ServerRegisterPlayerDisconnectedForTurnTimer(string disconnectedPlayerId)
     {
-        bool turnWaitingForShot = disconnectedPlayerId > 0
-            && currentTurnId > 0
+        bool turnWaitingForShot = !string.IsNullOrEmpty(disconnectedPlayerId)
+            && !string.IsNullOrEmpty(currentTurnId)
             && disconnectedPlayerId != currentTurnId
-            && activeShotPlayerId == -1
+            && string.IsNullOrEmpty(activeShotPlayerId)
             && canShoot
             && (shotPhase == (int)EightBallShotPhase.Aiming
                 || shotPhase == (int)EightBallShotPhase.BallInHand);
@@ -1649,11 +1642,11 @@ public class MyEightBallNetwork : NetworkBehaviour
     [Server]
     private void TryApplyReconnectTurnTimerReward(NetworkConnectionToClient sender)
     {
-        int reconnectingPlayerId = ResolvePlayerId(sender);
-        bool rewardStillValid = reconnectingPlayerId > 0
+        string reconnectingPlayerId = ResolvePlayerId(sender);
+        bool rewardStillValid = !string.IsNullOrEmpty(reconnectingPlayerId)
             && reconnectingPlayerId == pendingTimerRewardReconnectPlayerId
             && currentTurnId == pendingTimerRewardTurnPlayerId
-            && activeShotPlayerId == -1
+            && string.IsNullOrEmpty(activeShotPlayerId)
             && canShoot
             && (shotPhase == (int)EightBallShotPhase.Aiming
                 || shotPhase == (int)EightBallShotPhase.BallInHand);
@@ -1661,7 +1654,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         if (!rewardStillValid)
             return;
 
-        int rewardedTurnPlayerId = currentTurnId;
+        string rewardedTurnPlayerId = currentTurnId;
         lastTurnPlayTime = 0f;
         if (BallPoolGameManager.instance != null)
             BallPoolGameManager.instance.SetPlayTime(0f);
@@ -1679,15 +1672,15 @@ public class MyEightBallNetwork : NetworkBehaviour
     [Server]
     private void ClearPendingReconnectTimerReward(string reason)
     {
-        if (pendingTimerRewardReconnectPlayerId != -1)
+        if (!string.IsNullOrEmpty(pendingTimerRewardReconnectPlayerId))
             Debug.Log($"[8Ball][ReconnectTimer] Cleared pending timer reward ({reason}).");
-        pendingTimerRewardReconnectPlayerId = -1;
-        pendingTimerRewardTurnPlayerId = -1;
+        pendingTimerRewardReconnectPlayerId = "";
+        pendingTimerRewardTurnPlayerId = "";
     }
 
     [TargetRpc]
     private void TargetRpcResetTurnTimerAfterOpponentReconnect(NetworkConnectionToClient target,
-        int rewardedTurnPlayerId, int reconnectingPlayerId)
+        string rewardedTurnPlayerId, string reconnectingPlayerId)
     {
         if (BallPoolGameManager.instance != null)
             BallPoolGameManager.instance.SetPlayTime(0f);
@@ -1961,8 +1954,8 @@ public class MyEightBallNetwork : NetworkBehaviour
     [Server]
     public void ServerRegisterCueBallPocketed()
     {
-        int scratchPlayerId = activeShotPlayerId != -1 ? activeShotPlayerId : currentTurnId;
-        if (scratchPlayerId <= 0 || currentTurnId != scratchPlayerId)
+        string scratchPlayerId = !string.IsNullOrEmpty(activeShotPlayerId) ? activeShotPlayerId : currentTurnId;
+        if (string.IsNullOrEmpty(scratchPlayerId) || currentTurnId != scratchPlayerId)
         {
             Debug.LogWarning($"[8Ball][Scratch] Server ignored cue-ball pocket without a valid active shooter. active={activeShotPlayerId}, turn={currentTurnId}.");
             return;
@@ -1988,7 +1981,7 @@ public class MyEightBallNetwork : NetworkBehaviour
 
 
     [Server]
-    private void ServerCompleteScratchShotEnd(int scratchPlayerId)
+    private void ServerCompleteScratchShotEnd(string scratchPlayerId)
     {
         if (poolMessenger == null)
             return;
@@ -1996,7 +1989,7 @@ public class MyEightBallNetwork : NetworkBehaviour
             return;
         if (currentTurnId != scratchPlayerId)
             return;
-        if (activeShotPlayerId == -1 || activeShotPlayerId != scratchPlayerId)
+        if (string.IsNullOrEmpty(activeShotPlayerId) || activeShotPlayerId != scratchPlayerId)
             return;
 
 
@@ -2009,14 +2002,14 @@ public class MyEightBallNetwork : NetworkBehaviour
         StartCoroutine(ServerScratchStopWatchdog(scratchPlayerId, activeShotSequence));
     }
 
-    private System.Collections.IEnumerator ServerScratchStopWatchdog(int scratchPlayerId, int shotSeq)
+    private System.Collections.IEnumerator ServerScratchStopWatchdog(string scratchPlayerId, int shotSeq)
     {
         float deadline = Time.realtimeSinceStartup + ScratchStopWatchdogTimeout;
         while (Time.realtimeSinceStartup < deadline)
         {
             if (shotStopConsumed)
                 yield break;
-            if (activeShotSequence != shotSeq || activeShotPlayerId == -1)
+            if (activeShotSequence != shotSeq || string.IsNullOrEmpty(activeShotPlayerId))
                 yield break;
             yield return new WaitForFixedUpdate();
         }
@@ -2056,7 +2049,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         float moveDeadline = Time.realtimeSinceStartup + 2.0f;
         while (Time.realtimeSinceStartup < moveDeadline)
         {
-            if (activeShotSequence != shotSeq || activeShotPlayerId == -1 || shotStopConsumed)
+            if (activeShotSequence != shotSeq || string.IsNullOrEmpty(activeShotPlayerId) || shotStopConsumed)
                 yield break;
             if (IsPoolPhysicsMoving())
             {
@@ -2070,7 +2063,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         float settleStart = -1f;
         while (Time.realtimeSinceStartup < hardDeadline)
         {
-            if (activeShotSequence != shotSeq || activeShotPlayerId == -1 || shotStopConsumed)
+            if (activeShotSequence != shotSeq || string.IsNullOrEmpty(activeShotPlayerId) || shotStopConsumed)
                 yield break;
 
             // Playback can look settled while packets are delayed. A connected shooter owns the
@@ -2114,7 +2107,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         while (true)
         {
             yield return new WaitForFixedUpdate();
-            if (activeShotSequence != shotSeq || activeShotPlayerId == -1 || shotStopConsumed)
+            if (activeShotSequence != shotSeq || string.IsNullOrEmpty(activeShotPlayerId) || shotStopConsumed)
                 yield break;
 
             bool shooterConnected = IsPlayerConnected(activeShotPlayerId);
@@ -2175,9 +2168,9 @@ public class MyEightBallNetwork : NetworkBehaviour
     [Server]
     private bool ServerForceCompleteStuckShot(string reason)
     {
-        if (shotStopConsumed || activeShotPlayerId == -1)
+        if (shotStopConsumed || string.IsNullOrEmpty(activeShotPlayerId))
             return false;
-        int shooterId = activeShotPlayerId;
+        string shooterId = activeShotPlayerId;
         shotStopConsumed = true;
         activeShotImpulse = string.Empty;
         activeShotBallPositions = new Vector3[0];
@@ -2276,7 +2269,7 @@ public class MyEightBallNetwork : NetworkBehaviour
 
 
     [Server]
-    private bool IsPlayerConnected(int playerId)
+    private bool IsPlayerConnected(string playerId)
     {
         foreach (NetworkConnectionToClient conn in NetworkServer.connections.Values)
         {
@@ -2284,28 +2277,28 @@ public class MyEightBallNetwork : NetworkBehaviour
                 continue;
             var player = conn.identity.GetComponent<MirrorPlayerPrefab>();
             if (player != null && player.playerData != null
-                && int.TryParse(player.playerData.playerId, out int id) && id == playerId)
+                && PlayerId.Same(player.playerData.playerId, playerId))
                 return true;
         }
         return false;
     }
 
     [Server]
-    private int ResolvePlayerId(NetworkConnectionToClient conn)
+    private string ResolvePlayerId(NetworkConnectionToClient conn)
     {
         var player = conn != null && conn.identity != null
             ? conn.identity.GetComponent<MirrorPlayerPrefab>()
             : null;
-        if (player != null && int.TryParse(player.playerData.playerId, out int playerId))
-            return playerId;
+        if (player != null && player.playerData != null && !string.IsNullOrEmpty(player.playerData.playerId))
+            return PlayerId.Normalize(player.playerData.playerId);
         return currentTurnId;
     }
 
     [Server]
     private bool IsSenderCurrentTurn(NetworkConnectionToClient sender, string context)
     {
-        int senderPlayerId = ResolvePlayerId(sender);
-        if (sender != null && currentTurnId != -1 && senderPlayerId != currentTurnId)
+        string senderPlayerId = ResolvePlayerId(sender);
+        if (sender != null && !string.IsNullOrEmpty(currentTurnId) && senderPlayerId != currentTurnId)
         {
             Debug.LogWarning($"[8Ball][{context}] Ignored stale command from player {senderPlayerId}; current turn is {currentTurnId}.");
             return false;
@@ -2327,14 +2320,14 @@ public class MyEightBallNetwork : NetworkBehaviour
         }
     }
 
-    public int GetCurrentTurn()
+    public string GetCurrentTurn()
     {
         return currentTurnId;
     }
 
     public bool IsMainPlayerTurn()
     {
-        return currentTurnId == staticVariables.UserProfiledata.user._id;
+        return PlayerId.IsMe(currentTurnId);
     }
 
     public string GetPlayer1Id() => player1Id;
@@ -2616,8 +2609,8 @@ public class MyEightBallNetwork : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void SetMechanicalStatesFromNetwork(int ballId, string mechanicalStateData, NetworkConnectionToClient sender = null)
     {
-        int senderPlayerId = ResolvePlayerId(sender);
-        if (sender != null && currentTurnId != -1 && senderPlayerId != currentTurnId)
+        string senderPlayerId = ResolvePlayerId(sender);
+        if (sender != null && !string.IsNullOrEmpty(currentTurnId) && senderPlayerId != currentTurnId)
         {
             Debug.LogWarning($"[8Ball][MechanicalState] Ignored stale state from player {senderPlayerId}; current turn is {currentTurnId}.");
             return;
@@ -2651,7 +2644,7 @@ public class MyEightBallNetwork : NetworkBehaviour
     [Command(channel = Channels.Unreliable, requiresAuthority = false)]
     public void SetShotPlaybackFrameFromNetwork(int shotSequence, float time, int[] ballIds, Vector3[] positions, Vector3[] velocities, int[] pocketIds, NetworkConnectionToClient sender = null)
     {
-        int senderPlayerId = ResolvePlayerId(sender);
+        string senderPlayerId = ResolvePlayerId(sender);
         if (sender != null && !IsAuthorizedShotSender(senderPlayerId))
         {
             return;
@@ -2705,10 +2698,10 @@ public class MyEightBallNetwork : NetworkBehaviour
         }
     }
 
-    private bool IsAuthorizedShotSender(int senderPlayerId)
+    private bool IsAuthorizedShotSender(string senderPlayerId)
     {
-        int expected = activeShotPlayerId != -1 ? activeShotPlayerId : currentTurnId;
-        return expected == -1 || senderPlayerId == expected;
+        string expected = !string.IsNullOrEmpty(activeShotPlayerId) ? activeShotPlayerId : currentTurnId;
+        return string.IsNullOrEmpty(expected) || senderPlayerId == expected;
     }
 
     private static bool StreamFrameHasInvalidValues(Vector3[] positions, Vector3[] velocities)
@@ -2754,10 +2747,10 @@ public class MyEightBallNetwork : NetworkBehaviour
 
 
     [TargetRpc]
-    public void TargetRpcSetBallPos(NetworkConnectionToClient target, int ballId, Vector3 pos, Vector3 linVel, Vector3 angVel, int snapshotTurnId)
+    public void TargetRpcSetBallPos(NetworkConnectionToClient target, int ballId, Vector3 pos, Vector3 linVel, Vector3 angVel, string snapshotTurnId)
     {
         if (poolMessenger == null || poolMessenger.gameManager == null) return;
-        if (snapshotTurnId > 0 && currentTurnId != -1 && currentTurnId != snapshotTurnId)
+        if (!string.IsNullOrEmpty(snapshotTurnId) && !string.IsNullOrEmpty(currentTurnId) && currentTurnId != snapshotTurnId)
         {
             Debug.Log($"[8Ball][ReconnectSnapshot] Dropped stale ball restore for ball {ballId}. snapshotTurn={snapshotTurnId}, currentTurn={currentTurnId}.");
             return;
@@ -2890,17 +2883,17 @@ public class MyEightBallNetwork : NetworkBehaviour
     }
 
     [TargetRpc]
-    public void TargetRpcSyncBallsAfterReconnect(NetworkConnectionToClient target, Vector3[] positions, int snapshotTurnId)
+    public void TargetRpcSyncBallsAfterReconnect(NetworkConnectionToClient target, Vector3[] positions, string snapshotTurnId)
     {
         if (poolMessenger == null || poolMessenger.gameManager == null) return;
         reconnectBallsSyncInProgress = true;
         StartCoroutine(SyncBallsAfterReconnectRoutine(positions, snapshotTurnId));
     }
 
-    System.Collections.IEnumerator SyncBallsAfterReconnectRoutine(Vector3[] positions, int snapshotTurnId)
+    System.Collections.IEnumerator SyncBallsAfterReconnectRoutine(Vector3[] positions, string snapshotTurnId)
     {
         yield return null;
-        if (snapshotTurnId <= 0 || (currentTurnId != -1 && currentTurnId != snapshotTurnId))
+        if (string.IsNullOrEmpty(snapshotTurnId) || (!string.IsNullOrEmpty(currentTurnId) && currentTurnId != snapshotTurnId))
         {
             Debug.Log($"[8Ball][ReconnectSnapshot] Dropped stale reconnect ball snapshot. snapshotTurn={snapshotTurnId}, currentTurn={currentTurnId}.");
             FinishReconnectBallsSync();
@@ -3141,10 +3134,10 @@ public class MyEightBallNetwork : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void WaitAndStopMoveFromNetwork(float time, NetworkConnectionToClient sender = null)
     {
-        int senderPlayerId = ResolvePlayerId(sender);
+        string senderPlayerId = ResolvePlayerId(sender);
         if (sender != null && !IsAuthorizedShotSender(senderPlayerId))
         {
-            Debug.LogWarning($"[8Ball][NetworkReplay] Ignored stale WaitAndStopMove from player {senderPlayerId}; active shooter is {(activeShotPlayerId != -1 ? activeShotPlayerId : currentTurnId)}.");
+            Debug.LogWarning($"[8Ball][NetworkReplay] Ignored stale WaitAndStopMove from player {senderPlayerId}; active shooter is {(!string.IsNullOrEmpty(activeShotPlayerId) ? activeShotPlayerId : currentTurnId)}.");
             return;
         }
         if (poolMessenger == null)
@@ -3164,7 +3157,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         activeShotBallPositions = new Vector3[0];
 
 
-        ApplyAuthoritativeShotEndSnapshot(activeShotPlayerId != -1 ? activeShotPlayerId : senderPlayerId);
+        ApplyAuthoritativeShotEndSnapshot(!string.IsNullOrEmpty(activeShotPlayerId) ? activeShotPlayerId : senderPlayerId);
         poolMessenger.WaitAndStopMoveFromNetwork(time);
         foreach (NetworkConnectionToClient conn in NetworkServer.connections.Values)
         {
@@ -3187,10 +3180,10 @@ public class MyEightBallNetwork : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdSubmitEightBallShotFinalFrameV2(float time, int shotSequence, int[] ballIds, Vector3[] positions, Vector3[] velocities, int[] pocketIds, NetworkConnectionToClient sender = null)
     {
-        int senderPlayerId = ResolvePlayerId(sender);
+        string senderPlayerId = ResolvePlayerId(sender);
         if (sender != null && !IsAuthorizedShotSender(senderPlayerId))
         {
-            Debug.LogWarning($"[8Ball][NetworkReplay] Ignored stale reliable WaitAndStopMove from player {senderPlayerId}; active shooter is {(activeShotPlayerId != -1 ? activeShotPlayerId : currentTurnId)}.");
+            Debug.LogWarning($"[8Ball][NetworkReplay] Ignored stale reliable WaitAndStopMove from player {senderPlayerId}; active shooter is {(!string.IsNullOrEmpty(activeShotPlayerId) ? activeShotPlayerId : currentTurnId)}.");
             return;
         }
         if (poolMessenger == null)
@@ -3226,7 +3219,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         activeShotImpulse = string.Empty;
         activeShotBallPositions = new Vector3[0];
 
-        ApplyAuthoritativeShotEndSnapshot(activeShotPlayerId != -1 ? activeShotPlayerId : senderPlayerId);
+        ApplyAuthoritativeShotEndSnapshot(!string.IsNullOrEmpty(activeShotPlayerId) ? activeShotPlayerId : senderPlayerId);
         poolMessenger.WaitAndStopMoveFromNetwork(time);
         foreach (NetworkConnectionToClient conn in NetworkServer.connections.Values)
         {
@@ -3406,7 +3399,7 @@ public class MyEightBallNetwork : NetworkBehaviour
 
 
     [Server]
-    public void ReconcileAuthoritativePocketResult(int shooterPlayerId)
+    public void ReconcileAuthoritativePocketResult(string shooterPlayerId)
     {
         var gs = AightBallPoolGameLogic.gameState;
         if (gs == null || preShotBallPocketed == null || poolMessenger == null
@@ -3535,7 +3528,7 @@ public class MyEightBallNetwork : NetworkBehaviour
     }
 
     [Server]
-    private void ApplyAuthoritativeShotEndSnapshot(int shooterPlayerId)
+    private void ApplyAuthoritativeShotEndSnapshot(string shooterPlayerId)
     {
         if (poolMessenger == null || poolMessenger.gameManager == null || poolMessenger.gameManager.allBalls == null)
             return;
@@ -3571,7 +3564,7 @@ public class MyEightBallNetwork : NetworkBehaviour
     }
 
     [Server]
-    private void AssignBreakPocketedBallTypesIfUnambiguous(int shooterPlayerId)
+    private void AssignBreakPocketedBallTypesIfUnambiguous(string shooterPlayerId)
     {
         if (!breakShotDone)
             return;
@@ -3630,25 +3623,25 @@ public class MyEightBallNetwork : NetworkBehaviour
     }
 
     [Server]
-    private void AssignMissingBallTypesFromPocket(int ballId, int shooterPlayerId)
+    private void AssignMissingBallTypesFromPocket(int ballId, string shooterPlayerId)
     {
         if (ballId <= 0 || AightBallPoolGameLogic.isBlackBall(ballId))
             return;
         if (AightBallPoolGameLogic.gameState == null || AightBallPoolGameLogic.gameState.playersHasBallType)
             return;
-        if (shooterPlayerId <= 0)
-            shooterPlayerId = activeShotPlayerId != -1 ? activeShotPlayerId : currentTurnId;
-        if (shooterPlayerId <= 0)
+        if (string.IsNullOrEmpty(shooterPlayerId))
+            shooterPlayerId = !string.IsNullOrEmpty(activeShotPlayerId) ? activeShotPlayerId : currentTurnId;
+        if (string.IsNullOrEmpty(shooterPlayerId))
             return;
 
         int shooterType = AightBallPoolGameLogic.isSolidsBall(ballId) ? 1 : 2;
         int opponentType = shooterType == 1 ? 2 : 1;
 
-        if (int.TryParse(player1Id, out int p1Id) && int.TryParse(player2Id, out int p2Id))
+        if (!string.IsNullOrEmpty(player1Id) && !string.IsNullOrEmpty(player2Id))
         {
-            int opponentPlayerId = shooterPlayerId == p1Id ? p2Id : p1Id;
-            ballTypeByPlayerId[shooterPlayerId.ToString()] = shooterType;
-            ballTypeByPlayerId[opponentPlayerId.ToString()] = opponentType;
+            string opponentPlayerId = PlayerId.Same(shooterPlayerId, player1Id) ? player2Id : player1Id;
+            ballTypeByPlayerId[shooterPlayerId] = shooterType;
+            ballTypeByPlayerId[opponentPlayerId] = opponentType;
         }
 
         ApplyServerPlayerType(AightBallPoolPlayer.mainPlayer, shooterPlayerId, shooterType, opponentType);
@@ -3667,11 +3660,9 @@ public class MyEightBallNetwork : NetworkBehaviour
             if (player == null || player.playerData == null || string.IsNullOrEmpty(player.playerData.playerId))
                 continue;
 
-            int targetPlayerId;
-            if (!int.TryParse(player.playerData.playerId, out targetPlayerId))
-                continue;
+            string targetPlayerId = PlayerId.Normalize(player.playerData.playerId);
 
-            bool targetIsShooter = targetPlayerId == shooterPlayerId;
+            bool targetIsShooter = PlayerId.Same(targetPlayerId, shooterPlayerId);
             OnMainPlayerBallTypeChanged(conn, targetIsShooter ? shooterType : opponentType,
                 targetIsShooter ? opponentType : shooterType);
         }
@@ -3682,7 +3673,7 @@ public class MyEightBallNetwork : NetworkBehaviour
     }
 
     [Server]
-    private void ApplyServerPlayerType(AightBallPoolPlayer player, int shooterPlayerId, int shooterType, int opponentType)
+    private void ApplyServerPlayerType(AightBallPoolPlayer player, string shooterPlayerId, int shooterType, int opponentType)
     {
         if (player == null)
             return;
@@ -3748,7 +3739,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         Vector2 cueDisplacementLocalPositionXY, float cueSliderLocalPositionZ,
         float force, Vector3[] ballPositions, NetworkConnectionToClient sender = null)
     {
-        int senderPlayerId = ResolvePlayerId(sender);
+        string senderPlayerId = ResolvePlayerId(sender);
 
 
 
@@ -3767,9 +3758,9 @@ public class MyEightBallNetwork : NetworkBehaviour
 
         if (sender != null)
         {
-            bool turnOk = currentTurnId != -1 && senderPlayerId == currentTurnId;
+            bool turnOk = !string.IsNullOrEmpty(currentTurnId) && senderPlayerId == currentTurnId;
             bool phaseOk = shotPhase == (int)EightBallShotPhase.Aiming || shotPhase == (int)EightBallShotPhase.BallInHand;
-            bool noActiveShot = activeShotPlayerId == -1;
+            bool noActiveShot = string.IsNullOrEmpty(activeShotPlayerId);
             bool serverIdle = !IsPoolPhysicsMoving();
             bool boardOk = ServerBoardAgreesWithShotRequest(ballPositions);
             if (!turnOk || !canShoot || !phaseOk || !noActiveShot || !serverIdle || !boardOk)
@@ -3841,7 +3832,7 @@ public class MyEightBallNetwork : NetworkBehaviour
     }
 
     [Server]
-    private void RejectShotRequest(NetworkConnectionToClient sender, int senderPlayerId)
+    private void RejectShotRequest(NetworkConnectionToClient sender, string senderPlayerId)
     {
         if (sender == null)
             return;
@@ -3882,12 +3873,12 @@ public class MyEightBallNetwork : NetworkBehaviour
     }
 
     [TargetRpc]
-    void TargetRpcRejectShotRecover(NetworkConnectionToClient target, int turnPlayerId)
+    void TargetRpcRejectShotRecover(NetworkConnectionToClient target, string turnPlayerId)
     {
         postShotControlLocked = false;
         if (staticVariables.UserProfiledata != null
             && staticVariables.UserProfiledata.user != null
-            && turnPlayerId == staticVariables.UserProfiledata.user._id
+            && PlayerId.IsMe(turnPlayerId)
             && BallPool.BallPoolGameManager.instance != null)
         {
             BallPool.BallPoolGameManager.instance.ResumeTurnTimerAfterRejectedShot();
@@ -4000,15 +3991,15 @@ public class MyEightBallNetwork : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void OnSendTime(float time01, NetworkConnectionToClient sender = null)
     {
-        int senderPlayerId = ResolvePlayerId(sender);
-        if (sender != null && (senderPlayerId <= 0 || senderPlayerId != currentTurnId))
+        string senderPlayerId = ResolvePlayerId(sender);
+        if (sender != null && (string.IsNullOrEmpty(senderPlayerId) || senderPlayerId != currentTurnId))
         {
             if (time01 >= 0.99f)
                 Debug.LogWarning($"[8Ball][TurnTimer] Ignored stale timer expiry from player {senderPlayerId}; current turn={currentTurnId}.");
             return;
         }
 
-        bool shotInProgress = activeShotPlayerId != -1
+        bool shotInProgress = !string.IsNullOrEmpty(activeShotPlayerId)
             || IsPoolPhysicsMoving()
             || shotPhase == (int)EightBallShotPhase.Simulating;
         if (shotInProgress)
@@ -4142,37 +4133,37 @@ public class MyEightBallNetwork : NetworkBehaviour
     private bool _serverSawBlackPocketed;
 
     [Command(requiresAuthority = false)]
-    public void CmdGameWin(int PlayerId)
+    public void CmdGameWin(string winnerPlayerId)
     {
         // Any client could name any winner here, and that result was reported. Without the 8-ball down on the server's
         // table, accept the claim only when the opponent has gone or announced leaving (ClaimedWinGuard).
         if (!_serverSawBlackPocketed && !isGameOver)
         {
-            ClaimedWinGuard.Accept(PlayerId, "8 Ball", "win claim without the 8-ball down", () => CmdGameWinAccepted(PlayerId));
+            ClaimedWinGuard.Accept(winnerPlayerId, "8 Ball", "win claim without the 8-ball down", () => CmdGameWinAccepted(winnerPlayerId));
             return;
         }
-        CmdGameWinAccepted(PlayerId);
+        CmdGameWinAccepted(winnerPlayerId);
     }
 
     [Server]
-    private void CmdGameWinAccepted(int PlayerId)
+    private void CmdGameWinAccepted(string winnerPlayerId)
     {
         if (MatchFlow.Enabled && !isGameOver && _flowWinReason == null)
         {
-            bool opponentConnected = IsPlayerConnected(FlowOpponent(PlayerId));
+            bool opponentConnected = IsPlayerConnected(FlowOpponent(winnerPlayerId));
             _flowWinReason = opponentConnected ? "game complete (client report)" : "opponent left / disconnected";
-            MatchFlow.Log("8 Ball", $"{FlowWho(PlayerId)} claims the win ({_flowWinReason})");
+            MatchFlow.Log("8 Ball", $"{FlowWho(winnerPlayerId)} claims the win ({_flowWinReason})");
             // The server decides a finished frame itself (end of the last shot). A win claimed while the opponent is
             // still connected and the server has not ended the frame is not backed by the table.
             if (opponentConnected)
-                MatchFlow.Flag("8 Ball", PlayerId.ToString(), "unbacked_win_claim", "claimed the win while the opponent was connected and the server had not ended the frame");
+                MatchFlow.Flag("8 Ball", winnerPlayerId, "unbacked_win_claim", "claimed the win while the opponent was connected and the server had not ended the frame");
         }
 
-        ServerDeclareGameWin(PlayerId);
+        ServerDeclareGameWin(winnerPlayerId);
     }
 
     [Server]
-    public void ServerDeclareGameWin(int winnerId)
+    public void ServerDeclareGameWin(string winnerId)
     {
 
 
@@ -4181,7 +4172,7 @@ public class MyEightBallNetwork : NetworkBehaviour
 
 
         isGameOver = true;
-        gameWinnerId = winnerId.ToString();
+        gameWinnerId = PlayerId.Normalize(winnerId);
         MatchFlow.Log("8 Ball", $"game over — {FlowWho(winnerId)} wins");
         MatchFlow.SendResult(gameWinnerId, _flowWinReason ?? "game over");
         // This only logged the result: an 8 Ball win was never reported to the API, so the session stayed
@@ -4211,7 +4202,7 @@ public class MyEightBallNetwork : NetworkBehaviour
     }
 
     [Server]
-    public void ServerPublishShotOutcome(int shooterPlayerId, int outcomeCode, bool needToChangeTurn, bool gameIsEnd, int winnerId)
+    public void ServerPublishShotOutcome(string shooterPlayerId, int outcomeCode, bool needToChangeTurn, bool gameIsEnd, string winnerId)
     {
         var gs = AightBallPoolGameLogic.gameState;
         EnsureShotOutcomeHasBallTypes(shooterPlayerId);
@@ -4221,8 +4212,8 @@ public class MyEightBallNetwork : NetworkBehaviour
 
         bool needChange = needToChangeTurn;
 
-        int p1Id = -1, p1Type = 0; bool p1Black = false;
-        int p2Id = -1, p2Type = 0; bool p2Black = false;
+        string p1Id = ""; int p1Type = 0; bool p1Black = false;
+        string p2Id = ""; int p2Type = 0; bool p2Black = false;
         if (BallPoolPlayer.players != null && BallPoolPlayer.players.Length >= 2)
         {
             var p1 = BallPoolPlayer.players[0] as AightBallPoolPlayer;
@@ -4276,16 +4267,16 @@ public class MyEightBallNetwork : NetworkBehaviour
     }
 
     [Server]
-    private void EnsureShotOutcomeHasBallTypes(int shooterPlayerId)
+    private void EnsureShotOutcomeHasBallTypes(string shooterPlayerId)
     {
         var gs = AightBallPoolGameLogic.gameState;
         if (gs == null || gs.playersHasBallType || !gs.hasRightBallInPocket)
             return;
 
-        int resolvedShooter = shooterPlayerId > 0
+        string resolvedShooter = !string.IsNullOrEmpty(shooterPlayerId)
             ? shooterPlayerId
-            : (activeShotPlayerId != -1 ? activeShotPlayerId : currentTurnId);
-        if (resolvedShooter <= 0)
+            : (!string.IsNullOrEmpty(activeShotPlayerId) ? activeShotPlayerId : currentTurnId);
+        if (string.IsNullOrEmpty(resolvedShooter))
             return;
 
         AssignBreakPocketedBallTypesIfUnambiguous(resolvedShooter);
@@ -4293,11 +4284,11 @@ public class MyEightBallNetwork : NetworkBehaviour
     }
 
     [ClientRpc]
-    void RpcApplyShotOutcome(int shotSequence, int shooterPlayerId, int currentTurnIdAfter,
+    void RpcApplyShotOutcome(int shotSequence, string shooterPlayerId, string currentTurnIdAfter,
         bool needToChangeTurn, bool cueBallInHand, bool cueBallInPocket,
-        int player1Id, int player1Type, bool player1IsBlack,
-        int player2Id, int player2Type, bool player2IsBlack,
-        bool gameIsEnd, int winnerId, int outcomeCode)
+        string player1Id, int player1Type, bool player1IsBlack,
+        string player2Id, int player2Type, bool player2IsBlack,
+        bool gameIsEnd, string winnerId, int outcomeCode)
     {
 
         if (NetworkServer.active) return;
@@ -4339,9 +4330,9 @@ public class MyEightBallNetwork : NetworkBehaviour
     }
 
 
-    void ApplyOutcomePlayerState(int playerId, int type, bool isBlack)
+    void ApplyOutcomePlayerState(string playerId, int type, bool isBlack)
     {
-        if (playerId < 0 || BallPoolPlayer.players == null) return;
+        if (string.IsNullOrEmpty(playerId) || BallPoolPlayer.players == null) return;
         foreach (var bp in BallPoolPlayer.players)
         {
             if (bp == null || bp.playerId != playerId) continue;
@@ -4369,12 +4360,11 @@ public class MyEightBallNetwork : NetworkBehaviour
             return;
         }
         if (GameManager.instance == null || GameManager.instance.selectedBallText == null || BallPoolPlayer.players == null) return;
-        int localId = (staticVariables.UserProfiledata != null && staticVariables.UserProfiledata.user != null)
-            ? staticVariables.UserProfiledata.user._id : -1;
-        if (localId < 0) return;
+        string localId = PlayerId.Me;
+        if (string.IsNullOrEmpty(localId)) return;
         AightBallPoolPlayer local = null;
         foreach (var bp in BallPoolPlayer.players)
-            if (bp != null && bp.playerId == localId) { local = bp as AightBallPoolPlayer; break; }
+            if (bp != null && PlayerId.Same(bp.playerId, localId)) { local = bp as AightBallPoolPlayer; break; }
         if (local == null) return;
         string info = local.isStripes ? "You Are Stripes" : (local.isSolids ? "You Are solids" : "");
         if (string.IsNullOrEmpty(info)) return;
@@ -4393,12 +4383,10 @@ public class MyEightBallNetwork : NetworkBehaviour
 
 
 
-    void RenderOutcomeText(EightBallOutcomeCode code, int shooterPlayerId, int winnerId)
+    void RenderOutcomeText(EightBallOutcomeCode code, string shooterPlayerId, string winnerId)
     {
         if (BallPoolGameManager.instance == null) return;
-        int localId = (staticVariables.UserProfiledata != null && staticVariables.UserProfiledata.user != null)
-            ? staticVariables.UserProfiledata.user._id : -1;
-        bool iAmShooter = shooterPlayerId == localId;
+        bool iAmShooter = PlayerId.IsMe(shooterPlayerId);
         string opp = GameManager.newOpponentName;
         string info = "";
         switch (code)
@@ -4423,7 +4411,7 @@ public class MyEightBallNetwork : NetworkBehaviour
                 break;
             case EightBallOutcomeCode.LegalBlackWin:
             case EightBallOutcomeCode.IllegalBlackLoss:
-                info = (winnerId == localId) ? "You win!" : opp + " wins";
+                info = PlayerId.IsMe(winnerId) ? "You win!" : opp + " wins";
                 break;
             case EightBallOutcomeCode.LegalPotContinue:
             case EightBallOutcomeCode.None:
@@ -4562,7 +4550,7 @@ public class MyEightBallNetwork : NetworkBehaviour
 
     private void AnnounceWinner(string reason)
     {
-        CmdGameWin(staticVariables.UserProfiledata.user._id);
+        CmdGameWin(PlayerId.Me);
     }
 
 
@@ -4578,7 +4566,7 @@ public class MyEightBallNetwork : NetworkBehaviour
         {
             Instantiate(prefab, Vector3.zero, Quaternion.identity)
                 .GetComponent<ResultManager>()
-                .HandleGameResultAltMultiplayer(result, staticVariables.UserProfiledata.user._id.ToString());
+                .HandleGameResultAltMultiplayer(result, PlayerId.Me);
         }
         else
         {

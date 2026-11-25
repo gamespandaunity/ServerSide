@@ -77,19 +77,19 @@ namespace Firebase.Sample.Messaging
 
                     case _NotificationType.friend_accept:
                         notification_type = dictionary["notification_type"];
-                        this.player_info_id = int.Parse(dictionary["_id"]);
+                        this.player_info_id = PlayerId.Of(dictionary["_id"]);
                         this.player_info_name = dictionary["first_name"];
                         this.player_info_snap = dictionary["file_url"];
                         break;
                     case _NotificationType.friend_reject:
                         notification_type = dictionary["notification_type"];
-                        this.player_info_id = int.Parse(dictionary["_id"]);
+                        this.player_info_id = PlayerId.Of(dictionary["_id"]);
                         this.player_info_name = dictionary["first_name"];
                         this.player_info_snap = dictionary["file_url"];
                         break;
                     case _NotificationType.friend_request:
                         notification_type = dictionary["notification_type"];
-                        this.player_info_id = int.Parse(dictionary["_id"]);
+                        this.player_info_id = PlayerId.Of(dictionary["_id"]);
                         this.player_info_name = dictionary["first_name"];
                         this.player_info_snap = dictionary["file_url"];
                         break;
@@ -99,7 +99,7 @@ namespace Firebase.Sample.Messaging
                         this.transaction_id = dictionary["transaction_id"];
                         this.bet_type = dictionary["borrow_type"];
                         this.bet_amount = int.Parse(dictionary["borrow_amount"]);
-                        this.player_info_id = int.Parse(dictionary["player_info_id"]);
+                        this.player_info_id = PlayerId.Of(dictionary["player_info_id"]);
                         this.player_info_name = dictionary["player_info_name"];
                         this.player_info_snap = dictionary["player_info_snap"];
                         //this.game_id = int.Parse(dictionary["game_id"]);
@@ -110,7 +110,7 @@ namespace Firebase.Sample.Messaging
                         this.bet_type = dictionary["bet_type"];
                         this.bet_amount = int.Parse(dictionary["bet_amount"]);
                         this.bet_expires_sec = dictionary["bet_expires_sec"];
-                        this.player_info_id = int.Parse(dictionary["player_info_id"]);
+                        this.player_info_id = PlayerId.Of(dictionary["player_info_id"]);
                         this.player_info_name = dictionary["player_info_name"];
                         this.player_info_snap = dictionary["player_info_snap"];
                         this.game_id = int.Parse(dictionary["game_id"]);
@@ -121,7 +121,7 @@ namespace Firebase.Sample.Messaging
                         this.bet_type = dictionary["bet_type"];
                         this.bet_amount = int.Parse(dictionary["bet_amount"]);
                         this.bet_expires_sec = dictionary["bet_expires_sec"];
-                        this.player_info_id = int.Parse(dictionary["player_info_id"]);
+                        this.player_info_id = PlayerId.Of(dictionary["player_info_id"]);
                         this.player_info_name = dictionary["player_info_name"];
                         this.player_info_snap = dictionary["player_info_snap"];
                         this.game_id = int.Parse(dictionary["game_id"]);
@@ -141,7 +141,7 @@ namespace Firebase.Sample.Messaging
                         this.coins_type = dictionary["coins_type"];
                         this.bet_amount = int.Parse(dictionary["bet_amount"]);
                         this.bet_expires_sec = dictionary["bet_expires_sec"];
-                        this.player_info_id = int.Parse(dictionary["player_info_id"]);
+                        this.player_info_id = PlayerId.Of(dictionary["player_info_id"]);
                         this.player_info_name = dictionary["player_info_name"];
                         this.player_info_snap = dictionary["player_info_snap"];
                         this.game_id = int.Parse(dictionary["game_id"]);
@@ -153,7 +153,7 @@ namespace Firebase.Sample.Messaging
                         this.bet_type = dictionary["bet_type"];
                         this.bet_amount = int.Parse(dictionary["bet_amount"]);
                         this.bet_expires_sec = dictionary["bet_expires_sec"];
-                        this.player_info_id = int.Parse(dictionary["player_info_id"]);
+                        this.player_info_id = PlayerId.Of(dictionary["player_info_id"]);
                         this.player_info_name = dictionary["player_info_name"];
                         this.player_info_snap = dictionary["player_info_snap"];
                         break;
@@ -163,14 +163,14 @@ namespace Firebase.Sample.Messaging
                         this.bet_type = dictionary["bet_type"];
                         this.bet_amount = int.Parse(dictionary["bet_amount"]);
                         this.bet_expires_sec = dictionary["bet_expires_sec"];
-                        this.player_info_id = int.Parse(dictionary["player_info_id"]);
+                        this.player_info_id = PlayerId.Of(dictionary["player_info_id"]);
                         this.player_info_name = dictionary["player_info_name"];
                         this.player_info_snap = dictionary["player_info_snap"];
                         break;
                     case _NotificationType.challenge_deleted:
                         this.notification_type = dictionary["notification_type"];
                         this.transaction_id = dictionary["transaction_id"];
-                        this.player_info_id = int.Parse(dictionary["player_info_id"]);
+                        this.player_info_id = PlayerId.Of(dictionary["player_info_id"]);
                         break;
                     case _NotificationType.challenge_expired:
                         ApiAndRoomManager._instance.ModifyUserBalance();
@@ -194,7 +194,7 @@ namespace Firebase.Sample.Messaging
             public int game_id;
             public int overs;
             public string bet_expires_sec;
-            public int player_info_id;
+            public string player_info_id;
             public string player_info_name;
             public string player_info_snap;
             public string _order_id;

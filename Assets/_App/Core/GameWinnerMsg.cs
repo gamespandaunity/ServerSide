@@ -71,11 +71,11 @@ public class GameWinnerMsg : MonoBehaviour
             BallPoolPlayer winner = BallPoolPlayer.GetWinner();
             myName_FromUserModel = staticVariables.UserProfiledata.user.first_name + " " + staticVariables.UserProfiledata.user.last_name;
 
-            winLoseTxt.text = winner.playerId == AightBallPoolPlayer.mainPlayer.playerId ? "You Win" : "You Lose";
+            winLoseTxt.text = PlayerId.Same(winner.playerId, AightBallPoolPlayer.mainPlayer.playerId) ? "You Win" : "You Lose";
             PlayerDetails PlayerData = new PlayerDetails(AightBallPoolPlayer.mainPlayer.playerId, myName_FromUserModel, $"/{staticVariables.UserProfiledata.user.file_url}");
             if (GameModeManager.isAI) // ai mode
             {
-                PlayerDetails OpponentPlayerData = new PlayerDetails(GameModeManager.isAI ? 0 : int.Parse(EightBallPoolNetworkManager.opponentPlayer.userId), GameModeManager.isAI ? "AI" : EightBallPoolNetworkManager.opponentPlayer.userName,
+                PlayerDetails OpponentPlayerData = new PlayerDetails(GameModeManager.isAI ? PlayerId.Ai : PlayerId.Normalize(EightBallPoolNetworkManager.opponentPlayer.userId), GameModeManager.isAI ? "AI" : EightBallPoolNetworkManager.opponentPlayer.userName,
                GameModeManager.isAI ? "" : $"/{EightBallPoolNetworkManager.opponentPlayer.imageURL}", GameModeManager.isAI);
             }
             yield return new WaitForSeconds(2.5f);
@@ -88,9 +88,9 @@ public class GameWinnerMsg : MonoBehaviour
             CircularTimeController.instance.turnAudioSource = null;
             if (GameModeManager.isAI) // ai mode
             {
-                if (winner.playerId == AightBallPoolPlayer.mainPlayer.playerId)
+                if (PlayerId.Same(winner.playerId, AightBallPoolPlayer.mainPlayer.playerId))
                 {
-                    ApiAndRoomManager._instance.WinnerLossAIChallenge(staticVariables.UserProfiledata.user._id.ToString());
+                    ApiAndRoomManager._instance.WinnerLossAIChallenge(PlayerId.Me);
                     // winPanel.Init(true, staticVariables.UserProfiledata.user._id.ToString(), true);
                     if (staticVariables.isGuest)
                         GuestDataManager._instance.UpdateGuestCoins(staticVariables.currentPrize * 2);
@@ -107,7 +107,7 @@ public class GameWinnerMsg : MonoBehaviour
                             "1".Show();
                             // Spawn at position (0,0,0)
                             var gameObject = Instantiate(enemyPrefab, Vector3.zero, Quaternion.identity);
-                            gameObject.GetComponent<ResultManager>().HandleGameResultAltAI(true, staticVariables.UserProfiledata.user._id.ToString());
+                            gameObject.GetComponent<ResultManager>().HandleGameResultAltAI(true, PlayerId.Me);
                         }
                         else
                         {
@@ -129,7 +129,7 @@ public class GameWinnerMsg : MonoBehaviour
                             "1".Show();
                             // Spawn at position (0,0,0)
                             var gameObject = Instantiate(enemyPrefab, Vector3.zero, Quaternion.identity);
-                            gameObject.GetComponent<ResultManager>().HandleGameResultAltAI(false, staticVariables.UserProfiledata.user._id.ToString());
+                            gameObject.GetComponent<ResultManager>().HandleGameResultAltAI(false, PlayerId.Me);
                         }
                         else
                         {
@@ -146,7 +146,7 @@ public class GameWinnerMsg : MonoBehaviour
                 Debug.Log("GameWinnerMsg: Multiplayer Mode Detected");
                 IsGameFinished = true;
                 $"{winner.playerId}".Show("Game Mode Manager Multiplayer");
-                if (winner.playerId == staticVariables.UserProfiledata.user._id)
+                if (PlayerId.IsMe(winner.playerId))
                 {
                     // MyEightBallNetwork.Instance.CmdPlayerFinished();
                     // winPanel.HandleGameResultAlt(true, winner.playerId.ToString());
@@ -160,7 +160,7 @@ public class GameWinnerMsg : MonoBehaviour
                             "1".Show();
                             // Spawn at position (0,0,0)
                             var gameObject = Instantiate(enemyPrefab, Vector3.zero, Quaternion.identity);
-                            gameObject.GetComponent<ResultManager>().HandleGameResultAltMultiplayer(true, winner.playerId.ToString());
+                            gameObject.GetComponent<ResultManager>().HandleGameResultAltMultiplayer(true, winner.playerId);
                         }
                         else
                         {
@@ -187,7 +187,7 @@ public class GameWinnerMsg : MonoBehaviour
                             "1".Show();
                             // Spawn at position (0,0,0)
                             var gameObject = Instantiate(enemyPrefab, Vector3.zero, Quaternion.identity);
-                            gameObject.GetComponent<ResultManager>().HandleGameResultAltMultiplayer(false, staticVariables.UserProfiledata.user._id.ToString());
+                            gameObject.GetComponent<ResultManager>().HandleGameResultAltMultiplayer(false, PlayerId.Me);
                         }
                         else
                         {
@@ -202,7 +202,7 @@ public class GameWinnerMsg : MonoBehaviour
                     Debug.Log("Game Finished You lose");
                     //  winPanel.HandleGameResultAlt(true, OpponentPlayerData.id.ToString(), false);
                 }
-                if (winner.playerId == AightBallPoolPlayer.mainPlayer.playerId)
+                if (PlayerId.Same(winner.playerId, AightBallPoolPlayer.mainPlayer.playerId))
                 {
                     ConstantsData_M.Log("Game Finished You win");
                     //StartCoroutine(winPanel.Init(PlayerData, OpponentPlayerData, NetworkManager.mainPlayer.prize, true));
