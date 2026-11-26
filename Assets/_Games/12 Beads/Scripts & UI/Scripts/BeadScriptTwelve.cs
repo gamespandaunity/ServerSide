@@ -77,10 +77,19 @@ namespace Twelve
                 currentNode.currentBead = this;
             }
 
-            transform.position = currentNode.transform.position + new Vector3(0, 0, -2);
+            // Tester 26 Nov ("bead movement looks unrealistic"): a committed move is animated by the board
+            // (GamePlayControllerTwelve.ApplyTwelveMoveCommitted); snapping here first made the bead flash at its new
+            // square, jump back and then slide. Spawns, restores and anything not announced still snap.
+            bool animated = oldId >= 0 && !NetworkServer.active && playerID != PLAYERS.EMPTY
+                            && GamePlayControllerTwelve.instance.TakeExpectedArrival(currentNode);
+            if (!animated)
+                transform.position = currentNode.transform.position + new Vector3(0, 0, -2);
         }
         [SyncVar(hook = nameof(OnVisibilityChanged))]
         bool isVisible = true;
+
+        /// <summary>The server's visibility of this bead (false once captured).</summary>
+        public bool ServerVisible => isVisible;
         // CmdSetNodeValue(int) was removed: it let any client teleport any bead by writing
         // its node SyncVar. The validated move transaction writes currentNodeId on the server.
 
@@ -97,6 +106,15 @@ namespace Twelve
                 currentNode.OnOccupied(false);
             }
 
+            // Tester 26 Nov: a bead captured by a move the board is about to play disappears as the jumper passes over
+            // it (ApplyTwelveMoveCommitted), not the moment this SyncVar lands.
+            if (!newVal && !NetworkServer.active && playerID != PLAYERS.EMPTY && GamePlayControllerTwelve.instance != null
+                && GamePlayControllerTwelve.instance.IsExpectedCapture(currentNode))
+            {
+                isDead = true;
+                return;
+            }
+
             gameObject.SetActive(newVal);
         }
 
@@ -109,6 +127,14 @@ namespace Twelve
         public override void OnStartClient()
         {
             base.OnStartClient();
+            // Tester 26 Nov ("bead movement looks unrealistic", "board unstable after a reconnect"): on a phone a bead's
+            // place comes from its node (currentNodeId) and the board animates every committed move. The prefab's
+            // NetworkTransformReliable pulled the same bead toward the server's teleported position at the same time,
+            // so moves stuttered. The match server keeps sending it; phones no longer apply it. (The empty-node markers
+            // never move and keep theirs.)
+            if (!NetworkServer.active && playerID != PLAYERS.EMPTY)
+                foreach (var sync in GetComponents<NetworkTransformBase>())
+                    sync.enabled = false;
             // QA 29 Oct (no beads on the board until a reconnect): a bead that reaches the phone before the scene's
             // GamePlayControllerTwelve is up threw a NullReference here — never parented, never in the team lists, never
             // placed on its node. Register it as soon as the controller exists instead (and say so in the log).
@@ -119,6 +145,8 @@ namespace Twelve
                 return;
             }
             RegisterWithController();
+            // Placed from its node SyncVar, as the hook does (it may not run for the spawn's own values).
+            if (currentNodeId >= 0) OnNodeChanged(-1, currentNodeId);
         }
 
         private IEnumerator RegisterWhenControllerReady()

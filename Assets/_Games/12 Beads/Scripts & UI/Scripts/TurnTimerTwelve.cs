@@ -52,23 +52,33 @@ namespace Twelve
                 // Pause the turn timer while a player is disconnected. We track when the
                 // pause began and, on resume, shift startTime forward by the paused duration
                 // so the player gets back exactly the same remaining time.
-                bool isMultiplayerPaused = GamePlayControllerTwelve.isOnlineMultiplayer
-                    && NetworkGameManager.Instance != null
-                    && NetworkGameManager.Instance.currentPlayerCount < 2;
+                // Tester 26 Nov ("the timer keeps running while a player is disconnected"): held while the match is
+                // paused or the server's away clock runs too, not only once the head count falls (~20 s after a drop).
+                var multiGame = GamePlayControllerTwelve.isOnlineMultiplayer ? MultiPlayerGameManagerTwelve.Current : null;
+                bool isMultiplayerPaused = multiGame != null && multiGame.ServerTurnClockHeld();
 
                 if (isMultiplayerPaused)
                 {
                     if (pauseStartTime < 0f)
-                        MatchFlow.Log("12 Beads", $"a player dropped — turn timer paused ({Mathf.Max(0f, currentTime):0.0}s left), waiting for reconnect");
+                        MatchFlow.Log("12 Beads", $"a player is away — turn timer paused ({Mathf.Max(0f, currentTime):0.0}s left), waiting for reconnect");
                     if (pauseStartTime < 0f)
                         pauseStartTime = (float)NetworkTime.time;
+                    multiGame.ServerNoteClockHeld();
                     return; // freeze: don't tick currentTime or push to SyncVar
                 }
 
                 if (pauseStartTime >= 0f)
                 {
                     MatchFlow.Log("12 Beads", $"both players back — turn timer resumed after {((float)NetworkTime.time - pauseStartTime):0.0}s pause");
-                    startTime += (float)NetworkTime.time - pauseStartTime;
+                    bool fullTurn = multiGame != null && multiGame.ServerNoteClockResumed();
+                    if (fullTurn)
+                    {
+                        // The player who was away holds the turn: the whole turn again.
+                        startTime = (float)NetworkTime.time;
+                        WarnigClock.SetActive(false);
+                    }
+                    else
+                        startTime += (float)NetworkTime.time - pauseStartTime;
                     pauseStartTime = -1f;
                 }
 

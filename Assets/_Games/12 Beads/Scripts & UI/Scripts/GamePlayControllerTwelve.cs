@@ -210,6 +210,13 @@ namespace Twelve
                 // The server starts the online turn timer after the toss establishes a turn.
                 // Clients only render the synced value and never start/reset it themselves.
                 turnTimer.StopTimer();
+                // Tester 26 Nov ("profile turn timer missing"): both rings were on from the scene and ran out while the
+                // match loaded. No ring until a turn is applied (StartGame shows the one on turn).
+                if (!NetworkServer.active)
+                {
+                    if (Player1Timer) Player1Timer.SetActive(false);
+                    if (Player2Timer) Player2Timer.SetActive(false);
+                }
             }
             Screen.orientation = ScreenOrientation.Portrait;
         }
@@ -870,6 +877,45 @@ namespace Twelve
         private void AnnounceWinner(string reason)
         {
             if (ResultManager.GameSpawnedFinished) return;
+            // Tester 26 Nov ("Win/Loss shown too early, before the final result is confirmed"): this phone's own guess
+            // (the opponent's drop / waiting countdown) opened the result at once, while the match server could still be
+            // holding the match for a reconnect or sending its own result. Wait for the server first.
+            if (isOnlineMultiplayer && !NetworkServer.active)
+            {
+                if (localWinCoroutine == null) localWinCoroutine = StartCoroutine(AnnounceWinnerWhenServerSilent(reason));
+                return;
+            }
+            ShowLocalWin();
+        }
+
+        Coroutine localWinCoroutine;
+        const float LocalWinSettleSeconds = 2.5f;
+        const float LocalWinOpponentBackSeconds = 8f;
+
+        IEnumerator AnnounceWinnerWhenServerSilent(string reason)
+        {
+            yield return new WaitForSecondsRealtime(LocalWinSettleSeconds);
+            float waited = 0f;
+            // The opponent is in the match again: no win unless they leave for good.
+            while (!ResultManager.GameSpawnedFinished && NetworkGameManager.Instance != null
+                   && NetworkGameManager.Instance.currentPlayerCount >= 2 && waited < LocalWinOpponentBackSeconds)
+            {
+                waited += 0.25f;
+                yield return new WaitForSecondsRealtime(0.25f);
+            }
+            localWinCoroutine = null;
+            if (ResultManager.GameSpawnedFinished) yield break;   // the server's result came in
+            if (NetworkGameManager.Instance != null && NetworkGameManager.Instance.currentPlayerCount >= 2)
+            {
+                Debug.LogWarning($"[12Bead] local win ignored ({reason}) — the opponent is still in the match");
+                yield break;
+            }
+            ShowLocalWin();
+        }
+
+        void ShowLocalWin()
+        {
+            if (ResultManager.GameSpawnedFinished) return;
             ResultManager.GameSpawnedFinished = true;
 
             GameObject prefab = Resources.Load<GameObject>("WinLoseGameManager");
@@ -1049,6 +1095,10 @@ namespace Twelve
         void Update()
         {
             if (isOnlineMultiplayer && multiPlayerGame != null && multiPlayerGame.IsMovePending)
+                return;
+            // Tester 26 Nov: no moves once the server has decided the match (the result waits for the board to settle).
+            if (isOnlineMultiplayer && multiPlayerGame != null
+                && (multiPlayerGame.isGameOver || multiPlayerGame.matchFinalized || serverMatchFinalized))
                 return;
 
             if (myId != currentPlayerTurn.GetHashCode() && isOnlineMultiplayer)
@@ -1351,6 +1401,13 @@ namespace Twelve
                     ? allNodes[i].emptyNode.GetComponent<BeadScriptTwelve>() : null;
             }
 
+            // Tester 26 Nov (stuck / unstable board after a reconnect): every bead goes straight to the node the server
+            // has for it (its currentNodeId SyncVar), captured ones are hidden, and nothing is left mid-animation.
+            expectedArrivals.Clear();
+            expectedCaptures.Clear();
+            SnapTwelveTeamToServer(team1Beads);
+            SnapTwelveTeamToServer(team2Beads);
+
             RebuildTwelveTeamNodes(team1Beads);
             RebuildTwelveTeamNodes(team2Beads);
             HideTwelveMoveMarkers();
@@ -1425,14 +1482,24 @@ namespace Twelve
             Vector3 endPosition = destination.transform.position + new Vector3(0, 0, -2);
             Transform beadTf = movingBead.transform;
             Debug.Log($"[12Bead] ApplyTwelveMoveCommitted bead={movingBead.name} startPosition={startPosition} endPosition={endPosition}");
-            beadTf.DOKill();
-            beadTf.position = endPosition;
-            beadTf.DOMove(endPosition, 0.15f)
-                .From(startPosition, false)
-                .OnKill(() =>
-                {
-                    if (beadTf != null) beadTf.position = endPosition;
-                });
+            expectedArrivals.Remove(destination);
+
+            BeadScriptTwelve capturedBead = null;
+            NodeScriptTwelve capturedAtNode = capturedNode != byte.MaxValue && capturedNode < allNodes.Count
+                ? allNodes[capturedNode] : null;
+            if (capturedAtNode != null)
+            {
+                PLAYERS capturedSeatFind = seat == PLAYERS.PLAYER1 ? PLAYERS.PLAYER2 : PLAYERS.PLAYER1;
+                List<BeadScriptTwelve> capturedTeamFind = capturedSeatFind == PLAYERS.PLAYER1 ? team1Beads : team2Beads;
+                for (int i = 0; i < capturedTeamFind.Count; i++)
+                    if (capturedTeamFind[i] != null && capturedTeamFind[i].currentNode == capturedAtNode)
+                    {
+                        capturedBead = capturedTeamFind[i];
+                        break;
+                    }
+            }
+            LastTwelveMoveSeconds = AnimateTwelveMove(beadTf, startPosition, endPosition, capturedAtNode != null,
+                NetworkServer.active ? null : capturedBead, capturedAtNode);
             TwelveBeadSoundManager.instance?.PlayAnySound(0);
 
             if (capturedNode != byte.MaxValue && capturedNode < allNodes.Count)
@@ -1447,8 +1514,8 @@ namespace Twelve
                     {
                         if (!NetworkServer.active)
                         {
+                            // Hidden by AnimateTwelveMove as the jumper passes over it.
                             captured.isDead = true;
-                            captured.gameObject.SetActive(false);
                         }
                         break;
                     }
@@ -1467,6 +1534,160 @@ namespace Twelve
             if (chainContinues && myId == (int)seat)
                 ActivateMoveAbleEmptyBeads(movingBead);
         }
+        // ───── Online bead motion, reconnect resync, settled result (tester's report, 26 Nov) ─────
+        // Same block in GamesPandaServer's copy of this file (only phones run it; the server compiles it).
+        // A committed move is animated here: an eased slide with a small lift for a step, a higher hop over the captured
+        // bead for a jump (the board is seen from above, so the bead grows and settles), and the captured bead shrinks
+        // away as the jumper passes over it. It used to be a 0.15 s linear slide fought by the bead's NetworkTransform,
+        // and the captured bead vanished at once.
+        const float TwelveStepSeconds = 0.30f, TwelveJumpSeconds = 0.46f, TwelveStepGrow = 1.12f, TwelveJumpGrow = 1.35f;
+        readonly HashSet<NodeScriptTwelve> expectedArrivals = new HashSet<NodeScriptTwelve>();
+        readonly HashSet<NodeScriptTwelve> expectedCaptures = new HashSet<NodeScriptTwelve>();
+        readonly Dictionary<Transform, Vector3> twelveRestScales = new Dictionary<Transform, Vector3>();
+        bool serverMatchFinalized;
+
+        /// <summary>Seconds the last committed move takes to play (the move queue waits this long).</summary>
+        public float LastTwelveMoveSeconds { get; private set; }
+
+        /// <summary>RpcTwelveMoveCommitted: this move is about to be played here; its SyncVars must not snap it first.</summary>
+        public void ExpectTwelveMove(byte toNode, byte capturedNode)
+        {
+            if (allNodes == null) return;
+            if (toNode < allNodes.Count && allNodes[toNode] != null) expectedArrivals.Add(allNodes[toNode]);
+            if (capturedNode != byte.MaxValue && capturedNode < allNodes.Count && allNodes[capturedNode] != null)
+                expectedCaptures.Add(allNodes[capturedNode]);
+        }
+
+        /// <summary>BeadScriptTwelve.OnNodeChanged: true when a committed move will animate the bead onto this node.</summary>
+        public bool TakeExpectedArrival(NodeScriptTwelve node)
+        {
+            return node != null && expectedArrivals.Remove(node);
+        }
+
+        /// <summary>BeadScriptTwelve.OnVisibilityChanged: true when the captured bead on this node is hidden by the move.</summary>
+        public bool IsExpectedCapture(NodeScriptTwelve node)
+        {
+            return node != null && expectedCaptures.Contains(node);
+        }
+
+        Vector3 TwelveRestScale(Transform tf)
+        {
+            if (!twelveRestScales.TryGetValue(tf, out Vector3 rest))
+            {
+                rest = tf.localScale;
+                twelveRestScales[tf] = rest;
+            }
+            return rest;
+        }
+
+        float AnimateTwelveMove(Transform beadTf, Vector3 from, Vector3 to, bool jump, BeadScriptTwelve captured,
+            NodeScriptTwelve capturedAt)
+        {
+            float seconds = jump ? TwelveJumpSeconds : TwelveStepSeconds;
+            beadTf.DOKill();
+            Vector3 rest = TwelveRestScale(beadTf);
+            beadTf.localScale = rest;
+            beadTf.position = from;
+            float grow = jump ? TwelveJumpGrow : TwelveStepGrow;
+            Sequence motion = DOTween.Sequence().SetTarget(beadTf);
+            motion.Insert(0f, beadTf.DOMove(to, seconds).SetEase(jump ? Ease.InOutQuad : Ease.InOutSine));
+            motion.Insert(0f, beadTf.DOScale(rest * grow, seconds * 0.5f).SetEase(Ease.OutQuad));
+            motion.Insert(seconds * 0.5f, beadTf.DOScale(rest, seconds * 0.5f).SetEase(Ease.InQuad));
+            motion.OnKill(() =>
+            {
+                if (beadTf == null) return;
+                beadTf.position = to;
+                beadTf.localScale = rest;
+            });
+
+            if (captured != null)
+            {
+                Transform capturedTf = captured.transform;
+                capturedTf.DOKill();
+                Vector3 capturedRest = TwelveRestScale(capturedTf);
+                capturedTf.DOScale(Vector3.zero, seconds * 0.45f).SetDelay(seconds * 0.4f).SetEase(Ease.InBack)
+                    .SetTarget(capturedTf)
+                    .OnKill(() =>
+                    {
+                        if (capturedAt != null) expectedCaptures.Remove(capturedAt);
+                        if (capturedTf == null) return;
+                        capturedTf.localScale = capturedRest;
+                        if (!captured.ServerVisible || captured.isDead) captured.gameObject.SetActive(false);
+                    });
+            }
+            else if (capturedAt != null)
+            {
+                expectedCaptures.Remove(capturedAt);
+            }
+            return seconds;
+        }
+
+        /// <summary>Puts every bead of a team on the node the server has for it, at once; hides the captured ones.</summary>
+        void SnapTwelveTeamToServer(List<BeadScriptTwelve> beads)
+        {
+            if (beads == null || allNodes == null) return;
+            for (int i = 0; i < beads.Count; i++)
+            {
+                BeadScriptTwelve bead = beads[i];
+                if (bead == null) continue;
+                Transform tf = bead.transform;
+                tf.DOKill();
+                if (twelveRestScales.TryGetValue(tf, out Vector3 rest)) tf.localScale = rest;
+                if (!bead.ServerVisible)
+                {
+                    bead.isDead = true;
+                    if (bead.gameObject.activeSelf) bead.gameObject.SetActive(false);
+                    continue;
+                }
+                int id = bead.currentNodeId;
+                NodeScriptTwelve node = id >= 0 && id < allNodes.Count && allNodes[id] != null && allNodes[id].nodeNo == id
+                    ? allNodes[id] : null;
+                if (node == null)
+                    for (int n = 0; n < allNodes.Count; n++)
+                        if (allNodes[n] != null && allNodes[n].nodeNo == id) { node = allNodes[n]; break; }
+                if (node == null) continue;
+                bead.currentNode = node;
+                tf.position = node.transform.position + new Vector3(0, 0, -2);
+            }
+        }
+
+        /// <summary>
+        /// The match server's answer to this phone's reconnect (MultiPlayerGameManagerTwelve.CmdTwelveRequestResync):
+        /// the board from the server's SyncVars, the turn, and a capture chain in progress, before any input.
+        /// </summary>
+        public void ApplyTwelveResync(byte turn, byte forcedNode)
+        {
+            ClearTwelveMovePending();
+            ReRenderTwelveServerState();
+            if (multiPlayerGame != null) multiPlayerGame.SetPlayerTurn(turn, false);
+            isTakingNextMove = false;
+            turnSlectedBead = null;
+            if (allNodes != null && forcedNode < allNodes.Count && allNodes[forcedNode] != null)
+            {
+                BeadScriptTwelve chained = allNodes[forcedNode].currentBead;
+                if (chained != null && chained.playerID == (PLAYERS)turn && !chained.isDead)
+                {
+                    isTakingNextMove = true;
+                    turnSlectedBead = chained;
+                    if (myId == turn) ActivateMoveAbleEmptyBeads(chained);
+                }
+            }
+            RefreshScore();
+            Debug.Log($"[12Bead] reconnect resync applied: turn={(PLAYERS)turn} chainNode={forcedNode}");
+        }
+
+        /// <summary>The server decided the match: no more input, the turn rings go; the result waits for the board.</summary>
+        public void OnServerMatchFinalized()
+        {
+            serverMatchFinalized = true;
+            ClearTwelveMovePending();
+            HideTwelveMoveMarkers();
+            turnSlectedBead = null;
+            isTakingNextMove = false;
+            if (Player1Timer) Player1Timer.SetActive(false);
+            if (Player2Timer) Player2Timer.SetActive(false);
+        }
+
         public void ActivateMoveAbleEmptyBeads(BeadScriptTwelve beadScript)
         {
             turnSlectedBead = beadScript;

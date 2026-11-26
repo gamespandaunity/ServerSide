@@ -35,6 +35,8 @@ namespace Twelve
                 return _instance;
             }
         }
+        /// <summary>The scene's manager or null, without the "not found" warning (read every frame by the turn rings).</summary>
+        public static MultiPlayerGameManagerTwelve Current => _instance;
         public GamePlayControllerTwelve gamePlayController;
         public TurnTimerTwelve turnTimer;
         public int lastPlayerTurnId;
@@ -115,7 +117,9 @@ namespace Twelve
                 // players are present again before ticking. Without this, the timer keeps
                 // draining while one side is in the reconnect window and can end the game
                 // even though the disconnected player still has time to come back.
-                while (NetworkGameManager.Instance != null && NetworkGameManager.Instance.currentPlayerCount < 2)
+                // Tester 26 Nov ("the timer keeps running while a player is disconnected"): also while the match is
+                // paused or the away clock runs (ServerTurnClockHeld) - the head count only falls ~20 s after a drop.
+                while (ServerTurnClockHeld())
                 {
                     yield return new WaitForSeconds(0.5f);
                 }
@@ -228,6 +232,8 @@ namespace Twelve
         {
             if (NetworkServer.active && serverRulesReady)
                 ServerPublishBoard();
+            if (NetworkServer.active)
+                ServerTurnClockWatchdog();
         }
 
         /// <summary>
@@ -365,6 +371,35 @@ namespace Twelve
             if (countDownGameTimer != null)
                 countDownGameTimer.gameObject.SetActive(false);
 
+            if (ResultManager.GameSpawnedFinished) return;
+            // Tester 26 Nov ("the Win/Loss result appears too early, before the game state is stabilized"): the result
+            // came up at once, before the last move (sent with it) had even been played on this phone. Input stops now;
+            // the panel waits for the board to finish and settle (ShowFinalResultWhenSettled).
+            if (gamePlayController != null) gamePlayController.OnServerMatchFinalized();
+            if (finalResultCoroutine == null)
+                finalResultCoroutine = StartCoroutine(ShowFinalResultWhenSettled(winnerUserId, isDraw));
+        }
+
+        // The panel opens once every committed move has played, then after ResultSettleSeconds.
+        const float ResultSettleSeconds = 2f;
+        const float ResultMaxMoveWaitSeconds = 6f;
+        private Coroutine finalResultCoroutine;
+
+        private IEnumerator ShowFinalResultWhenSettled(string winnerUserId, bool isDraw)
+        {
+            // The deciding move's RpcTwelveMoveCommitted can arrive right behind this result.
+            yield return new WaitForSecondsRealtime(0.3f);
+            float waitStarted = Time.realtimeSinceStartup;
+            while ((committedMoves.Count > 0 || committedMoveCoroutine != null)
+                   && Time.realtimeSinceStartup - waitStarted < ResultMaxMoveWaitSeconds)
+                yield return null;
+            yield return new WaitForSecondsRealtime(ResultSettleSeconds);
+            finalResultCoroutine = null;
+            ShowFinalResult(winnerUserId, isDraw);
+        }
+
+        private void ShowFinalResult(string winnerUserId, bool isDraw)
+        {
             if (ResultManager.GameSpawnedFinished) return;
             ResultManager.GameSpawnedFinished = true;
 
@@ -945,18 +980,10 @@ namespace Twelve
                     TwelveBeadNetworkManager.instance.ServerSetCurrentPlayer(serverRulesState.turn);
             }
 
-            if (!matchFinalized && rulesResult.match.ended)
-            {
-                PLAYERS winner = rulesResult.match.outcome == TwelveOutcome.Player1
-                    ? PLAYERS.PLAYER1 : rulesResult.match.outcome == TwelveOutcome.Player2
-                        ? PLAYERS.PLAYER2 : PLAYERS.EMPTY;
-                TwelveEndReason reason = rulesResult.match.reason == TwelveMatchEndReason.ScoreLimit
-                    ? TwelveEndReason.ScoreLimit : TwelveEndReason.Checkmate;
-                MatchFlow.Log("12 Beads", $"game over after {FlowSeat(seat)}'s move — {rulesResult.match.reason}, {(winner == PLAYERS.EMPTY ? "draw" : FlowSeat(winner) + " wins")}");
-                ServerFinalize(reason, winner);
-            }
-
-            if (matchFinalized)
+            // Tester 26 Nov ("Win/Loss shown too early"): the deciding move goes to the phones BEFORE the result, so
+            // they play it first; the result used to be sent ahead of it.
+            bool matchEnds = !matchFinalized && rulesResult.match.ended;
+            if (matchEnds || matchFinalized)
             {
                 forcedChainBead = null;
                 chainContinues = false;
@@ -966,6 +993,17 @@ namespace Twelve
             Debug.Log($"[12Bead] ServerCommitTwelveMove from={fromNode} to={toNode} captured={capturedNode} turnChanged={turnChanged} newRevision={twelveRevision}");
             RpcTwelveMoveCommitted(fromNode, toNode, capturedNode, (byte)seat,
                 chainContinues, twelveRevision);
+
+            if (matchEnds)
+            {
+                PLAYERS winner = rulesResult.match.outcome == TwelveOutcome.Player1
+                    ? PLAYERS.PLAYER1 : rulesResult.match.outcome == TwelveOutcome.Player2
+                        ? PLAYERS.PLAYER2 : PLAYERS.EMPTY;
+                TwelveEndReason reason = rulesResult.match.reason == TwelveMatchEndReason.ScoreLimit
+                    ? TwelveEndReason.ScoreLimit : TwelveEndReason.Checkmate;
+                MatchFlow.Log("12 Beads", $"game over after {FlowSeat(seat)}'s move — {rulesResult.match.reason}, {(winner == PLAYERS.EMPTY ? "draw" : FlowSeat(winner) + " wins")}");
+                ServerFinalize(reason, winner);
+            }
 
             if (turnChanged && !matchFinalized)
             {
@@ -1070,6 +1108,10 @@ namespace Twelve
         {
             ClearTwelveMovePending(pendingRequestId);
             Debug.Log($"[12Bead] RpcTwelveMoveCommitted from={fromNode} to={toNode} captured={capturedNode} seat={seat} chain={chainContinues} newRevision={newRevision}");
+            // Tester 26 Nov ("bead movement looks unrealistic"): the bead's node SyncVar and the captured bead's
+            // visibility arrive right behind this RPC; tell the board they are animated, not snapped / hidden at once.
+            if (!NetworkServer.active && gamePlayController != null)
+                gamePlayController.ExpectTwelveMove(toNode, capturedNode);
             committedMoves.Enqueue(new TwelveCommittedMove
             {
                 fromNode = fromNode,
@@ -1101,10 +1143,15 @@ namespace Twelve
                 }
 
                 committedMoves.Dequeue();
+                float moveSeconds = 0.16f;
                 if (gamePlayController != null)
+                {
                     gamePlayController.ApplyTwelveMoveCommitted(move.fromNode, move.toNode,
                         move.capturedNode, move.seat, move.chainContinues);
-                yield return new WaitForSeconds(0.16f);
+                    // A chain of jumps plays one after the other, each to its end.
+                    moveSeconds = Mathf.Max(moveSeconds, gamePlayController.LastTwelveMoveSeconds);
+                }
+                yield return new WaitForSeconds(moveSeconds);
             }
             committedMoveCoroutine = null;
         }
@@ -1248,7 +1295,19 @@ namespace Twelve
             forcedChainBead = null;
             bool turnChanged = rulesResult.turnChanged && TwelveBeadNetworkManager.instance != null &&
                 TwelveBeadNetworkManager.instance.ServerSetCurrentPlayer(rulesResult.nextPlayer);
-            if (!turnChanged) return;
+            if (!turnChanged)
+            {
+                // Tester 26 Nov ("game gets stuck"): the turn timer had already stopped (TurnTimerTwelve sets
+                // isTimerRunning = false before calling this) and nothing ever started it again - the match froze for
+                // good. Keep the clock running and re-send the turn so both phones stay on the same one.
+                if (!matchFinalized && TwelveBeadNetworkManager.instance != null)
+                {
+                    MatchFlow.Log("12 Beads", $"turn timer ran out but the turn did not move ({rulesResult.expiredPlayer}) — clock restarted, turn re-sent");
+                    ServerResetTurnTimer();
+                    TwelveBeadNetworkManager.instance.ServerBroadcastCurrentTurn();
+                }
+                return;
+            }
 
             bool legacyNoMove = !ServerHasAnyLegalMove((PLAYERS)currentTurnId);
             if (legacyNoMove != rulesResult.match.ended)
@@ -1267,6 +1326,180 @@ namespace Twelve
             // State changed first. These RPCs only refresh client presentation.
             RpcOnTurnTimerEnd();
             TwelveBeadNetworkManager.instance.ServerBroadcastCurrentTurn();
+        }
+
+        #endregion
+
+        #region Away clock, stall watchdog, reconnect resync (tester 26 Nov)
+
+        /// <summary>The player id the match server's away clock runs for (AwayClock: 5 s of silence, or a drop), or
+        /// null. The app's copy of this file returns null (AwayClock lives in GamesPandaServer only).</summary>
+        private static string ServerAwayPlayerId() => AwayClock.Running ? AwayClock.AwayPlayerId : null;
+
+        /// <summary>
+        /// Server: the turn and match clocks are held. Tester 26 Nov ("the timer keeps running while a player is
+        /// disconnected"): the head count only falls when the transport gives the connection up (~20 s), so the turn ran
+        /// out and passed while the phone was gone. Held also while the match is paused and while the away clock runs.
+        /// </summary>
+        [Server]
+        public bool ServerTurnClockHeld()
+        {
+            var ngm = NetworkGameManager.Instance;
+            if (ngm == null) return false;
+            return ngm.IsPaused || ngm.currentPlayerCount < 2 || ServerAwaySeat() != PLAYERS.EMPTY;
+        }
+
+        // A phone heard nothing from for this long has lost its network (Mirror's client pings every 0.1 s; the shared
+        // SilentConnectionWatch uses the same 5 s). The 12 Beads scene is not in AwayClock's scope, so it is checked here.
+        const float SilentSeatSeconds = 5f;
+
+        static bool SeatSilent(NetworkConnectionToClient conn)
+        {
+            return conn != null && conn.isReady && Time.time - conn.lastMessageTime > SilentSeatSeconds;
+        }
+
+        // The seat that was away while the clock was held, and a full turn owed to it when it holds the turn on return.
+        private PLAYERS heldAwaySeat = PLAYERS.EMPTY;
+        private PLAYERS owedFullTurnSeat = PLAYERS.EMPTY;
+        private bool clockHeldLogged;
+        private float stalledClockSeconds;
+
+        [Server]
+        private PLAYERS ServerAwaySeat()
+        {
+            var ngm = NetworkGameManager.Instance;
+            if (ngm == null) return PLAYERS.EMPTY;
+            string awayId = ServerAwayPlayerId();
+            if (!string.IsNullOrEmpty(awayId))
+            {
+                if (ngm.creatorData != null && ngm.creatorData.playerId == awayId) return PLAYERS.PLAYER1;
+                if (ngm.joinerData != null && ngm.joinerData.playerId == awayId) return PLAYERS.PLAYER2;
+            }
+            if (ngm.CreatorRef == null || !ngm.CreatorRef.isReady || SeatSilent(ngm.CreatorRef)) return PLAYERS.PLAYER1;
+            if (ngm.JoinerRef == null || !ngm.JoinerRef.isReady || SeatSilent(ngm.JoinerRef)) return PLAYERS.PLAYER2;
+            return PLAYERS.EMPTY;
+        }
+
+        /// <summary>Server, every frame the turn clock is held (TurnTimerTwelve): note who is away.</summary>
+        [Server]
+        public void ServerNoteClockHeld()
+        {
+            PLAYERS away = ServerAwaySeat();
+            if (away != PLAYERS.EMPTY) heldAwaySeat = away;
+            if (clockHeldLogged) return;
+            clockHeldLogged = true;
+            MatchFlow.Log("12 Beads", $"turn and match clocks held ({turnTimerSecond:0.0} s of the turn left) — " +
+                (away != PLAYERS.EMPTY ? $"{FlowSeat(away)} is away" : "the match is paused"));
+        }
+
+        /// <summary>
+        /// Server, when the held turn clock runs again. True: the player who was away holds the turn and gets the whole
+        /// turn again (their phone has just reloaded the board - as Carrom 11 Nov and Snake 26 Nov); they get it once more
+        /// when their board is back (CmdTwelveRequestResync). Anyone else's turn goes on from where it was held.
+        /// </summary>
+        [Server]
+        public bool ServerNoteClockResumed()
+        {
+            clockHeldLogged = false;
+            PLAYERS away = heldAwaySeat;
+            heldAwaySeat = PLAYERS.EMPTY;
+            bool full = away != PLAYERS.EMPTY && TwelveBeadNetworkManager.instance != null
+                        && TwelveBeadNetworkManager.instance.CurrentPlayerIndex == (int)away && forcedChainBead == null;
+            if (full) owedFullTurnSeat = away;
+            MatchFlow.Log("12 Beads", full ? $"{FlowSeat(away)} is back on their own turn — full turn again"
+                                           : "both players back — clocks run again");
+            // Both phones are told the turn again (Snake 26 Nov: after a reconnect the two phones showed different
+            // turns). Not in the middle of a capture chain: that would drop the chain's bead selection.
+            if (forcedChainBead == null && !matchFinalized && TwelveBeadNetworkManager.instance != null
+                && TwelveBeadNetworkManager.instance.InitialTurnBroadcastCompleted)
+                TwelveBeadNetworkManager.instance.ServerBroadcastCurrentTurn();
+            return full;
+        }
+
+        /// <summary>
+        /// Server: a live match must always have a running turn clock (tester 26 Nov: "a proper timer is needed so the
+        /// game cannot stay stuck"). Restarts it, and re-sends the turn, when it has been stopped for a few seconds with
+        /// both players present and no result.
+        /// </summary>
+        [Server]
+        private void ServerTurnClockWatchdog()
+        {
+            var tb = TwelveBeadNetworkManager.instance;
+            if (matchFinalized || isGameOver || turnTimer == null || tb == null || !tb.InitialTurnBroadcastCompleted
+                || turnTimer.isTimerRunning || ServerTurnClockHeld())
+            {
+                stalledClockSeconds = 0f;
+                return;
+            }
+            stalledClockSeconds += Time.unscaledDeltaTime;
+            if (stalledClockSeconds < 3f) return;
+            stalledClockSeconds = 0f;
+            Debug.LogWarning("[12Bead] Turn clock was stopped in a live match — restarting it.");
+            MatchFlow.Log("12 Beads", $"turn clock found stopped in a live match — restarted for {FlowSeat((PLAYERS)tb.CurrentPlayerIndex)}");
+            ServerResetTurnTimer();
+            if (forcedChainBead == null) tb.ServerBroadcastCurrentTurn();
+        }
+
+        /// <summary>
+        /// A phone that came back into the match asks for the board once its beads are in (TwelveBeadNetworkManager).
+        /// Tester 26 Nov ("after reconnecting the game gets stuck"): it applied only the turn, from a SyncVar fallback, so a
+        /// capture chain in progress, a pending move and the bead positions could all be stale on that phone.
+        /// </summary>
+        [Command(requiresAuthority = false)]
+        public void CmdTwelveRequestResync(NetworkConnectionToClient sender = null)
+        {
+            ServerHandleTwelveResync(sender);
+        }
+
+        [Server]
+        private void ServerHandleTwelveResync(NetworkConnectionToClient sender)
+        {
+            if (sender == null) return;
+            var tb = TwelveBeadNetworkManager.instance;
+            int turn = tb != null ? tb.CurrentPlayerIndex : currentTurnId;
+            PLAYERS seat;
+            bool seated = TryGetTwelveSeat(sender, out seat);
+            if (!matchFinalized && seated && owedFullTurnSeat == seat && turn == (int)seat && forcedChainBead == null)
+            {
+                ServerResetTurnTimer();
+                MatchFlow.Log("12 Beads", $"{FlowSeat(seat)}'s board is back on their own turn — turn timer restarted");
+            }
+            if (seated && owedFullTurnSeat == seat) owedFullTurnSeat = PLAYERS.EMPTY;
+
+            byte forcedNode = byte.MaxValue;
+            if (forcedChainBead != null && forcedChainBead.currentNode != null && gamePlayController != null)
+            {
+                int index = gamePlayController.allNodes.IndexOf(forcedChainBead.currentNode);
+                if (index >= 0 && index < byte.MaxValue) forcedNode = (byte)index;
+            }
+            MatchFlow.Log("12 Beads", $"{(seated ? FlowSeat(seat) : "a phone")} asked for the board after a reconnect — turn {(PLAYERS)turn}, revision {twelveRevision}" +
+                (forcedNode != byte.MaxValue ? $", capture chain from {forcedNode}" : ""));
+            TargetTwelveResync(sender, (byte)turn, twelveRevision, forcedNode, matchFinalized);
+        }
+
+        [TargetRpc]
+        private void TargetTwelveResync(NetworkConnectionToClient target, byte turn, uint revision, byte forcedNode,
+            bool finalized)
+        {
+            StartCoroutine(ApplyTwelveResyncWhenCurrent(turn, revision, forcedNode, finalized));
+        }
+
+        private IEnumerator ApplyTwelveResyncWhenCurrent(byte turn, uint revision, byte forcedNode, bool finalized)
+        {
+            // The board SyncVars that go with this answer follow it in the same batch; moves already queued play first.
+            float waitStarted = Time.realtimeSinceStartup;
+            while ((twelveRevision < revision || committedMoves.Count > 0 || committedMoveCoroutine != null)
+                   && Time.realtimeSinceStartup - waitStarted < 3f)
+                yield return null;
+            if (finalized || matchFinalized || gamePlayController == null) yield break;
+            movePending = false;
+            if (movePendingTimeoutCoroutine != null)
+            {
+                StopCoroutine(movePendingTimeoutCoroutine);
+                movePendingTimeoutCoroutine = null;
+            }
+            TwelveBeadNetworkManager.isTossDone = true;   // a reconnect never re-opens the toss panel
+            gamePlayController.ApplyTwelveResync(turn, forcedNode);
         }
 
         #endregion

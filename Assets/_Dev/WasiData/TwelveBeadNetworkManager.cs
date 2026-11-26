@@ -16,6 +16,9 @@ public class TwelveBeadNetworkManager : NetworkBehaviour
     [SyncVar]
     private bool hasInitialTurnBroadcastCompleted = false;
 
+    // Read by MultiPlayerGameManagerTwelve (tester 26 Nov: turn clock watchdog, reconnect resync), as in the app's copy.
+    public bool InitialTurnBroadcastCompleted => hasInitialTurnBroadcastCompleted;
+
     public static bool isTossDone = false;
     public static TwelveBeadNetworkManager instance;
 
@@ -201,7 +204,31 @@ public class TwelveBeadNetworkManager : NetworkBehaviour
         if (!NetworkServer.active)
         {
             StartCoroutine(ApplyCurrentTurnAfterClientStart());
+            // Tester 26 Nov ("after reconnecting the game gets stuck"): a phone coming back into a running match asks
+            // the server for the whole board once its beads are in (turn, capture chain, bead places).
+            if (hasInitialTurnBroadcastCompleted)
+                StartCoroutine(RequestResyncWhenBoardReady());
         }
+    }
+
+    private IEnumerator RequestResyncWhenBoardReady()
+    {
+        float waited = 0f;
+        while (!IsTurnApplyReady() && waited < 10f)
+        {
+            waited += 0.2f;
+            yield return new WaitForSeconds(0.2f);
+        }
+        yield return new WaitForSeconds(0.3f);   // the last beads' node SyncVars
+        while (!NetworkClient.ready && waited < 15f)
+        {
+            waited += 0.2f;
+            yield return new WaitForSeconds(0.2f);
+        }
+        var game = MultiPlayerGameManagerTwelve.Current;
+        if (game == null || !NetworkClient.ready) yield break;
+        Debug.Log("[12Bead] reconnect: asking the match server for the board");
+        game.CmdTwelveRequestResync();
     }
 
     private IEnumerator ApplyCurrentTurnAfterClientStart()
