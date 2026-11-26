@@ -90,78 +90,50 @@ namespace POKER
         PlayerInfo currentPlayer;
         public int alarmTime = 6;
         // Update is called once per frame
-        // ── Round settle fallback ────────────────────────────────────────────────
-        // The casino settle POST can only be sent by a player's own client - it goes out with that
-        // player's bearer token, and a dedicated server has no logged-in user. Only the winner sends
-        // it (PlayerInfo.RPCWinner), so when the winner's client is gone as the hand resolves,
-        // nothing credits the round at all.
+        // ── Round settlement (online Poker) ──────────────────────────────────────
+        // QA 26 Nov (A.8.4, "records do not change after multiple rounds"): nothing closed an online
+        // Poker round any more. The player build stopped posting /casinos/handle-rounds ("the game
+        // server owns this"), but the match server only ever had a FALLBACK here that asked a surviving
+        // client to post it - and that client code is gone too. So every hand opened a round with
+        // /casinos/create-new-round and none was ever settled: no coins moved, no history, no records.
         //
-        // The server waits for the winner's confirmation and, ONLY when the winner is provably no
-        // longer connected, asks the surviving client to post the same payload. That condition is
-        // what keeps this safe: while the winner is still connected its own POST is the only one
-        // that can be in flight, so a lost confirmation can never turn into a second,
-        // double-crediting request.
-        const float settleFallbackGraceSeconds = 10f;
+        // The dedicated server settles the hand itself now, once per round, the way Teen Patti 2P does
+        // (TeenPattiNNetworkManager.ServerSettleHand): the request carries the match headers there
+        // (x-match-key / x-match-transaction, MatchServerApi.ApplyHeaders), never a player token.
+        // The amounts are the server's own per-hand bet totals (PlayerInfo.syncedPokerHandBet, added up
+        // in ServerAccumulatePokerBet from every blind, call, raise and all-in it relayed), not numbers
+        // a phone reported.
         string settledRoundId;
-        Coroutine settleFallbackRoutine;
+        string settlingRoundId;
+        Coroutine settleFallbackRoutine;   // kept for the old fallback timer, nothing starts it now
 
+        // No longer sent by the player build (kept so the Cmd table stays identical on both sides).
         [Command(requiresAuthority = false)]
         public void CmdPokerRoundSettled(string roundId)
         {
-            settledRoundId = roundId;
-            Debug.Log($"[RoundEnd] round {roundId} confirmed settled by the winner's own client.");
+            Debug.Log($"[RoundEnd] a client reported round {roundId} as settled - ignored, the server settles every round itself.");
         }
 
+        /// <param name="roundId">The casino round of this hand (staticVariables.CurrentRoundID on the server).</param>
+        /// <param name="winnerId">The winning player's public ID.</param>
+        /// <param name="firstAmount">What the challenge creator (first_player) put into this hand.</param>
+        /// <param name="secondAmount">What the joiner (second_player) put into this hand.</param>
         [Server]
         public void ServerWatchRoundSettle(string roundId, string winnerId, string firstAmount, string secondAmount)
         {
-            if (string.IsNullOrEmpty(roundId))
+            if (string.IsNullOrEmpty(roundId) || string.IsNullOrEmpty(winnerId))
+            {
+                Debug.LogError($"[RoundEnd] NOT settled - round '{roundId}', winner '{winnerId}' (no round id means /casinos/create-new-round never answered).");
                 return;
-
-            if (settleFallbackRoutine != null)
-                StopCoroutine(settleFallbackRoutine);
-
-            settleFallbackRoutine = StartCoroutine(SettleFallbackAfterGrace(roundId, winnerId, firstAmount, secondAmount));
-        }
-
-        IEnumerator SettleFallbackAfterGrace(string roundId, string winnerId, string firstAmount, string secondAmount)
-        {
-            yield return new WaitForSecondsRealtime(settleFallbackGraceSeconds);
-            settleFallbackRoutine = null;
-
-            if (settledRoundId == roundId)
-                yield break;
-
-            NetworkGameManager networkGameManager = NetworkGameManager.Instance;
-            if (networkGameManager != null && networkGameManager.currentPlayerCount >= 2)
+            }
+            if (roundId == settledRoundId || roundId == settlingRoundId)
             {
-                // Everybody is still here, so the winner's own POST is the only one that can be in
-                // flight (slow network, or it failed and logged SETTLE FAILED). Sending another one
-                // from a second client is exactly the double-credit case - never do it.
-                Debug.LogWarning($"[RoundEnd] round {roundId} is still unconfirmed but both players are " +
-                                 $"connected - leaving it to the winner's own client.");
-                yield break;
+                Debug.Log($"[RoundEnd] round {roundId} is already settled / being settled - second result ignored.");
+                return;
             }
 
-            foreach (NetworkConnectionToClient conn in NetworkServer.connections.Values)
-            {
-                if (conn == null || !conn.isReady) continue;
-
-                Debug.LogWarning($"[RoundEnd] round {roundId} was never settled and the winner ({winnerId}) is " +
-                                 $"no longer connected - asking the remaining client to post it.");
-                TargetPokerSettleFallback(conn, roundId, winnerId, firstAmount, secondAmount);
-                yield break;
-            }
-
-            Debug.LogError($"[RoundEnd] round {roundId} was never settled and nobody is left to post it " +
-                           $"(winner={winnerId}, first={firstAmount}, second={secondAmount}).");
-        }
-
-        [TargetRpc]
-        void TargetPokerSettleFallback(NetworkConnection target, string roundId, string winnerId, string firstAmount, string secondAmount)
-        {
-            if (!BigInteger.TryParse(firstAmount, out BigInteger first)) first = 0;
-            if (!BigInteger.TryParse(secondAmount, out BigInteger second)) second = 0;
+            if (!BigInteger.TryParse(firstAmount, out BigInteger first) || first < 0) first = 0;
+            if (!BigInteger.TryParse(secondAmount, out BigInteger second) || second < 0) second = 0;
 
             System.Collections.Generic.Dictionary<string, string> data = new System.Collections.Generic.Dictionary<string, string>
             {
@@ -172,13 +144,32 @@ namespace POKER
                 { "second_player_amount", second.ToString() },
             };
 
-            Debug.LogWarning($"[RoundEnd] posting round {roundId} on behalf of the disconnected winner {winnerId}.");
+            settlingRoundId = roundId;
+            Debug.Log($"[RoundEnd] SERVER settles round {roundId}: winner {winnerId}, first {first}, second {second}, pot {first + second}");
+            if (MatchFlow.Enabled)
+                MatchFlow.Log("Poker", $"round {roundId} settled by the server - winner {winnerId}, pot {first + second} ({first} + {second})");
+
             StartCoroutine(ServerConnection.PostApiRequest(ServerConnection.End_Round_casino_Url, data,
-                success => Debug.Log($"[RoundEnd] fallback settle for round {roundId} OK: {success}"),
-                failure => Debug.LogError($"[RoundEnd] fallback settle FAILED for round {roundId}: {failure} - " +
-                                          $"the backend may only accept the winner's own client for this call."), withSettlementAuth: true));
+                success =>
+                {
+                    settledRoundId = roundId;
+                    if (settlingRoundId == roundId) settlingRoundId = null;
+                    Debug.Log($"[RoundEnd] round {roundId} settled OK: {success}");
+                },
+                failure =>
+                {
+                    // Let a later result of the same hand (or a retry) try again rather than lose the payout.
+                    if (settlingRoundId == roundId) settlingRoundId = null;
+                    Debug.LogError($"[RoundEnd] SETTLE FAILED for round {roundId} (winner={winnerId}, first={first}, second={second}): {failure} - this hand was NOT credited on the backend.");
+                }));
         }
 
+        // Unused since the server settles by itself (kept so the Rpc table stays identical on both sides).
+        [TargetRpc]
+        void TargetPokerSettleFallback(NetworkConnection target, string roundId, string winnerId, string firstAmount, string secondAmount)
+        {
+            Debug.Log($"[Settlement] Client not submitting the fallback settle for round {roundId} — the game server owns this.");
+        }
         // ── Server-side turn backstop ────────────────────────────────────────────
         // The timer in Update() below is client-only, and only the turn holder itself auto-acts
         // (currentPlayer.IsMine()). So a client that is present but never acts - a frozen UI, a

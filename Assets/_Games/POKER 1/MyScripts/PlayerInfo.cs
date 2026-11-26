@@ -1446,26 +1446,41 @@ namespace POKER
             if (winner) ServerStartSettleWatch();
         }
 
-        // Arms the settle fallback on the server. The payload is built from the same synced
-        // properties the winner's own client uses, so the surviving client can post an identical
-        // request if the winner never does. Nothing is sent from here - see
-        // PlayerTurnManager.ServerWatchRoundSettle for why the fallback only fires once the winner
-        // is provably disconnected.
+        // Settles the hand on the server (PlayerTurnManager.ServerWatchRoundSettle posts
+        // /casinos/handle-rounds itself). The stakes are the server's own per-hand bet totals,
+        // syncedPokerHandBet, written in ServerAccumulatePokerBet for every bet the server relayed - the
+        // old "CashInHand - balance" pair came from properties the phones write, and the creator's balance
+        // is refreshed from the wallet mid-hand, so it did not have to be what was actually bet.
+        // first_player is the challenge creator, second_player the joiner (NetworkGameManager seat data).
         [Server]
         void ServerStartSettleWatch()
         {
             if (MatchHandler.isOffline() || !MatchHandler.IsPoker()) return;
             if (PlayerTurnManager.Instance == null || GameManager.Instance == null) return;
-            if (string.IsNullOrEmpty(staticVariables.CurrentRoundID)) return;
 
-            PlayerInfo firstplayer = GameManager.Instance.playersList.Count > 0 ? GameManager.Instance.playersList[0] : null;
-            PlayerInfo secondPlayer = GameManager.Instance.playersList.Count > 1 ? GameManager.Instance.playersList[1] : null;
+            PlayerInfo creator = null, joiner = null;
+            NetworkGameManager ngm = NetworkGameManager.Instance;
+            foreach (PlayerInfo p in GameManager.Instance.playersList)
+            {
+                if (p == null) continue;
+                if (ngm != null && ngm.creatorData != null && PlayerId.Same(p.ownerPlayerId, ngm.creatorData.playerId)) creator = p;
+                else if (ngm != null && ngm.joinerData != null && PlayerId.Same(p.ownerPlayerId, ngm.joinerData.playerId)) joiner = p;
+            }
+            // Seat data missing (should not happen in a challenge): fall back to the spawn order.
+            if (creator == null && joiner == null)
+            {
+                creator = GameManager.Instance.playersList.Count > 0 ? GameManager.Instance.playersList[0] : null;
+                joiner = GameManager.Instance.playersList.Count > 1 ? GameManager.Instance.playersList[1] : null;
+            }
+
+            BigInteger first = creator != null ? LocalSettings.StringToBigInteger(creator.syncedPokerHandBet) : 0;
+            BigInteger second = joiner != null ? LocalSettings.StringToBigInteger(joiner.syncedPokerHandBet) : 0;
 
             PlayerTurnManager.Instance.ServerWatchRoundSettle(
                 staticVariables.CurrentRoundID,
-                ownerPlayerId,
-                PokerStakeOfThisHand(firstplayer).ToString(),
-                PokerStakeOfThisHand(secondPlayer).ToString());
+                PlayerId.Normalize(ownerPlayerId),
+                first.ToString(),
+                second.ToString());
         }
 
         public void PlayerPacked()
