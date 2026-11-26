@@ -306,6 +306,17 @@ public class MyEightBallNetwork : NetworkBehaviour
                 !string.IsNullOrEmpty(NetworkGameManager.Instance.joinerData.playerId))
             {
 
+                // QA 26 Nov (online 8 Ball stuck on entry): this coroutine is started twice on the server
+                // (OnStartServer and AightBallPoolGameManager.WaitForMultiplayerPlayersReady). The second run used to
+                // toss AGAIN, so the break could flip to the other player a moment after the first toss; a phone that
+                // had already applied the first one took the flip for a post-shot turn change and locked its cue
+                // waiting for a barrier that never comes. The toss is made once per match.
+                if (!string.IsNullOrEmpty(currentTurnId))
+                {
+                    Debug.Log($"[Server] Toss already made ({currentTurnId} breaks) - not tossing again.");
+                    yield break;
+                }
+
                 player1Id = PlayerId.Normalize(NetworkGameManager.Instance.creatorData.playerId);
                 player2Id = PlayerId.Normalize(NetworkGameManager.Instance.joinerData.playerId);
 
