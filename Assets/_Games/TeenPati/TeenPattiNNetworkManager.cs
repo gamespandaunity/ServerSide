@@ -293,17 +293,29 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
             return;
         }
 
-        System.Numerics.BigInteger pot = roomCustomPropertiesTeenPatti != null
+        System.Numerics.BigInteger tablePot = roomCustomPropertiesTeenPatti != null
             ? roomCustomPropertiesTeenPatti.GetTableCollectedCash(LocalSettings.TableCashKey)
             : 0;
+        System.Numerics.BigInteger creatorStake = SeatStake(TPSeat.Creator);
+        System.Numerics.BigInteger joinerStake = SeatStake(TPSeat.Joiner);
+        bool stakesValid = creatorStake >= 0 && joinerStake >= 0 && creatorStake + joinerStake > 0;   // CashInHand missing reads negative
+        if (creatorStake < 0) creatorStake = 0;
+        if (joinerStake < 0) joinerStake = 0;
+        // The pot is what the two seats put in. The room's table_cash is written by BOTH phones with their
+        // own absolute pot total, so a boot or chaal landing on both at once could leave it short; it is
+        // only the fallback now (QA 26 Nov A.7.4, coins not matching the hand).
+        System.Numerics.BigInteger pot = stakesValid ? creatorStake + joinerStake : tablePot;
+        if (pot != tablePot)
+            TPLog.Warn("TeenPattiNNetworkManager", "Hand " + handId + " pot from the stakes " + pot + " (" + creatorStake + " + " + joinerStake
+                + ") differs from table_cash " + tablePot + " - settling with the stakes");
 
         Dictionary<string, string> data = new Dictionary<string, string>
         {
             { "round_id", roundId },
             { "winner_id", winnerId },
             { "winner_amount", pot.ToString() },
-            { "first_player_amount", SeatStake(TPSeat.Creator).ToString() },
-            { "second_player_amount", SeatStake(TPSeat.Joiner).ToString() },
+            { "first_player_amount", creatorStake.ToString() },
+            { "second_player_amount", joinerStake.ToString() },
         };
 
         settledForHandId = handId;
@@ -553,6 +565,8 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
         // Every triple is tagged with the netId of the player it belongs to, so no client has to
         // infer ownership from its own PlayingList order.
         uint[] owners = new uint[players];
+        TPSeat[] seats = new TPSeat[players];
+        NetworkConnectionToClient[] connections = new NetworkConnectionToClient[players];
         serverHands.Clear();
         serverSeen.Clear();
 
@@ -568,7 +582,9 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
 
             PlayerInfo info = psm.PlayingList[p];
             owners[p] = info != null && info.this_photonView != null ? info.this_photonView.netId : 0u;
+            connections[p] = info != null ? info.connectionToClient : null;
             TPSeat seat = info != null ? SeatForConnection(info.connectionToClient) : TPSeat.None;
+            seats[p] = seat;
             if (seat == TPSeat.None)
             {
                 TPLog.Warn("TeenPattiNNetworkManager", "Dealt to '" + (info != null ? info.name : "null")
@@ -579,32 +595,99 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
             serverHands[seat] = hand;
             serverSeen[seat] = false;
 
-            // Reconnect copy, written by the SERVER now. It used to be written by whichever client
-            // had isMasterClient, inside OrignalCardsSetting - so a reconnecting player could only
-            // get his cards back if that particular phone was still around to have written them.
-            if (info.playerCustomProperties != null)
-                info.playerCustomProperties.SetCustomArray(LocalSettings.OrgCardsArray, hand);
+            // No reconnect copy in the player's custom properties any more. That SyncDictionary goes to
+            // EVERY observer, so writing the hand there handed each player the other's cards (the client
+            // rebuilt the opponent's hand from it). A player who drops mid-hand forfeits that hand anyway
+            // and rejoins as a spectator until the next deal; the cards reach clients only through
+            // TargetDealMyHand (own hand) and RpcRevealHands (the show).
         }
 
         dealtForHandId = handId;
+        lastDealOwners = owners;
+        lastDealCards = dealt;
+        lastDealSeats = seats;
         TPLog.Change("TeenPattiNNetworkManager", "deal", "Server dealt hand " + handId + " to "
             + players + " player(s) from a " + deckSize + " card deck");
         if (MatchFlow.Enabled) MatchFlow.Log(FlowGame, $"cards dealt to {players} player(s)");
 
-        // Delivery still goes out on a broadcast. Making the server the DEALER and making each
-        // player's cards PRIVATE are two separate changes: private delivery only works once the
-        // server also owns hand termination, because every termination path today (Game_Play.ShowWinner,
-        // GameResultsManager.ShowingResult, PlayerStateManager.RemainingPlayerWonGameAutomatic and the
-        // side-show) compares both hands locally the instant it fires. serverHands above is the
-        // canonical copy that private delivery and server-side evaluation will read from.
+        // PRIVATE delivery: each player gets only his own three cards, addressed to his own connection.
+        // The deal used to go out on one broadcast (RpcDealHandsToOwners) carrying every hand, so any
+        // client - or anyone reading its log - knew the opponent's cards from the first second of the hand.
+        // The other hands reach a client only at the show, through RpcRevealHands, sent just before the
+        // WaitingForResults state that makes the clients compare (CmdUpdateThisStateOnNetwork). A hand that
+        // ends by a pack or a walk-out is never revealed. The server still settles from serverHands itself.
         //
-        // It goes out addressed by OWNER netId rather than as a bare array in PlayingList order.
-        // The old RpcUpDatePlayerCardsArray required every client to have already rebuilt an
-        // identically ordered PlayingList at the instant the deal landed, and neither half of that
-        // holds: the list is rebuilt from synced state (deals were logged building cards "for 1
-        // players" while the server had dealt to 2, leaving the other seat with only its anchors)
-        // and its order is client-local, so index j did not have to mean the same player everywhere.
-        RpcDealHandsToOwners(owners, dealt);
+        // Needs the matching app build: an older app only understands RpcDealHandsToOwners and would get no
+        // cards from this server.
+        for (int p = 0; p < players; p++)
+        {
+            if (connections[p] == null || owners[p] == 0u)
+            {
+                TPLog.Warn("TeenPattiNNetworkManager", "Hand " + handId + " slot " + p + " has no owner connection - its cards were not sent");
+                continue;
+            }
+            TargetDealMyHand(connections[p], owners[p], new int[]
+            {
+                dealt[(p * 3) + 0],
+                dealt[(p * 3) + 1],
+                dealt[(p * 3) + 2]
+            });
+        }
+    }
+
+    // ---- private cards: server-only record of the last deal, used by the show-time reveal ----
+    uint[] lastDealOwners;
+    int[] lastDealCards;
+    TPSeat[] lastDealSeats;
+    int revealedForHandId = -1;
+
+    /// <summary>One player's own hand, sent to that player's connection only.</summary>
+    [TargetRpc]
+    public void TargetDealMyHand(NetworkConnectionToClient target, uint owner, int[] cards)
+    {
+        TPLog.Flow("TeenPattiNNetworkManager", "My hand received (owner netId " + owner + ", "
+            + (cards != null ? cards.Length : 0) + " card indexes)");
+        StartCoroutine(ApplyDealWhenOwnersSpawn(new uint[] { owner }, cards));
+    }
+
+    /// <summary>The hands still in the pot, opened for the show. Sent once per hand, right before the
+    /// WaitingForResults state reaches the clients, because each client ranks the hands from the cards
+    /// built under every seat (GameResultsManager.GettingPlayerScoreAndRank).</summary>
+    [ClientRpc]
+    public void RpcRevealHands(uint[] owners, int[] cards)
+    {
+        TPLog.Flow("TeenPattiNNetworkManager", "Show -> " + (owners != null ? owners.Length : 0)
+            + " hand(s) revealed for the comparison");
+        StartCoroutine(ApplyDealWhenOwnersSpawn(owners, cards));
+    }
+
+    /// <summary>Opens the live hands of the current deal to every client, once. Packed seats stay hidden.</summary>
+    [Server]
+    void ServerRevealHandsForShow(string why)
+    {
+        if (lastDealOwners == null || lastDealCards == null || lastDealSeats == null)
+        {
+            TPLog.Warn("TeenPattiNNetworkManager", "Show (" + why + ") but there is no deal to reveal");
+            return;
+        }
+        if (dealtForHandId != handId || handEnded || revealedForHandId == handId)
+            return;
+
+        List<uint> owners = new List<uint>();
+        List<int> cards = new List<int>();
+        for (int p = 0; p < lastDealOwners.Length; p++)
+        {
+            if (lastDealSeats[p] == TPSeat.None || !SeatIsLive(lastDealSeats[p]))
+                continue;
+            owners.Add(lastDealOwners[p]);
+            for (int c = 0; c < 3; c++)
+                cards.Add(lastDealCards[(p * 3) + c]);
+        }
+
+        revealedForHandId = handId;
+        TPLog.Change("TeenPattiNNetworkManager", "reveal", "Hand " + handId + " revealed for the show ("
+            + owners.Count + " live hand(s)) because " + why);
+        RpcRevealHands(owners.ToArray(), cards.ToArray());
     }
 
     /// <summary>The deal, with each triple tagged by the netId of the player it belongs to.
@@ -777,6 +860,13 @@ public class TeenPattiNNetworkManager : NetworkBehaviour
         TPLog.Flow("TeenPattiNNetworkManager", "CmdUpdateThisStateOnNetwork -> room state " + (RoomState.STATE)state + " msg='" + message + "'");
         if (MatchFlow.Enabled && (RoomState.STATE)state == RoomState.STATE.WaitingForResults)
             MatchFlow.Log(FlowGame, $"{FlowSeatName(CurrentActorSeat)} calls show" + (string.IsNullOrEmpty(message) ? "" : $" ({message})") + $", pot {FlowPot()}");
+
+        // The show (a SHOW tap or the pot limit) is the moment the hands open. Reveal them BEFORE the state
+        // goes out: the same reliable channel keeps the order, so every client has both hands built by the
+        // time WaitingForResults makes it rank them (one second later, GameResultsManager.ShowResult).
+        if ((RoomState.STATE)state == RoomState.STATE.WaitingForResults)
+            ServerRevealHandsForShow(string.IsNullOrEmpty(message) ? "show" : message);
+
         RpcUpdateThisStateOnNetwork(state, message);
 
         // Keep the SERVER's own copy of the room state in step. This Cmd relayed the Rpc and nothing
