@@ -375,6 +375,16 @@ public class CarromNetworkManager : NetworkBehaviour
         // uniquely identifies a reconnect — ask the server to push the current
         // turn state back so PlayerPuck.ResetPosition() runs with the correct
         // CurrentTurn and the striker snaps to the right Y.
+        // Tester 26 Nov: a phone coming back takes no aim and shows no turn until the server's board snapshot is in
+        // (CmdResyncTurnStateForReconnect sends it first). Given up on after a while (an older match server sends none).
+        BoardSnapshotPending = BEKStudio.GameController.isGameStarted && !NetworkServer.active;
+        if (BoardSnapshotPending)
+            this.Delay(BoardSnapshotWaitSeconds, () =>
+            {
+                if (!BoardSnapshotPending) return;
+                BoardSnapshotPending = false;
+                Debug.LogWarning("[Carrom Reconnect] no board snapshot from the server — going on with the synced state.");
+            });
         if (BEKStudio.GameController.isGameStarted)
         {
             this.Delay(2, () =>
@@ -814,7 +824,17 @@ public class CarromNetworkManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdPuckState(GameObject puck, bool puckInHole, int puckHoleIndex, bool isOrignalMasterClient)
     {
-        RpcPuckState(puck, puckInHole, puckHoleIndex, isOrignalMasterClient);
+        // Tester 26 Nov ("after reconnecting the bead and queen positions are different on both phones"): every phone
+        // reports every coin at each turn hand-over, and this relayed the PHONE's view to both phones as fact. A phone
+        // that had just reloaded the board (or missed a pocket) hid coins that were on the board, or put pocketed ones
+        // back on their start spot, on the other phone too. Only the match server's own state of the coin is relayed now.
+        var serverPuck = puck != null ? puck.GetComponent<BEKStudio.Puck>() : null;
+        if (serverPuck == null) return;
+        var gc = BEKStudio.GameController.Instance;
+        bool serverInHole = serverPuck.puckInHole
+            || (gc != null && gc.homePucksCollected != null && gc.homePucksCollected.Contains(puck))
+            || (gc != null && gc.awayPucksCollected != null && gc.awayPucksCollected.Contains(puck));
+        RpcPuckState(puck, serverInHole, puckHoleIndex, isOrignalMasterClient);
     }
 
     [ClientRpc]
@@ -928,6 +948,7 @@ public class CarromNetworkManager : NetworkBehaviour
             // QA 3 Nov: wait for Start too - on the spawn that delivers this hook, ResultManager's flags can still be
             // the PREVIOUS match's "finished" (Start resets them), and checking them here dropped the first turn.
             () => clientStartDone
+                  && !BoardSnapshotPending   // tester 26 Nov: the board first, then the turn
                   && BEKStudio.GameController.Instance != null
                   && PlayerPuck.Instance != null
                   && PlayerPuck.Instance.rb != null   // set in its Start; CheckTurn -> ResetPosition uses it
@@ -1294,6 +1315,7 @@ public class CarromNetworkManager : NetworkBehaviour
         RpcSwitchTurn(nextTurn);
         StartTurnTimer(nextTurn);
         ResetPlayerPuckPos();
+        ServerScheduleRestingSnapshot(nextTurn);
         return true;
     }
 
@@ -1336,8 +1358,8 @@ public class CarromNetworkManager : NetworkBehaviour
         bool shotRunning = shotWatchdog != null || !isTimerRunning;
         if (!holderHasStriker && !shotRunning && !TryAssignStrikerAuthority(PlayercurrentTurnId))
         {
+            // Tester 26 Nov: the board and the turn still go to the phone (the striker hand-over retries on its own).
             Debug.LogWarning($"[Carrom Reconnect] Could not reassign striker authority to {PlayercurrentTurnId}.");
-            return;
         }
 
         MatchFlow.Log("Carrom", $"player reconnected — board resynced, turn stays with {MatchFlow.Who(PlayercurrentTurnId)}");
@@ -1358,6 +1380,12 @@ public class CarromNetworkManager : NetworkBehaviour
             awayNames,
             BEKStudio.GameController.currentHomeScore,
             BEKStudio.GameController.currentAwayScore);
+
+        // Tester 26 Nov ("bead and queen positions differ on both phones", "striker not synced after reconnection"):
+        // every coin's place and pocket state and the striker, from the server, before the turn below enables input.
+        // To both phones when the board is at rest (the one that stayed could be off too); during a shot only to the
+        // one coming back (the coins are moving and NetworkTransform carries them).
+        ServerSendBoardSnapshot(shotRunning ? sender : null, includeStriker: true);
 
         // Turn state + queen icon restoration — TargetRpc only to the
         // reconnecting conn so the opponent isn't disturbed.
@@ -1507,7 +1535,145 @@ public class CarromNetworkManager : NetworkBehaviour
         RpcGiveTurnToSamePlayer(currentPlayerId, queenPendingCover, pendingQueenTag);
         StartTurnTimer(currentPlayerId);
         ResetPlayerPuckPos();
+        ServerScheduleRestingSnapshot(currentPlayerId);
     }
+
+    // ───── Board snapshot (tester's report, 26 Nov) ─────
+    // Same block in both projects (GamesPandaUnity / GamesPandaServer). The coins only reach the phones through
+    // NetworkTransformUnreliable, which a phone switches off for a coin it thinks is pocketed or while a turn is handed
+    // over. A phone that came back, or missed a message, could keep coins in the wrong place (or hidden) for the rest of
+    // the match. The server now sends its whole board: on a reconnect before the turn (CmdResyncTurnStateForReconnect),
+    // and once the board is at rest at the start of every turn.
+
+    /// <summary>Phone: a reconnect is waiting for the server's board snapshot; no aim and no turn until it is in.</summary>
+    public static bool BoardSnapshotPending { get; private set; }
+    const float BoardSnapshotWaitSeconds = 8f;
+    const float RestingSnapshotDelaySeconds = 1f;
+    private Coroutine restingSnapshotCoroutine;
+
+    [Server]
+    private void ServerScheduleRestingSnapshot(string turnId)
+    {
+        if (restingSnapshotCoroutine != null) StopCoroutine(restingSnapshotCoroutine);
+        restingSnapshotCoroutine = StartCoroutine(ServerRestingSnapshot(turnId));
+    }
+
+    [Server]
+    private IEnumerator ServerRestingSnapshot(string turnId)
+    {
+        yield return new WaitForSeconds(RestingSnapshotDelaySeconds);
+        restingSnapshotCoroutine = null;
+        // Only while that turn is on and nobody has shot yet (a shot stops the turn timer).
+        if (gameEnded || PlayercurrentTurnId != turnId || !isTimerRunning || shotWatchdog != null) yield break;
+        // The striker only when the server holds it: a holder already aiming streams it themselves.
+        var strikerIdentity = playerPuck != null ? playerPuck.GetComponent<NetworkIdentity>() : null;
+        ServerSendBoardSnapshot(null, includeStriker: strikerIdentity != null && strikerIdentity.connectionToClient == null);
+    }
+
+    /// <summary>Server: send every coin's position and pocket state (and the striker) to one phone, or to both.</summary>
+    [Server]
+    public void ServerSendBoardSnapshot(NetworkConnectionToClient target, bool includeStriker)
+    {
+        var gc = BEKStudio.GameController.Instance;
+        if (gameEnded || gc == null || gc.allPucks == null) return;
+        int count = gc.allPucks.Length;
+        var names = new string[count];
+        var positions = new Vector2[count];
+        var inHole = new bool[count];
+        for (int i = 0; i < count; i++)
+        {
+            Puck puck = gc.allPucks[i];
+            if (puck == null) { names[i] = string.Empty; continue; }
+            names[i] = puck.gameObject.name;
+            positions[i] = puck.transform.localPosition;
+            inHole[i] = puck.puckInHole
+                        || (gc.homePucksCollected != null && gc.homePucksCollected.Contains(puck.gameObject))
+                        || (gc.awayPucksCollected != null && gc.awayPucksCollected.Contains(puck.gameObject));
+        }
+        Vector2 strikerPos = Vector2.zero;
+        float strikerRotZ = float.NaN;   // NaN: leave the striker alone
+        if (includeStriker && playerPuck != null)
+        {
+            strikerPos = playerPuck.transform.localPosition;
+            strikerRotZ = playerPuck.transform.rotation.eulerAngles.z;
+        }
+        string turnId = PlayercurrentTurnId ?? string.Empty;
+        if (target != null)
+            TargetCarromBoardSnapshot(target, names, positions, inHole, strikerPos, strikerRotZ, turnId);
+        else
+            RpcCarromBoardSnapshot(names, positions, inHole, strikerPos, strikerRotZ, turnId);
+    }
+
+    [ClientRpc]
+    private void RpcCarromBoardSnapshot(string[] names, Vector2[] positions, bool[] inHole, Vector2 strikerPos,
+        float strikerRotZ, string turnId)
+    {
+        ApplyBoardSnapshot(names, positions, inHole, strikerPos, strikerRotZ, turnId);
+    }
+
+    [TargetRpc]
+    private void TargetCarromBoardSnapshot(NetworkConnection target, string[] names, Vector2[] positions, bool[] inHole,
+        Vector2 strikerPos, float strikerRotZ, string turnId)
+    {
+        ApplyBoardSnapshot(names, positions, inHole, strikerPos, strikerRotZ, turnId);
+    }
+
+    private void ApplyBoardSnapshot(string[] names, Vector2[] positions, bool[] inHole, Vector2 strikerPos,
+        float strikerRotZ, string turnId)
+    {
+        if (NetworkServer.active) return;   // the server's board is the snapshot
+        BoardSnapshotPending = false;
+        if (gameEnded || ResultManager.isGameFinished || ResultManager.GameSpawnedFinished) return;
+        var gc = BEKStudio.GameController.Instance;
+        if (gc == null || gc.allPucks == null || names == null || positions == null || inHole == null) return;
+
+        int count = Mathf.Min(names.Length, Mathf.Min(positions.Length, inHole.Length));
+        bool listsChanged = false;
+        int moved = 0;
+        for (int i = 0; i < count; i++)
+        {
+            if (string.IsNullOrEmpty(names[i])) continue;
+            string name = names[i];
+            Puck puck = i < gc.allPucks.Length && gc.allPucks[i] != null && gc.allPucks[i].gameObject.name == name
+                ? gc.allPucks[i]
+                : gc.allPucks.FirstOrDefault(p => p != null && p.gameObject.name == name);
+            if (puck == null) continue;
+            GameObject go = puck.gameObject;
+            if (!inHole[i] && (gc.homePucksCollected.Contains(go) || gc.awayPucksCollected.Contains(go)))
+            {
+                // On the board on the server: not pocketed here either.
+                gc.homePucksCollected.Remove(go);
+                gc.awayPucksCollected.Remove(go);
+                listsChanged = true;
+            }
+            if (!inHole[i] && ((Vector2)puck.transform.localPosition - positions[i]).sqrMagnitude > 0.0004f) moved++;
+            puck.ApplyServerSnapshot(positions[i], inHole[i]);
+        }
+        if (listsChanged) gc.UpdateScoreText();
+
+        if (!float.IsNaN(strikerRotZ))
+        {
+            if (playerPuck == null && PlayerPuck.Instance != null) playerPuck = PlayerPuck.Instance.gameObject;
+            var identity = playerPuck != null ? playerPuck.GetComponent<NetworkIdentity>() : null;
+            // The striker's owner (aiming on this phone) is its source; everyone else takes the server's.
+            if (playerPuck != null && identity != null && !identity.isOwned)
+            {
+                playerPuck.transform.localPosition = new Vector3(strikerPos.x, strikerPos.y, 0f);
+                playerPuck.transform.rotation = Quaternion.Euler(0f, 0f, strikerRotZ);
+                var pp = playerPuck.GetComponent<PlayerPuck>();
+                if (pp != null && pp.rb != null)
+                {
+                    pp.rb.linearVelocity = Vector2.zero;
+                    pp.rb.angularVelocity = 0f;
+                    pp.rb.position = playerPuck.transform.position;
+                }
+                var nt = playerPuck.GetComponent<NetworkTransformUnreliable>();
+                if (nt != null) nt.ResetState();
+            }
+        }
+        Debug.Log($"[Carrom] board snapshot applied: {count} coins ({moved} corrected), turn {turnId}" + (listsChanged ? ", pockets corrected" : ""));
+    }
+
 
     [ClientRpc]
     public void RpcGiveTurnToSamePlayer(

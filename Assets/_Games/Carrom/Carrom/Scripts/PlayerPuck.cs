@@ -277,6 +277,8 @@ namespace BEKStudio
         public void OnMouseDown()
         {
             if (!isOwned || GameController.Instance.gameState != GameController.GameState.READY || GameController.Instance.CurrentTurn != GameController.CurrentPlayer.ME) return;
+            // Tester 26 Nov: after a reconnect, no aiming until the server's board snapshot is on this phone.
+            if (CarromNetworkManager.BoardSnapshotPending) return;
 
             Highligher.transform.localScale = new Vector3(3.5f, 3.5f, 3.5f);
             arrow.transform.localScale = Vector2.zero;

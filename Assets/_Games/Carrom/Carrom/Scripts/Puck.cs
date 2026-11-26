@@ -215,6 +215,48 @@ namespace BEKStudio
             lastVel = Vector2.zero;
         }
 
+        /// <summary>
+        /// Phone: put this coin exactly as the match server has it (CarromNetworkManager board snapshot, tester's report
+        /// 26 Nov: "after reconnecting the bead and queen positions are different on both phones"). In a pocket: hidden.
+        /// On the board: shown, at the server's position, and following the server's NetworkTransform again (a phone
+        /// could be left with it switched off by an earlier turn hand-over or a relayed pocket that never happened).
+        /// </summary>
+        public void ApplyServerSnapshot(Vector2 localPosition, bool inHole)
+        {
+            if (rb == null) rb = GetComponent<Rigidbody2D>();
+            if (networkTransform == null) networkTransform = GetComponent<NetworkTransformUnreliable>();
+            if (spriteRenderer == null) spriteRenderer = GetComponent<SpriteRenderer>();
+            if (circleCollider2D == null) circleCollider2D = GetComponent<CircleCollider2D>();
+            if (AnimRenderer == null && animator != null) AnimRenderer = animator.GetComponent<SpriteRenderer>();
+
+            if (inHole)
+            {
+                if (rb != null) OnDisableProperties(true);
+                return;
+            }
+
+            puckInHole = false;
+            isMoving = false;
+            lastVel = Vector2.zero;
+            if (spriteRenderer != null) spriteRenderer.color = new Color32(255, 255, 255, 255);
+            if (AnimRenderer != null) AnimRenderer.color = new Color32(255, 255, 255, 255);
+            SetShadowVisible(true);
+            if (circleCollider2D != null) circleCollider2D.enabled = true;
+            transform.localPosition = localPosition;
+            if (rb != null)
+            {
+                rb.simulated = true;
+                rb.linearVelocity = Vector2.zero;
+                rb.angularVelocity = 0f;
+                rb.position = transform.position;
+            }
+            if (networkTransform != null)
+            {
+                networkTransform.enabled = true;
+                networkTransform.ResetState();   // no buffered old positions pulling it back
+            }
+        }
+
         public void ResetAndRemove()
         {
             "ResetAndRemove Puck Called".Show();
