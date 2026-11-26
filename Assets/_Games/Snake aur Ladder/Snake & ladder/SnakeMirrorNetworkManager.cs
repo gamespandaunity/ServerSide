@@ -124,7 +124,8 @@ namespace Snake_Ladder
                 // ...but never past the server's lifetime: a pause eats into the clock once the end of that is near.
                 while ((IsMultiSeatTable
                         ? MatchSeats.Current.ConnectedCount == 0
-                        : NetworkGameManager.Instance != null && NetworkGameManager.Instance.currentPlayerCount < 2)
+                        : NetworkGameManager.Instance != null && (NetworkGameManager.Instance.currentPlayerCount < 2
+                                                                   || AwayClock.Running))   // tester 26 Nov: held while a player is away
                        && LifetimeLeft > remainingTime)
                 {
                     yield return new WaitForSeconds(0.5f);
@@ -832,12 +833,43 @@ namespace Snake_Ladder
 
         #endregion
         #region Timer
+        // Tester 26 Nov ("when a player disconnects the turn timer keeps running"): the turn is also held while the away
+        // clock runs (AwayClock: 5 s of silence, or a drop). The head count only falls when the transport gives the
+        // connection up (about 20 s), so for those seconds the 10 s turn kept timing out and passing to the other side.
         private bool IsTurnTimerPaused()
         {
             if (IsMultiSeatTable) return false;   // N seats: a dropped seat is skipped, the table never waits
             return NetworkGameManager.Instance != null
                 && (NetworkGameManager.Instance.IsPaused
-                    || NetworkGameManager.Instance.currentPlayerCount < 2);
+                    || NetworkGameManager.Instance.currentPlayerCount < 2
+                    || AwayClock.Running);
+        }
+
+        bool turnTimerHeld;
+        string turnTimerHeldFor;   // the away player while the turn was held (null: not known)
+
+        [Server]
+        void ServerNoteTurnTimerPaused()
+        {
+            if (!string.IsNullOrEmpty(AwayClock.AwayPlayerId)) turnTimerHeldFor = AwayClock.AwayPlayerId;
+            if (turnTimerHeld) return;
+            turnTimerHeld = true;
+            MatchFlow.Log("Snake & Ladder", $"turn clock held ({currentTimer:0.0} s left for {FlowWho(currentTurnPlayerNumber)}) — " +
+                (AwayClock.Running ? $"{MatchFlow.Who(AwayClock.AwayPlayerId)} is away" : "a player is away or paused"));
+        }
+
+        [Server]
+        void ServerNoteTurnTimerResumed()
+        {
+            if (!turnTimerHeld) return;
+            turnTimerHeld = false;
+            // The player who was away and has the turn gets the whole turn again: their phone has just reloaded the board
+            // (as Carrom, 11 Nov). Anyone else's turn goes on from where it was held.
+            if (!string.IsNullOrEmpty(turnTimerHeldFor) && TryResolvePlayerIndex(turnTimerHeldFor, out int away)
+                && away == currentTurnPlayerNumber)
+                currentTimer = timerDuration;
+            turnTimerHeldFor = null;
+            MatchFlow.Log("Snake & Ladder", $"turn clock runs again ({currentTimer:0.0} s left for {FlowWho(currentTurnPlayerNumber)})");
         }
 
         private void Update()
@@ -861,7 +893,11 @@ namespace Snake_Ladder
                 // player in the room the turn must not time out and flip while the other
                 // side is still inside its reconnect window.
                 if (IsTurnTimerPaused())
+                {
+                    ServerNoteTurnTimerPaused();
                     return;
+                }
+                ServerNoteTurnTimerResumed();
 
                 currentTimer -= Time.deltaTime;
 
@@ -920,6 +956,10 @@ namespace Snake_Ladder
         [Server]
         public void ServerStopTimerCompletely()
         {
+            // Tester 26 Nov: the phones now count the ring down themselves between samples, so tell them it stopped (a
+            // roll, a result) - nothing was sent before and the ring kept its last "running" state.
+            if (isTimerRunning && NetworkServer.active) RpcSyncTimer(currentTimer, false);
+            lastTimerSyncRunning = false;
             isTimerRunning = false;
             currentTimer = 0;
             Debug.Log("🕐 [Server] Timer stopped completely");
@@ -1141,6 +1181,14 @@ namespace Snake_Ladder
                         currentTurnPlayerNumber,
                         currentTimer,
                         isTimerRunning && !IsTurnTimerPaused());
+                    // Tester 26 Nov (after both players came back the two phones showed different turns): the phone that
+                    // stayed gets the server's turn again too, so both show the same player after every reconnect. Not
+                    // during a move - the mover's dice must stay off until the turn passes.
+                    if (!serverMoveInProgress)
+                    {
+                        RpcNotifyFirstTurn(currentTurnPlayerNumber);
+                        lastTimerSyncRunning = !(isTimerRunning && !IsTurnTimerPaused());   // a clock sample right after it
+                    }
                 }
                 return;
             }

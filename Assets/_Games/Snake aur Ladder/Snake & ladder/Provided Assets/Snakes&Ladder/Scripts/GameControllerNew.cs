@@ -986,8 +986,7 @@ namespace Snake_Ladder
             if (path.Count > 0)
             {
 
-                playerSoldier.DOPath(path.ToArray(), DurationToNextNode * path.Count, PathType.Linear)
-                       .SetEase(Ease.Linear)
+                HopAlong(playerSoldier, path)   // tester 26 Nov: square by square, eased, with a hop
                        .OnComplete(() =>
                        {
                            if (isGameEnd)
@@ -1084,8 +1083,7 @@ namespace Snake_Ladder
                             transitionPath.Add(newPosition);
                         }
 
-                        playerSoldier.DOPath(transitionPath.ToArray(), DurationToNextNode * transitionPath.Count, PathType.Linear)
-                            .SetEase(Ease.Linear)
+                        SlideAlong(playerSoldier, transitionPath, DurationToNextNode * transitionPath.Count)   // tester 26 Nov: eased snake slide
                             .OnComplete(() =>
                             {
                                 if (playerNum == Player1Soldier.GetComponent<SnakePlayerRef>().playerID)
@@ -1110,7 +1108,7 @@ namespace Snake_Ladder
                         targetPosition.z = playerSoldier.position.z;
 
                         playerSoldier.DOMove(targetPosition, DurationToNextNode * 3)
-                            .SetEase(Ease.Linear)
+                            .SetEase(Ease.InOutSine)   // tester 26 Nov: eased ladder climb
                             .OnComplete(() =>
                             {
                                 if (playerNum == Player1Soldier.GetComponent<SnakePlayerRef>().playerID)
@@ -1142,6 +1140,40 @@ namespace Snake_Ladder
             }
 
             SwitchTurn();
+        }
+
+        // ───── Token walk (tester 26 Nov: "bead movement looks unrealistic") ─────
+        // Online the server moves the tokens and the phones follow through each token's NetworkTransform (position and
+        // scale, 10 a second, interpolated), so the walk is shaped here, on the server. It used to be one linear DOPath at
+        // DurationToNextNode a square. Now: one eased step per square with a small hop (the token grows and settles - the
+        // board is seen from above) and a short beat between squares. The server still waits for OnComplete before it
+        // passes the turn (SwitchTurn), so a move always ends before the next turn starts; it is just a little longer
+        // (0.3 s a square instead of 0.2 s: a 6 is 1.8 s). Same code in GamesPandaUnity.
+        const float MinHopSeconds = 0.26f, HopBeatSeconds = 0.04f, HopGrow = 1.2f;
+
+        /// <summary>Walks <paramref name="token"/> over <paramref name="squares"/>, one eased hop per square.</summary>
+        public Sequence HopAlong(Transform token, List<Vector3> squares)
+        {
+            token.DOKill();
+            float step = Mathf.Max(DurationToNextNode, MinHopSeconds);
+            Vector3 baseScale = token.localScale;
+            Sequence walk = DOTween.Sequence().SetTarget(token);
+            float at = 0f;
+            foreach (Vector3 square in squares)
+            {
+                walk.Insert(at, token.DOMove(square, step).SetEase(Ease.InOutSine));
+                walk.Insert(at, token.DOScale(baseScale * HopGrow, step * 0.45f).SetEase(Ease.OutQuad));
+                walk.Insert(at + step * 0.45f, token.DOScale(baseScale, step * 0.55f).SetEase(Ease.InQuad));
+                at += step + HopBeatSeconds;
+            }
+            return walk;
+        }
+
+        /// <summary>A snake's slide along its points: one smooth curve that speeds up and slows down.</summary>
+        public Tween SlideAlong(Transform token, List<Vector3> points, float seconds)
+        {
+            PathType shape = points.Count >= 2 ? PathType.CatmullRom : PathType.Linear;
+            return token.DOPath(points.ToArray(), seconds, shape).SetEase(Ease.InOutSine);
         }
 
         void HandleNodeConflict()
