@@ -33,7 +33,13 @@ public class SnokerNetwork : NetworkBehaviour
     }
     private void OnDestroy()
     {
-        Instance = null;
+        // QA 26 Nov (after both phones reconnected, a shot moved the aim line, the stick and the cue ball together
+        // on the other phone): a reconnect reloads this scene, and the OLD scene's OnDestroy can run after the NEW
+        // SnokerNetwork's Awake. Clearing Instance unconditionally then left the live one unreachable, so every
+        // StickManager Rpc (RpcExecuteBallHit among them: it hides the stick and the line and marks the balls
+        // moving) threw on that phone for the rest of the match.
+        if (Instance == this)
+            Instance = null;
     }
 
     #region Public Fields

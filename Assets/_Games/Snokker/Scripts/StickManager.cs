@@ -213,7 +213,9 @@ public class StickManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     public void CmdGetCurrentTurn()
     {
-        this.Delay(3, () =>
+        // QA 26 Nov ("5-7 s to become stable after a reconnect"): the phone only asks once its own table is wired
+        // (OnServerTossDone waits for the cue ball), so the server no longer sits on the answer for 3 s.
+        this.Delay(1, () =>
         {
             // This runs on server   
             SnokerGameManager.bBallInHand.Show("Ball in hand Server");
