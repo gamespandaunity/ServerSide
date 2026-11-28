@@ -4415,7 +4415,7 @@ private void OnEnable()
     }
 
     /// <summary>
-    /// RUN-UP SYNC FIX (batting client). Called via RpcSyncBowlerRunUp when the bowling
+    /// RUN-UP SYNC FIX (batting client). Called via RpcBowlerRunUpStart when the bowling
     /// client actually begins its run-up. Starts the batting client's bowler run-up so the
     /// throw frame coincides with the authoritative ball-release RPC. Guarded so a stray /
     /// late message can't replay the animation mid-delivery.

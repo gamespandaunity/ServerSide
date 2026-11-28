@@ -2326,11 +2326,13 @@ public class CricketNetworkManager : NetworkBehaviour
     public void CmdSyncBowlerRunUp(string senderId, int animNumber, double startAtNetTime)
     {
         ConstantsData_M.MpLog($"[CricketNetworkManager][CmdSyncBowlerRunUp] CMD received. senderId={senderId} animNumber={animNumber}");
-        RpcSyncBowlerRunUp(senderId, animNumber, startAtNetTime);
+        RpcBowlerRunUpStart(senderId, animNumber, startAtNetTime);
     }
 
+    // Renamed from RpcSyncBowlerRunUp (28 Nov): since the 25 Nov string player ids its 2-byte Mirror hash equalled
+    // RpcValidateTeamTimer's (0x87f5), so the team timer ran this RPC and online cricket froze at Playing XI.
     [ClientRpc]
-    public void RpcSyncBowlerRunUp(string senderId, int animNumber, double startAtNetTime)
+    public void RpcBowlerRunUpStart(string senderId, int animNumber, double startAtNetTime)
     {
         if (PlayerId.IsMe(senderId)) return;
         GroundController.instance?.RPC_StartBowlerRunUp(animNumber, startAtNetTime);
